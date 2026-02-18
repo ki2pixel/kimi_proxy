@@ -1,0 +1,20 @@
+# Kimi Proxy Dashboard - Dépendances
+
+# Core
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+
+# HTTP Client
+httpx>=0.24.0
+
+# WebSocket
+websockets>=11.0
+
+# Tokenization
+tiktoken>=0.5.0
+
+# Async File I/O
+aiofiles>=23.0.0
+
+# Config (TOML)
+tomli>=2.0.0; python_version<"3.11"

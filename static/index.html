@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kimi Proxy Dashboard</title>
+    
+    <!-- TailwindCSS (compilé localement) -->
+    <link rel="stylesheet" href="/static/css/tailwind.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+        }
+        
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+        
+        .metric-card {
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.9));
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .metric-card:hover {
+            border-color: rgba(59, 130, 246, 0.5);
+            transform: translateY(-2px);
+        }
+        
+        .log-entry {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .pulse-dot {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        
+        .gauge-container {
+            position: relative;
+            height: 200px;
+        }
+        
+        .custom-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .custom-scroll::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 4px;
+        }
+        
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(71, 85, 105, 0.5);
+            border-radius: 4px;
+        }
+        
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+            background: rgba(100, 116, 139, 0.7);
+        }
+        
+        .status-connected {
+            color: #22c55e;
+        }
+        
+        .status-disconnected {
+            color: #ef4444;
+        }
+        
+        .token-bar {
+            transition: width 0.5s ease, background-color 0.5s ease;
+        }
+        
+        /* Indicateurs de source */
+        .source-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .source-proxy {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        
+        .source-logs {
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+        
+        .source-hybrid {
+            background: rgba(168, 85, 247, 0.2);
+            color: #c084fc;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+        
+        .source-mcp {
+            background: rgba(236, 72, 153, 0.2);
+            color: #f472b6;
+            border: 1px solid rgba(236, 72, 153, 0.3);
+        }
+        
+        .source-compression {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        /* Animation pour nouvelle donnée */
+        .data-update {
+            animation: dataFlash 0.5s ease-out;
+        }
+        
+        @keyframes dataFlash {
+            0% { background-color: rgba(59, 130, 246, 0.3); }
+            100% { background-color: transparent; }
+        }
+    </style>
+</head>
+<body class="text-slate-200">
+    <div class="container mx-auto px-4 py-6 max-w-7xl">
+        <!-- Header -->
+        <header class="glass-panel rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                        <i data-lucide="activity" class="w-6 h-6 text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold text-white">Kimi Proxy Dashboard</h1>
+                        <p class="text-slate-400 text-sm">Monitoring temps réel • 8 Providers • 20+ Modèles</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-4">
+                    <!-- Indicateur de source active -->
+                    <div id="source-indicator-container" class="hidden">
+                        <span id="source-badge" class="source-indicator source-proxy">
+                            <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+                            Proxy
+                        </span>
+                    </div>
+                    
+                    <!-- Alertes de seuil -->
+                    <div id="alert-container" class="hidden">
+                        <span id="alert-badge" class="px-3 py-1.5 rounded-lg text-sm font-bold animate-pulse"></span>
+                    </div>
+                    
+                    <!-- Status WebSocket -->
+                    <div class="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/50 border border-slate-700">
+                        <span id="ws-status-dot" class="w-2 h-2 rounded-full bg-red-500 pulse-dot"></span>
+                        <span id="ws-status-text" class="text-sm status-disconnected">Déconnecté</span>
+                    </div>
+                    
+                    <!-- Bouton Compaction (Phase 2) -->
+                    <button id="compactBtn" onclick="showCompactPreviewModal()" 
+                            disabled
+                            class="flex items-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-xl font-medium transition-all hover:shadow-lg hover:shadow-amber-500/25 active:scale-95"
+                            title="Compaction du contexte - s'active à 70% du contexte">
+                        <i data-lucide="minimize-2" class="w-4 h-4"></i>
+                        <span id="compactBtnText">Compacter Contexte</span>
+                    </button>
+                    
+                    <!-- Bouton Nouvelle Session -->
+                    <button onclick="showNewSessionModal()" 
+                            class="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-all hover:shadow-lg hover:shadow-blue-500/25 active:scale-95">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        Nouvelle Session
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Colonne Gauche: Stats & Gauge -->
+            <div class="space-y-6">
+                <!-- Session Info -->
+                <div class="metric-card rounded-2xl p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i data-lucide="folder-open" class="w-5 h-5 text-blue-400"></i>
+                            Session Active
+                        </h2>
+                        <span id="session-badge" class="px-2 py-1 rounded-lg bg-blue-500/20 text-blue-400 text-xs font-medium">
+                            #1
+                        </span>
+                    </div>
+                    <div class="space-y-3">
+                        <div>
+                            <p class="text-slate-400 text-sm">Nom</p>
+                            <p id="session-name" class="text-white font-medium">Chargement...</p>
+                        </div>
+                        <div>
+                            <p class="text-slate-400 text-sm">Provider</p>
+                            <p id="session-provider" class="text-slate-300 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+                                -
+                            </p>
+                        </div>
+                        <div>
+                            <p class="text-slate-400 text-sm">Créée le</p>
+                            <p id="session-date" class="text-slate-300">-</p>
+                        </div>
+                        <div>
+                            <p class="text-slate-400 text-sm">Requêtes</p>
+                            <p id="total-requests" class="text-2xl font-bold text-white">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gauge Chart Multi-Couches avec indicateur de source -->
+                <div class="metric-card rounded-2xl p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i data-lucide="gauge" class="w-5 h-5 text-purple-400"></i>
+                            Contexte Cumulé
+                        </h2>
+                        <div class="flex items-center gap-2">
+                            <!-- Toggle Auto-Compaction -->
+                            <button id="autoCompactToggle" onclick="toggleAutoCompaction()" 
+                                    class="text-xs flex items-center gap-1.5 px-2 py-1 rounded-lg bg-green-500/20 text-green-400 border border-green-500/30 transition-colors"
+                                    title="Auto-compaction activée">
+                                <i data-lucide="zap" class="w-3 h-3"></i>
+                                <span id="autoCompactText">Auto</span>
+                            </button>
+                            <div id="gauge-source-indicator" class="hidden">
+                                <span class="source-indicator source-proxy text-[9px]">PROXY</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Jauge circulaire -->
+                    <div class="gauge-container flex justify-center">
+                        <canvas id="gaugeChart"></canvas>
+                    </div>
+                    
+                    <!-- Valeurs principales -->
+                    <div class="text-center mt-4">
+                        <p class="text-3xl font-bold text-white">
+                            <span id="current-tokens">0</span>
+                            <span id="max-context-display" class="text-lg text-slate-400">/ 262,144</span>
+                        </p>
+                        <p id="percentage-text" class="text-sm text-slate-400 mt-1">0% utilisé</p>
+                        <p class="text-xs text-slate-500 mt-1">Total de la conversation</p>
+                    </div>
+                    
+                    <!-- Barres multi-couches (Phase 2) -->
+                    <div class="mt-4 space-y-2">
+                        <!-- Barre principale d'usage -->
+                        <div class="relative">
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-slate-400">Usage contexte</span>
+                                <span id="usage-percentage-text" class="text-slate-300">0%</span>
+                            </div>
+                            <div class="h-3 bg-slate-800 rounded-full overflow-hidden relative">
+                                <!-- Zone réservée -->
+                                <div id="reserved-zone" 
+                                     class="absolute right-0 h-full bg-slate-700/50 border-l border-slate-600"
+                                     style="width: 0%"></div>
+                                <!-- Usage actuel -->
+                                <div id="usage-bar" 
+                                     class="h-full bg-gradient-to-r from-green-500 via-yellow-500 to-red-500 rounded-full transition-all duration-500"
+                                     style="width: 0%"></div>
+                                <!-- Seuil de compaction -->
+                                <div id="compaction-threshold-marker"
+                                     class="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10"
+                                     style="left: 80%"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Légende -->
+                        <div class="flex flex-wrap gap-2 text-[10px] text-slate-500">
+                            <span class="flex items-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                                Normal
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-yellow-500"></span>
+                                Élevé
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                                Critique
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <span class="w-2 h-2 rounded bg-slate-700 border border-slate-600"></span>
+                                Réservé
+                            </span>
+                            <span class="flex items-center gap-1" title="Seuil de déclenchement auto-compaction">
+                                <span class="w-0.5 h-2 bg-amber-400"></span>
+                                Seuil
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <!-- Mémoire Long Terme MCP (Phase 2) -->
+                    <div id="memory-indicator" class="mt-4 pt-4 border-t border-slate-700/50 hidden">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs text-slate-400 flex items-center gap-1">
+                                <i data-lucide="brain" class="w-3 h-3 text-pink-400"></i>
+                                Mémoire Long Terme
+                            </span>
+                            <span id="memory-ratio" class="text-xs font-bold text-pink-400">0%</span>
+                        </div>
+                        <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div id="memory-bar" 
+                                 class="h-full bg-gradient-to-r from-pink-500 to-rose-500 rounded-full transition-all duration-500"
+                                 style="width: 0%"></div>
+                        </div>
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+                            <span id="memory-tokens">0 tokens mémoire</span>
+                            <span id="chat-tokens">0 chat</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Graphique Historique de Compaction (Phase 2) -->
+                <div id="compaction-history-card" class="metric-card rounded-2xl p-6 hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i data-lucide="history" class="w-5 h-5 text-amber-400"></i>
+                            Historique Compactions
+                        </h2>
+                        <span id="total-saved-badge" class="px-2 py-1 rounded-lg bg-green-500/20 text-green-400 text-xs font-medium">
+                            0 tokens économisés
+                        </span>
+                    </div>
+                    <div class="h-40">
+                        <canvas id="compactionChart"></canvas>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 mt-3">
+                        <div class="text-center p-2 bg-slate-800/50 rounded-lg">
+                            <p class="text-xs text-slate-500">Compactions</p>
+                            <p id="compaction-count" class="text-lg font-bold text-white">0</p>
+                        </div>
+                        <div class="text-center p-2 bg-slate-800/50 rounded-lg">
+                            <p class="text-xs text-slate-500">Moyenne</p>
+                            <p id="compaction-avg-ratio" class="text-lg font-bold text-green-400">0%</p>
+                        </div>
+                        <div class="text-center p-2 bg-slate-800/50 rounded-lg">
+                            <p class="text-xs text-slate-500">Dernière</p>
+                            <p id="last-compaction-time" class="text-xs font-bold text-slate-300">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats Rapides -->
+                <div class="metric-card rounded-2xl p-6">
+                    <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <i data-lucide="bar-chart-3" class="w-5 h-5 text-green-400"></i>
+                        Statistiques
+                    </h2>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="p-4 rounded-xl bg-slate-800/50">
+                            <p class="text-slate-400 text-xs mb-1">Max Tokens</p>
+                            <p id="max-tokens" class="text-xl font-bold text-white">0</p>
+                        </div>
+                        <div class="p-4 rounded-xl bg-slate-800/50">
+                            <p class="text-slate-400 text-xs mb-1">Moyenne</p>
+                            <p id="avg-tokens" class="text-xl font-bold text-white">0</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="p-4 rounded-xl bg-slate-800/50 border border-blue-500/20">
+                            <p class="text-blue-400 text-xs mb-1 flex items-center gap-1">
+                                <i data-lucide="arrow-right" class="w-3 h-3"></i> Input
+                            </p>
+                            <p id="prompt-tokens" class="text-lg font-bold text-white">0</p>
+                        </div>
+                        <div class="p-4 rounded-xl bg-slate-800/50 border border-purple-500/20">
+                            <p class="text-purple-400 text-xs mb-1 flex items-center gap-1">
+                                <i data-lucide="arrow-left" class="w-3 h-3"></i> Output
+                            </p>
+                            <p id="completion-tokens" class="text-lg font-bold text-white">0</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Comparaison Estimé vs Réel -->
+                    <div class="mt-4 p-4 rounded-xl bg-slate-800/30 border border-slate-700/50">
+                        <p class="text-slate-400 text-xs mb-2">Précision de l'estimation</p>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <span class="text-slate-500 text-xs">Estimé</span>
+                                <p id="last-estimated" class="text-sm font-mono text-slate-300">-</p>
+                            </div>
+                            <div class="text-center">
+                                <i data-lucide="arrow-right" class="w-4 h-4 text-slate-600"></i>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-green-400 text-xs">Réel</span>
+                                <p id="last-real" class="text-sm font-mono text-green-400">-</p>
+                            </div>
+                        </div>
+                        <p id="accuracy-text" class="text-xs text-center mt-2 text-slate-500">En attente de données réelles...</p>
+                    </div>
+                </div>
+                
+                <!-- Graphique Historique -->
+                <div class="metric-card rounded-2xl p-6">
+                    <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <i data-lucide="line-chart" class="w-5 h-5 text-cyan-400"></i>
+                        Historique des Tokens
+                    </h2>
+                    <div class="h-48">
+                        <canvas id="historyChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Export de données -->
+                <div class="metric-card rounded-2xl p-6">
+                    <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <i data-lucide="download" class="w-5 h-5 text-orange-400"></i>
+                        Exporter les données
+                    </h2>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="exportData('csv')" 
+                                class="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors border border-slate-700">
+                            <i data-lucide="file-spreadsheet" class="w-4 h-4 text-green-400"></i>
+                            <span class="text-sm">Export CSV</span>
+                        </button>
+                        <button onclick="exportData('json')" 
+                                class="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors border border-slate-700">
+                            <i data-lucide="file-json" class="w-4 h-4 text-blue-400"></i>
+                            <span class="text-sm">Export JSON</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- MCP Phase 3 - Serveurs Externes -->
+                <div class="metric-card rounded-2xl p-6 border-violet-500/20">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i data-lucide="cpu" class="w-5 h-5 text-violet-400"></i>
+                            MCP Phase 3
+                        </h2>
+                        <button onclick="refreshMCPStatus()" 
+                                class="text-xs flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-500/20 text-violet-400 border border-violet-500/30 hover:bg-violet-500/30 transition-colors"
+                                title="Rafraîchir les statuts">
+                            <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+                            Actualiser
+                        </button>
+                    </div>
+                    
+                    <!-- Statuts des serveurs -->
+                    <div id="mcp-status-panel" class="mb-4">
+                        <div class="text-slate-500 text-center py-4">
+                            <i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto mb-2"></i>
+                            <p class="text-sm">Chargement des statuts...</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Stats avancées -->
+                    <div id="mcp-advanced-stats" class="mb-4">
+                        <!-- Rempli dynamiquement -->
+                    </div>
+                </div>
+                
+                <!-- MCP Phase 3 - Mémoires Fréquentes -->
+                <div class="metric-card rounded-2xl p-6 border-violet-500/20">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i data-lucide="brain" class="w-5 h-5 text-violet-400"></i>
+                            Mémoires Fréquentes
+                        </h2>
+                        <span class="text-xs text-slate-500">Auto-apprentissage</span>
+                    </div>
+                    
+                    <div id="mcp-frequent-memories" class="max-h-64 overflow-y-auto custom-scroll space-y-2">
+                        <div class="text-slate-500 text-center py-4">
+                            <i data-lucide="sparkles" class="w-6 h-6 mx-auto mb-2 opacity-50"></i>
+                            <p class="text-sm">Les mémoires fréquemment utilisées apparaîtront ici</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Outils MCP -->
+                    <div class="mt-4 pt-4 border-t border-slate-700/50">
+                        <p class="text-xs text-slate-500 mb-2">Outils MCP</p>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="document.getElementById('mcpSearchModal').classList.remove('hidden')"
+                                    class="text-xs flex items-center gap-1 px-3 py-1.5 rounded-lg bg-violet-500/20 text-violet-400 border border-violet-500/30 hover:bg-violet-500/30 transition-colors"
+                                    title="Recherche sémantique">
+                                <i data-lucide="search" class="w-3 h-3"></i>
+                                Similarité
+                            </button>
+                            <button onclick="document.getElementById('mcpCompressModal').classList.remove('hidden')"
+                                    class="text-xs flex items-center gap-1 px-3 py-1.5 rounded-lg bg-violet-500/20 text-violet-400 border border-violet-500/30 hover:bg-violet-500/30 transition-colors"
+                                    title="Compression de contenu">
+                                <i data-lucide="minimize-2" class="w-3 h-3"></i>
+                                Compresser
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Colonne Droite: Logs -->
+            <div class="lg:col-span-2">
+                <div class="metric-card rounded-2xl p-6 h-full">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                                <i data-lucide="terminal" class="w-5 h-5 text-yellow-400"></i>
+                                Logs en Temps Réel
+                            </h2>
+                            <!-- Légende des sources -->
+                            <div class="flex items-center gap-2 text-xs flex-wrap">
+                                <span class="source-indicator source-proxy">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+                                    Proxy
+                                </span>
+                                <span class="source-indicator source-logs">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+                                    Logs
+                                </span>
+                                <span class="source-indicator source-hybrid">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+                                    Compile
+                                </span>
+                            </div>
+                        </div>
+                        <button onclick="clearLogs()" 
+                                class="text-sm text-slate-400 hover:text-white transition-colors flex items-center gap-1">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            Vider
+                        </button>
+                    </div>
+                    
+                    <!-- Barre de progression globale -->
+                    <div class="mb-4">
+                        <div class="flex justify-between text-sm mb-2">
+                            <span class="text-slate-400">Utilisation du contexte</span>
+                            <span id="progress-percent" class="text-slate-300">0%</span>
+                        </div>
+                        <div class="h-3 bg-slate-800 rounded-full overflow-hidden">
+                            <div id="progress-bar" 
+                                 class="token-bar h-full bg-gradient-to-r from-green-500 via-yellow-500 to-red-500 rounded-full"
+                                 style="width: 0%"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Zone de logs -->
+                    <div id="logs-container" 
+                         class="custom-scroll h-[500px] overflow-y-auto space-y-2 pr-2 font-mono text-sm">
+                        <div class="text-slate-500 text-center py-8">
+                            En attente de données...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="mt-6 text-center text-slate-500 text-sm">
+            <p>Kimi Proxy Dashboard • WebSocket temps réel • FastAPI + SQLite • Log Watcher PyCharm</p>
+        </footer>
+    </div>
+
+    <!-- Modal Compaction Preview (Phase 2) -->
+    <div id="compactPreviewModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-panel rounded-2xl w-full max-w-2xl mx-auto transform transition-all scale-95 opacity-0 max-h-[90vh] flex flex-col" id="compactPreviewModalContent">
+            <!-- Header -->
+            <div class="flex items-center justify-between p-6 border-b border-slate-700/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
+                        <i data-lucide="minimize-2" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-white">Compacter le Contexte</h3>
+                        <p class="text-slate-400 text-sm">Réduire la taille de la conversation</p>
+                    </div>
+                </div>
+                <button onclick="closeCompactPreviewModal()" class="text-slate-400 hover:text-white transition-colors p-2 hover:bg-slate-800 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <!-- Content -->
+            <div class="p-6 overflow-y-auto custom-scroll flex-1">
+                <!-- Alertes -->
+                <div id="compactWarning" class="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4 mb-6">
+                    <div class="flex items-start gap-3">
+                        <i data-lucide="info" class="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0"></i>
+                        <div>
+                            <h4 class="font-semibold text-amber-400 mb-1">Résumé de la compaction</h4>
+                            <p class="text-slate-300 text-sm">
+                                Cette opération va créer un résumé de l'historique en conservant :
+                            </p>
+                            <ul class="text-slate-300 text-sm mt-2 space-y-1 ml-4">
+                                <li>• Les messages système (instructions)</li>
+                                <li>• Les <span id="preserveCount">2</span> derniers échanges</li>
+                                <li>• Un résumé des messages intermédiaires</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Stats estimées -->
+                <div class="grid grid-cols-3 gap-4 mb-6">
+                    <div class="p-4 bg-slate-800/50 rounded-xl text-center">
+                        <p class="text-xs text-slate-500 mb-1">Tokens actuels</p>
+                        <p id="previewOriginalTokens" class="text-xl font-bold text-white">-</p>
+                    </div>
+                    <div class="p-4 bg-slate-800/50 rounded-xl text-center">
+                        <p class="text-xs text-slate-500 mb-1">Après compaction</p>
+                        <p id="previewCompactedTokens" class="text-xl font-bold text-green-400">-</p>
+                    </div>
+                    <div class="p-4 bg-green-900/20 border border-green-500/30 rounded-xl text-center">
+                        <p class="text-xs text-green-400 mb-1">Économie estimée</p>
+                        <p id="previewSavings" class="text-xl font-bold text-green-400">-</p>
+                    </div>
+                </div>
+                
+                <!-- Preview des messages -->
+                <div class="mb-4">
+                    <h4 class="text-sm font-semibold text-slate-300 mb-3">Aperçu des messages concernés</h4>
+                    <div id="messagesPreview" class="space-y-2">
+                        <!-- Rempli dynamiquement -->
+                        <div class="text-slate-500 text-center py-4">
+                            <i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto mb-2"></i>
+                            Chargement du preview...
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Loading state -->
+                <div id="compactLoadingState" class="hidden">
+                    <div class="flex items-center justify-center py-8">
+                        <div class="flex flex-col items-center gap-3">
+                            <div class="w-10 h-10 border-3 border-amber-500/30 border-t-amber-500 rounded-full animate-spin"></div>
+                            <p class="text-slate-400 text-sm">Compaction en cours...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div class="flex items-center justify-between p-6 border-t border-slate-700/50">
+                <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="autoCompactCheckbox" 
+                               class="w-4 h-4 rounded border-slate-600 bg-slate-700 text-amber-500 focus:ring-amber-500"
+                               checked>
+                        <span class="text-sm text-slate-400">Auto-compaction</span>
+                    </label>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="closeCompactPreviewModal()" 
+                            class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors border border-slate-700">
+                        Annuler
+                    </button>
+                    <button onclick="executeCompaction()" 
+                            id="executeCompactBtn"
+                            class="px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl transition-colors font-medium flex items-center gap-2">
+                        <i data-lucide="check" class="w-4 h-4"></i>
+                        Confirmer la compaction
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal Résultat Compaction -->
+    <div id="compactResultModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-panel rounded-2xl w-full max-w-md mx-auto transform transition-all scale-95 opacity-0" id="compactResultModalContent">
+            <!-- Header -->
+            <div class="flex items-center justify-between p-6 border-b border-slate-700/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+                        <i data-lucide="check-circle" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-white">Compaction Réussie</h3>
+                        <p class="text-slate-400 text-sm">Contexte optimisé avec succès</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Content -->
+            <div class="p-6">
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="p-3 bg-slate-800/50 rounded-lg text-center">
+                        <p class="text-xs text-slate-500">Tokens économisés</p>
+                        <p id="resultTokensSaved" class="text-2xl font-bold text-green-400">-</p>
+                    </div>
+                    <div class="p-3 bg-slate-800/50 rounded-lg text-center">
+                        <p class="text-xs text-slate-500">Réduction</p>
+                        <p id="resultRatio" class="text-2xl font-bold text-amber-400">-%</p>
+                    </div>
+                </div>
+                <div class="p-3 bg-slate-800/50 rounded-lg">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-400">Messages avant</span>
+                        <span id="resultMessagesBefore" class="text-white">-</span>
+                    </div>
+                    <div class="flex justify-between text-sm mt-2">
+                        <span class="text-slate-400">Messages après</span>
+                        <span id="resultMessagesAfter" class="text-white">-</span>
+                    </div>
+                    <div class="flex justify-between text-sm mt-2 pt-2 border-t border-slate-700/50">
+                        <span class="text-slate-400">Résumés</span>
+                        <span id="resultSummarized" class="text-amber-400">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div class="flex items-center justify-end p-6 border-t border-slate-700/50">
+                <button onclick="closeCompactResultModal()" 
+                        class="px-5 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl transition-colors font-medium">
+                    Terminé
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Nouvelle Session - Multi-Providers -->
+    <div id="newSessionModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-panel rounded-2xl w-full max-w-3xl mx-auto transform transition-all scale-95 opacity-0 max-h-[90vh] flex flex-col" id="modalContent">
+            <!-- Header -->
+            <div class="flex items-center justify-between p-6 border-b border-slate-700/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                        <i data-lucide="folder-plus" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-white">Nouvelle Session</h3>
+                        <p class="text-slate-400 text-sm">Sélectionnez un modèle pour votre session</p>
+                    </div>
+                </div>
+                <button onclick="closeNewSessionModal()" class="text-slate-400 hover:text-white transition-colors p-2 hover:bg-slate-800 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <!-- Content -->
+            <div class="p-6 overflow-y-auto custom-scroll flex-1">
+                <!-- Nom de session -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Nom de la session</label>
+                    <input type="text" id="newSessionName" 
+                           class="w-full px-4 py-3 bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                           placeholder="Session de codage...">
+                </div>
+                
+                <!-- Filtre rapide -->
+                <div class="mb-4">
+                    <div class="flex items-center gap-2 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-500"></i>
+                        <input type="text" id="modelFilter" 
+                               class="flex-1 bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none"
+                               placeholder="Filtrer les modèles..."
+                               oninput="filterModels(this.value)">
+                    </div>
+                </div>
+                
+                <!-- Liste des providers et modèles -->
+                <div id="providersList" class="space-y-4">
+                    <div class="text-slate-500 text-center py-8">
+                        <i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto mb-2"></i>
+                        Chargement des modèles...
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div class="flex items-center justify-between p-6 border-t border-slate-700/50">
+                <div class="text-sm text-slate-500">
+                    <span id="selectedModelInfo">Aucun modèle sélectionné</span>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="closeNewSessionModal()" 
+                            class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors border border-slate-700">
+                        Annuler
+                    </button>
+                    <button onclick="createNewSessionWithProvider()" 
+                            id="createSessionBtn"
+                            disabled
+                            class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-xl transition-colors font-medium flex items-center gap-2">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        Créer la session
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Modal Recherche Sémantique MCP -->
+    <div id="mcpSearchModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-panel rounded-2xl w-full max-w-2xl mx-auto transform transition-all scale-95 opacity-0 max-h-[90vh] flex flex-col" id="mcpSearchModalContent">
+            <!-- Header -->
+            <div class="flex items-center justify-between p-6 border-b border-slate-700/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+                        <i data-lucide="search" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-white">Recherche Sémantique</h3>
+                        <p class="text-slate-400 text-sm">Qdrant MCP • Similarité vectorielle</p>
+                    </div>
+                </div>
+                <button onclick="closeMCPSearchModal()" class="text-slate-400 hover:text-white transition-colors p-2 hover:bg-slate-800 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <!-- Content -->
+            <div class="p-6 overflow-y-auto custom-scroll flex-1">
+                <!-- Input recherche -->
+                <div class="mb-4">
+                    <div class="flex gap-2">
+                        <div class="flex-1 relative">
+                            <input type="text" id="mcpSearchInput" 
+                                   class="w-full px-4 py-3 bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-colors"
+                                   placeholder="Rechercher par similarité sémantique..."
+                                   onkeypress="if(event.key==='Enter') executeMCPSearch()">
+                            <i data-lucide="search" class="w-4 h-4 text-slate-500 absolute right-4 top-3.5"></i>
+                        </div>
+                        <button onclick="executeMCPSearch()" 
+                                class="px-5 py-3 bg-violet-600 hover:bg-violet-500 text-white rounded-xl transition-colors font-medium flex items-center gap-2">
+                            <i data-lucide="search" class="w-4 h-4"></i>
+                            Chercher
+                        </button>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-2">
+                        <i data-lucide="zap" class="w-3 h-3 inline"></i>
+                        Recherche <50ms via embeddings vectoriels
+                    </p>
+                </div>
+                
+                <!-- Résultats -->
+                <div id="mcpSearchResults" class="space-y-2">
+                    <div class="text-slate-500 text-center py-8">
+                        <i data-lucide="search" class="w-8 h-8 mx-auto mb-2 opacity-30"></i>
+                        <p>Saisissez une requête pour rechercher</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal Compression MCP -->
+    <div id="mcpCompressModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-panel rounded-2xl w-full max-w-2xl mx-auto transform transition-all scale-95 opacity-0 max-h-[90vh] flex flex-col" id="mcpCompressModalContent">
+            <!-- Header -->
+            <div class="flex items-center justify-between p-6 border-b border-slate-700/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+                        <i data-lucide="minimize-2" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-white">Compression Contexte</h3>
+                        <p class="text-slate-400 text-sm">Context Compression MCP • 20-80% réduction</p>
+                    </div>
+                </div>
+                <button onclick="closeMCPCompressModal()" class="text-slate-400 hover:text-white transition-colors p-2 hover:bg-slate-800 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <!-- Content -->
+            <div class="p-6 overflow-y-auto custom-scroll flex-1">
+                <!-- Input contenu -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Contenu à compresser</label>
+                    <textarea id="mcpCompressInput" 
+                              class="w-full px-4 py-3 bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-colors resize-none"
+                              rows="6"
+                              placeholder="Collez le contenu à compresser..."></textarea>
+                </div>
+                
+                <!-- Options -->
+                <div class="flex items-center gap-4 mb-4">
+                    <label class="flex items-center gap-2 text-sm text-slate-400">
+                        <input type="radio" name="compressAlgo" value="context_aware" checked class="text-violet-500 focus:ring-violet-500">
+                        Context-aware
+                    </label>
+                    <label class="flex items-center gap-2 text-sm text-slate-400">
+                        <input type="radio" name="compressAlgo" value="zlib" class="text-violet-500 focus:ring-violet-500">
+                        Zlib
+                    </label>
+                </div>
+                
+                <button onclick="executeMCPCompression()" 
+                        id="mcpCompressBtn"
+                        class="w-full px-5 py-3 bg-violet-600 hover:bg-violet-500 text-white rounded-xl transition-colors font-medium flex items-center justify-center gap-2">
+                    <i data-lucide="minimize-2" class="w-4 h-4"></i>
+                    Compresser
+                </button>
+                
+                <!-- Résultat -->
+                <div id="mcpCompressResult" class="mt-4 hidden">
+                    <div class="p-4 bg-violet-900/20 border border-violet-500/30 rounded-xl">
+                        <div class="grid grid-cols-3 gap-4 mb-4">
+                            <div class="text-center">
+                                <p class="text-xs text-slate-500">Original</p>
+                                <p id="compressOriginalTokens" class="text-lg font-bold text-white">-</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-slate-500">Compressé</p>
+                                <p id="compressResultTokens" class="text-lg font-bold text-violet-400">-</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-slate-500">Économie</p>
+                                <p id="compressSavings" class="text-lg font-bold text-green-400">-%</p>
+                            </div>
+                        </div>
+                        <div class="bg-slate-900/50 rounded-lg p-3">
+                            <p class="text-xs text-slate-500 mb-1">Contenu compressé:</p>
+                            <pre id="compressOutput" class="text-xs text-slate-300 overflow-x-auto whitespace-pre-wrap font-mono"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/static/js/main.js"></script>
+    
+    <!-- Fonctions globales pour modales MCP -->
+    <script>
+        function closeMCPSearchModal() {
+            document.getElementById('mcpSearchModal').classList.add('hidden');
+        }
+        
+        function closeMCPCompressModal() {
+            document.getElementById('mcpCompressModal').classList.add('hidden');
+            document.getElementById('mcpCompressResult').classList.add('hidden');
+        }
+        
+        async function executeMCPSearch() {
+            const query = document.getElementById('mcpSearchInput').value;
+            if (!query) return;
+            
+            const resultsContainer = document.getElementById('mcpSearchResults');
+            resultsContainer.innerHTML = '<div class="text-center py-4"><i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto text-violet-400"></i></div>';
+            lucide.createIcons();
+            
+            try {
+                const result = await window.searchSimilar(query);
+                
+                if (!result.results || result.results.length === 0) {
+                    resultsContainer.innerHTML = `
+                        <div class="text-slate-500 text-center py-4">
+                            <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 opacity-30"></i>
+                            <p>Aucun résultat trouvé</p>
+                        </div>
+                    `;
+                } else {
+                    resultsContainer.innerHTML = result.results.map(r => `
+                        <div class="p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs px-2 py-0.5 rounded bg-violet-500/20 text-violet-400">Score: ${(r.score * 100).toFixed(1)}%</span>
+                            </div>
+                            <p class="text-sm text-slate-300">${r.content_preview}</p>
+                        </div>
+                    `).join('');
+                }
+                lucide.createIcons();
+            } catch (error) {
+                resultsContainer.innerHTML = `<div class="text-rose-400 text-center py-4">Erreur: ${error.message}</div>`;
+            }
+        }
+        
+        async function executeMCPCompression() {
+            const content = document.getElementById('mcpCompressInput').value;
+            if (!content) return;
+            
+            const btn = document.getElementById('mcpCompressBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Compression...';
+            lucide.createIcons();
+            
+            try {
+                const result = await window.compressContent(content);
+                
+                document.getElementById('compressOriginalTokens').textContent = result.original_tokens.toLocaleString();
+                document.getElementById('compressResultTokens').textContent = result.compressed_tokens.toLocaleString();
+                document.getElementById('compressSavings').textContent = result.savings_percent + '%';
+                document.getElementById('compressOutput').textContent = result.compressed_content.substring(0, 500) + '...';
+                
+                document.getElementById('mcpCompressResult').classList.remove('hidden');
+            } catch (error) {
+                alert('Erreur de compression: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="minimize-2" class="w-4 h-4"></i> Compresser';
+                lucide.createIcons();
+            }
+        }
+    </script>
+</body>
+</html>

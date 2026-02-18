@@ -1,0 +1,459 @@
+name: Kimi Proxy Dashboard Configuration
+version: 3.0.0
+schema: v1
+
+# ============================================
+# CONFIGURATION PROXY - Tous les modèles
+# ============================================
+
+models:
+  # === Kimi Code Officiel ===
+  - name: 🌙 Kimi - Kimi for Coding (256K)
+    provider: openai
+    model: kimi-code/kimi-for-coding
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 262144
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 16384
+      contextLength: 262144
+
+  # === NVIDIA ===
+  - name: 🟢 NVIDIA - Kimi K2.5 (256K)
+    provider: openai
+    model: nvidia/kimi-k2.5
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 262144
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 16384
+      contextLength: 262144
+
+  - name: 🟢 NVIDIA - Kimi K2 Thinking (256K)
+    provider: openai
+    model: nvidia/kimi-k2-thinking
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 262144
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 16384
+      contextLength: 262144
+
+  # === Mistral ===
+  - name: 🔷 Mistral - Codestral 2501 (256K)
+    provider: openai
+    model: mistral/codestral-2501
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 262144
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    autocompleteOptions:
+      debounceDelay: 200
+      maxPromptTokens: 1024
+      onlyMyCode: true
+    defaultCompletionOptions:
+      temperature: 0.1
+      maxTokens: 8192
+      contextLength: 262144
+
+  - name: 🔷 Mistral - Mistral Large 2411 (128K)
+    provider: openai
+    model: mistral/mistral-large-2411
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 131072
+    roles:
+      - chat
+      - edit
+      - apply
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 8192
+      contextLength: 131072
+
+  - name: 🔷 Mistral - Pixtral Large 2411 (128K)
+    provider: openai
+    model: mistral/pixtral-large-2411
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 131072
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.4
+      maxTokens: 8192
+      contextLength: 131072
+
+  - name: 🔷 Mistral - Ministral 8B (32K)
+    provider: openai
+    model: mistral/ministral-8b-2410
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 32768
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    defaultCompletionOptions:
+      temperature: 0.5
+      maxTokens: 8192
+      contextLength: 32768
+
+  # === OpenRouter ===
+  - name: 🔀 OpenRouter - Aurora Alpha (128K)
+    provider: openai
+    model: openrouter/aurora-alpha
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 128000
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 8192
+      contextLength: 128000
+
+  # === SiliconFlow ===
+  - name: 💧 SiliconFlow - Qwen 3 32B (131K)
+    provider: openai
+    model: siliconflow/qwen3-32b
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 131072
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 8192
+      contextLength: 131072
+
+  - name: 💧 SiliconFlow - DeepSeek V3.2 (164K)
+    provider: openai
+    model: siliconflow/deepseek-v3.2
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 164000
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.4
+      maxTokens: 8192
+      contextLength: 164000
+
+  # === Groq ===
+  - name: ⚡ Groq - Compound (131K)
+    provider: openai
+    model: groq/compound
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 131072
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 8192
+      contextLength: 131072
+
+  - name: ⚡ Groq - Qwen 3 32B (131K)
+    provider: openai
+    model: groq/qwen3-32b
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 131072
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 8192
+      contextLength: 131072
+      reasoning_format: parsed
+      reasoning_effort: default
+
+  - name: ⚡ Groq - GPT-OSS 120B (131K)
+    provider: openai
+    model: groq/gpt-oss-120b
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 131072
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 8192
+      contextLength: 131072
+      reasoning_effort: medium
+      include_reasoning: true
+      reasoningBudgetTokens: 2048
+
+  # === Cerebras ===
+  - name: 🧠 Cerebras - Qwen 3 235B (65K)
+    provider: openai
+    model: cerebras/qwen3-235b
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 65536
+    roles:
+      - chat
+      - edit
+      - apply
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 8192
+      contextLength: 65536
+
+  - name: 🧠 Cerebras - GPT-OSS 120B (65K)
+    provider: openai
+    model: cerebras/gpt-oss-120b
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 65536
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.4
+      maxTokens: 8192
+      contextLength: 65536
+
+  - name: 🧠 Cerebras - GLM-4.7 (64K)
+    provider: openai
+    model: cerebras/glm-4.7
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 64000
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    autocompleteOptions:
+      debounceDelay: 200
+      maxPromptTokens: 1024
+      onlyMyCode: true
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 8192
+      contextLength: 64000
+
+  # === Gemini ===
+  - name: 💎 Gemini - 2.5 Flash Lite (1M)
+    provider: openai
+    model: gemini/gemini-2.5-flash-lite
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 1048576
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.3
+      maxTokens: 8192
+      contextLength: 1048576
+
+  - name: 💎 Gemini - 3 Flash Preview (1M)
+    provider: openai
+    model: gemini/gemini-3-flash-preview
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 1048576
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.3
+      maxTokens: 8192
+      contextLength: 1048576
+
+  - name: 💎 Gemini - 2.5 Flash (1M)
+    provider: openai
+    model: gemini/gemini-2.5-flash
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 1048576
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.3
+      maxTokens: 8192
+      contextLength: 1048576
+
+  - name: 💎 Gemini - 2.5 Pro (1M)
+    provider: openai
+    model: gemini/gemini-2.5-pro
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 1048576
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.3
+      maxTokens: 8192
+      contextLength: 1048576
+
+# ============================================
+# CONTEXT PROVIDERS
+# ============================================
+context:
+  - provider: file
+  - provider: code
+  - provider: diff
+
+# ============================================
+# MCP SERVERS
+# ============================================
+mcpServers:
+  - name: filesystem-agent
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/kidpixel"]
+    env:
+      PATH: "/usr/bin:/bin:/usr/local/bin"
+
+  - name: ripgrep-agent
+    command: npx
+    args: ["-y", "mcp-ripgrep"]
+    env:
+      PATH: "/usr/bin:/bin:/usr/local/bin"
+
+  - name: mb-workflow-mediapipe
+    command: npx
+    args: ["-y", "@allpepper/memory-bank-mcp"]
+    env:
+      MEMORY_BANK_ROOT: "/home/kidpixel/workflow_mediapipe"
+
+  - name: mb-render-signal
+    command: npx
+    args: ["-y", "@allpepper/memory-bank-mcp"]
+    env:
+      MEMORY_BANK_ROOT: "/home/kidpixel/render_signal_server-main"
+
+  - name: mb-photomaton
+    command: npx
+    args: ["-y", "@allpepper/memory-bank-mcp"]
+    env:
+      MEMORY_BANK_ROOT: "/home/kidpixel/photomaton_simple_new"
+
+  - name: mb-switchbot
+    command: npx
+    args: ["-y", "@allpepper/memory-bank-mcp"]
+    env:
+      MEMORY_BANK_ROOT: "/home/kidpixel/SwitchBot"
+
+  - name: mb-ae-scripts
+    command: npx
+    args: ["-y", "@allpepper/memory-bank-mcp"]
+    env:
+      # J'ai gardé les guillemets ici car le chemin contient des espaces et un "&"
+      MEMORY_BANK_ROOT: "/home/kidpixel/After Effects Scripts & Plugins Bundle"
+
+  - name: mb-kimi
+    command: npx
+    args: ["-y", "@allpepper/memory-bank-mcp"]
+    env:
+      MEMORY_BANK_ROOT: "/home/kidpixel/After Effects Scripts & Plugins Bundle"
+
+  - name: task-master-ai
+    command: npx
+    args: ["-y", "task-master-ai"]
+    env:
+      MISTRAL_API_KEY: "caché"
+      TASK_MASTER_TOOLS: "standard"
+
+  - name: sequential-thinking
+    command: npx
+    args: ["-y", "mcp-sequentialthinking-tools"]
+    env:
+      MAX_HISTORY_SIZE: "1000"
+
+  - name: fast-filesystem
+    command: npx
+    args: ["-y", "fast-filesystem-mcp"]
+    env:
+      CREATE_BACKUP_FILES: "false"
+
+  - name: json-query
+    command: node
+    args: ["/home/kidpixel/Téléchargements/json-query-mcp-main/dist/index.js"]

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "context-compression": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/context-compression-mcp", "run", "fastmcp", "run", "server.py"],
+      "env": {
+        "CONTEXT_DB_PATH": "./context_data.db",
+        "COMPRESSION_THRESHOLD": "1024",
+        "MAX_CONTEXT_SIZE": "10485760"
+      }
+    }
+  }
+}

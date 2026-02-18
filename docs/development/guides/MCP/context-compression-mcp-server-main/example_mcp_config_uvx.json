@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "context-compression": {
+      "command": "uvx",
+      "args": ["context-compression-mcp"],
+      "env": {
+        "CONTEXT_DB_PATH": "./context_data.db",
+        "COMPRESSION_THRESHOLD": "1024",
+        "MAX_CONTEXT_SIZE": "10485760"
+      }
+    }
+  }
+}

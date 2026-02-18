@@ -1,0 +1,20 @@
+# Kimi Proxy Dashboard - Dépendances de développement
+
+-r requirements.txt
+
+# Testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+httpx>=0.24.0  # Pour les tests API
+
+# Linting & Formatting
+black>=23.0.0
+ruff>=0.1.0
+mypy>=1.5.0
+
+# Documentation
+mkdocs>=1.5.0
+
+# Profiling
+memray>=1.10.0

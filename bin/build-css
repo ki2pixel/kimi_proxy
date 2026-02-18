@@ -1,0 +1,23 @@
+#!/bin/bash
+# Build CSS script for Kimi Proxy Dashboard
+# Compile TailwindCSS from input.css to tailwind.css
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+cd "$PROJECT_DIR"
+
+echo "🎨 Building TailwindCSS..."
+
+# Check if node_modules exists
+if [ ! -d "node_modules" ]; then
+    echo "📦 Installing dependencies..."
+    npm install
+fi
+
+# Build CSS
+npm run build:css
+
+echo "✅ CSS built successfully: static/css/tailwind.css"

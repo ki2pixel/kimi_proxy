@@ -1,0 +1,1 @@
+"""Test package for context compression MCP server."""

@@ -1,0 +1,44 @@
+Project: Task Management Web Application
+
+Overview:
+Build a web application for managing tasks. The frontend will be built with React, the backend with Node.js, data stored in MongoDB, and authentication via Google OAuth.
+
+Features:
+- Create, edit, and delete tasks.
+- Assign tasks to users.
+- Email notifications for task assignments and updates.
+- Dashboard displaying task statistics and analytics.
+
+Technical Stack:
+- Frontend: React (JavaScript/TypeScript), Redux for state management, React Router.
+- Backend: Node.js with Express.js.
+- Database: MongoDB (Mongoose ORM).
+- Authentication: Google OAuth 2.0.
+- Email Service: SendGrid or Nodemailer.
+- Deployment: Docker containers, CI/CD pipeline.
+
+Non-Functional Requirements:
+- Responsive UI.
+- Secure authentication and data handling.
+- Scalable architecture.
+- Automated tests for critical components.
+
+Assumptions:
+- Users will have Google accounts.
+- Email service credentials will be provided.
+- Deployment environment supports Docker.
+
+Constraints:
+- Must comply with Google OAuth policies.
+- Use open-source libraries where possible.
+
+Milestones:
+1. Project setup and CI/CD.
+2. Backend API development.
+3. Frontend UI development.
+4. Integration of Google OAuth.
+5. Email notification system.
+6. Dashboard and analytics.
+7. Testing and documentation.
+
+End of PRD.
