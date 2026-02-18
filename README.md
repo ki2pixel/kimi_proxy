@@ -138,26 +138,53 @@ J'ai commencé avec un fichier monolithique de 3,073 lignes. C'était comme avoi
 Vous avez 5 minutes? C'est tout ce qu'il vous faut.
 
 ```bash
-# 1. Cloner et installer
-git clone <repository-url>
-cd kimi-proxy
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-pip install -r requirements.txt
+# 2. Configurer vos clés API (méthode recommandée)
+# Copier le template et éditer avec vos vraies clés
+cp .env.example .env
+# Éditer .env avec vos clés API (voir section ci-dessous)
 
-# 2. Configurer vos clés API
-# Éditez config.toml avec vos vraies clés
-[providers."managed:kimi-code"]
-type = "kimi"
-base_url = "https://api.kimi.com/coding/v1"
-api_key = "sk-kimi-VOTRE_CLE_ICI"
+# 3. Charger automatiquement les variables d'environnement
+source ./load-env.sh
 
-# 3. Démarrer
+# 4. Démarrer
 ./bin/kimi-proxy start
 # Dashboard sur http://localhost:8000
 ```
 
-C'est tout. Vraiment.
+### Configuration des variables d'environnement
+
+Au lieu d'éditer manuellement `config.toml`, vous pouvez utiliser le fichier `.env` pour une configuration plus simple et sécurisée :
+
+```bash
+# Copier le template
+cp .env.example .env
+
+# Éditer avec vos vraies clés API
+nano .env  # ou votre éditeur préféré
+```
+
+**Variables requises :**
+- `KIMI_API_KEY` : Clé principale Kimi Code
+- `NVIDIA_API_KEY` : Pour les modèles Kimi sur NVIDIA
+- `MISTRAL_API_KEY` : Pour les modèles Mistral AI
+
+**Variables optionnelles (tiers gratuits disponibles) :**
+- `OPENROUTER_API_KEY` : Accès multi-provider
+- `SILICONFLOW_API_KEY` : Crédits gratuits disponibles
+- `GROQ_API_KEY` : Inférence ultra-rapide, tier gratuit
+- `CEREBRAS_API_KEY` : Tier gratuit disponible
+- `GEMINI_API_KEY` : Tier gratuit disponible
+
+**Utilisation automatique :**
+```bash
+# Charger les variables à chaque session
+source ./load-env.sh
+
+# Ou ajouter à votre ~/.bashrc pour chargement automatique
+echo "source $(pwd)/load-env.sh" >> ~/.bashrc
+```
+
+Le fichier `.env` est automatiquement ignoré par Git pour éviter de committer vos clés API.
 
 ### Configuration Continue (optionnel)
 ```bash
