@@ -143,11 +143,8 @@ Vous avez 5 minutes? C'est tout ce qu'il vous faut.
 cp .env.example .env
 # Éditer .env avec vos clés API (voir section ci-dessous)
 
-# 3. Charger automatiquement les variables d'environnement
-source ./load-env.sh
-
-# 4. Démarrer
-./bin/kimi-proxy start
+# 3. Démarrer (chargement automatique des variables d'environnement)
+./scripts/start.sh
 # Dashboard sur http://localhost:8000
 ```
 
@@ -176,13 +173,7 @@ nano .env  # ou votre éditeur préféré
 - `GEMINI_API_KEY` : Tier gratuit disponible
 
 **Utilisation automatique :**
-```bash
-# Charger les variables à chaque session
-source ./load-env.sh
-
-# Ou ajouter à votre ~/.bashrc pour chargement automatique
-echo "source $(pwd)/load-env.sh" >> ~/.bashrc
-```
+Le script `./scripts/start.sh` charge automatiquement le fichier `.env` s'il existe. Si le fichier n'existe pas, il affiche des instructions pour le créer.
 
 Le fichier `.env` est automatiquement ignoré par Git pour éviter de committer vos clés API.
 

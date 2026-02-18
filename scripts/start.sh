@@ -70,7 +70,24 @@ if [ -d "venv" ]; then
     source venv/bin/activate
 fi
 
-# 5. Vérifier les dépendances
+# 5. Charger automatiquement les variables d'environnement
+if [ -f ".env" ]; then
+    echo "🔑 Chargement des variables d'environnement depuis .env..."
+    set -a
+    source .env
+    set +a
+    log_success "Variables d'environnement chargées"
+elif [ -f ".env.example" ]; then
+    log_warning "Fichier .env non trouvé, mais .env.example existe"
+    log_info "Copiez .env.example vers .env et configurez vos clés API"
+    echo "   cp .env.example .env"
+    echo "   nano .env  # ou votre éditeur préféré"
+else
+    log_warning "Aucun fichier .env trouvé"
+    log_info "Le proxy utilisera les valeurs par défaut des fichiers de config"
+fi
+
+# 6. Vérifier les dépendances
 echo "📦 Vérification des dépendances..."
 pip show fastapi >/dev/null 2>&1 || pip install fastapi uvicorn httpx websockets -q
 
