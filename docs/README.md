@@ -53,9 +53,14 @@ Mon histoire de développement, avec les vrais problèmes et solutions.
   - Les 10 phases de migration avec heures et défis réels
   - Comment j'ai surmonté les imports circulaires et autres pièges
 
-- **[Migration v1.0 → v2.0](./development/migration-v2.md)**
+- **[Migration v1.0 vers v2.0](./development/migration-v2.md)**
   - Le grand déménagement : du studio 10m² à la maison organisée
   - Instructions étape par étape pour faire pareil
+
+- **[Rapport Refactorisation MCP](./development/mcp-refactoring-report.md)** ⭐ **Nouveau**
+  - Transformation monolithe 1,230 lignes → 9 modules + 169 tests
+  - Réduction 90% taille fichier, compatibilité 100% préservée
+  - Les défis techniques et solutions de la refactorisation majeure
 
 ### 🚀 [Déploiement](./deployment/) - Installation et Utilisation
 Comment installer et utiliser le système en 5 minutes.

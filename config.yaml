@@ -398,43 +398,6 @@ mcpServers:
     env:
       PATH: "/usr/bin:/bin:/usr/local/bin"
 
-  - name: mb-workflow-mediapipe
-    command: npx
-    args: ["-y", "@allpepper/memory-bank-mcp"]
-    env:
-      MEMORY_BANK_ROOT: "/home/kidpixel/workflow_mediapipe"
-
-  - name: mb-render-signal
-    command: npx
-    args: ["-y", "@allpepper/memory-bank-mcp"]
-    env:
-      MEMORY_BANK_ROOT: "/home/kidpixel/render_signal_server-main"
-
-  - name: mb-photomaton
-    command: npx
-    args: ["-y", "@allpepper/memory-bank-mcp"]
-    env:
-      MEMORY_BANK_ROOT: "/home/kidpixel/photomaton_simple_new"
-
-  - name: mb-switchbot
-    command: npx
-    args: ["-y", "@allpepper/memory-bank-mcp"]
-    env:
-      MEMORY_BANK_ROOT: "/home/kidpixel/SwitchBot"
-
-  - name: mb-ae-scripts
-    command: npx
-    args: ["-y", "@allpepper/memory-bank-mcp"]
-    env:
-      # J'ai gardé les guillemets ici car le chemin contient des espaces et un "&"
-      MEMORY_BANK_ROOT: "/home/kidpixel/After Effects Scripts & Plugins Bundle"
-
-  - name: mb-kimi
-    command: npx
-    args: ["-y", "@allpepper/memory-bank-mcp"]
-    env:
-      MEMORY_BANK_ROOT: "/home/kidpixel/After Effects Scripts & Plugins Bundle"
-
   - name: task-master-ai
     command: npx
     args: ["-y", "task-master-ai"]

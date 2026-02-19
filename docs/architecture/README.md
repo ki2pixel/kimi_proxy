@@ -71,6 +71,33 @@ Pensez à cette architecture comme une maison :
 
 Chaque étage peut être rénové sans effondrer la maison. Je peux changer la décoration d'une chambre sans perturber le salon.
 
+## Métriques Actuelles (2026-02-19)
+
+### Volumétrie Code Source
+- **69 fichiers Python** analysés
+- **7,336 lignes de code** (hors commentaires/vides)
+- **Complexité moyenne** : C (16.93)
+
+### Distribution par Couche
+| Couche | Fichiers | LOC | Complexité Moyenne |
+| ------ | --------- | --- | ---------------- |
+| Core | 8 | ~1,200 | B |
+| Features | 15 | ~2,100 | C |
+| Proxy | 6 | ~800 | D |
+| Services | 4 | ~600 | B |
+| API | 36 | ~2,636 | C |
+
+### Points Chauds Identifiés
+- **proxy_chat()** (API) : Score F - gestion multi-provider + streaming
+- **_proxy_to_provider()** (API) : Score D - 311 LOC routing
+- **_extract_standard_metrics()** (Features) : Score D - parsing robuste
+- **_parse_compile_chat_block()** (Features) : Score C - parsing PyCharm
+
+### Documentation Créée
+- ✅ **proxy-layer.md** : Architecture couche proxy avec patterns système
+- ✅ **log-watcher.md** : Monitoring temps réel PyCharm
+- 📋 **Mise à jour README** : Intégration métriques actuelles
+
 ## Pour qui cette documentation?
 
 - **Développeurs qui veulent contribuer** : Comprendre comment tout s'articule

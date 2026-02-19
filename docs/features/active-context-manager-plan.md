@@ -46,6 +46,22 @@ Pensez à votre conversation comme à un restaurant. Le sanitizer, c'est le serv
 **La solution** : Compression intelligente qui préserve les messages système, garde les 5 derniers échanges, et résume le reste avec le LLM actuel.
 
 **Résultat** : 60% de réduction instantanée sans perdre l'essentiel.
+
+### Phase 4 ✅ MCP Avancé - L'écosystème étendu
+**Le problème** : Je voulais des capacités d'optimisation de niveau supérieur avec recherche sémantique et gestion de tâches.
+
+**La solution** : Intégration de 4 serveurs MCP externes pour étendre les capacités du proxy :
+
+**Task Master MCP** (14 outils) : Gestion de tâches complète avec priorisation, dépendances et analyse de complexité. Intègre `get_tasks`, `parse_prd`, `expand_task`, `analyze_project_complexity` et plus.
+
+**Sequential Thinking MCP** (1 outil) : Raisonnement séquentiel structuré pour résoudre des problèmes complexes étape par étape, avec support de branches et révisions.
+
+**Fast Filesystem MCP** (25 outils) : Opérations fichiers haute performance - lecture, écriture, recherche de code, édition block-safe, compression, synchronisation de répertoires.
+
+**JSON Query MCP** (3 outils) : Requêtes JSON avancées avec JSONPath, recherche de clés et valeurs dans de gros fichiers JSON.
+
+**Résultat** : 43 outils MCP supplémentaires avec temps réponse < 30s et sécurité workspace validée.
+
 ## Comment ça fonctionne en pratique
 
 ### Le workflow quotidien

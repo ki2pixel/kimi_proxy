@@ -1,4 +1,27 @@
-# Kimi Proxy Dashboard - Guide pour Agents IA
+# 🚨 DÉPRÉCIÉ - Guide pour Agents IA
+
+**ATTENTION** : Ce fichier est déprécié et sera archivé le 2026-08-19.
+
+## 🔗 Nouvelles Locations
+
+Le contenu a été migré vers les fichiers appropriés dans `docs/` :
+
+- **Guide de codage pour agents** → `docs/development/agent-coding-guide.md`
+- **Architecture et standards** → `.windsurf/rules/codingstandards.md` (référence autoritative)
+- **Fonctionnalités MCP Phase 4** → `docs/features/active-context-manager-plan.md`
+- **Gestion erreurs streaming** → `docs/development/sessions/2026-02-18-streaming-error-handling.md`
+- **Architecture détaillée** → `docs/architecture/modular-architecture-v2.md`
+- **Fonctionnalités** → `docs/features/`
+
+## Pourquoi cette migration ?
+
+1. **Réduction du contexte** : `codingstandards.md` devient la source unique pour les standards
+2. **Maintenance améliorée** : Contenu organisé dans la documentation structurée
+3. **Accessibilité** : Documentation plus facile à trouver et maintenir
+
+---
+
+# Kimi Proxy Dashboard - Guide pour Agents IA (ARCHIVE)
 
 **TL;DR**: C'est un proxy transparent FastAPI + SQLite qui intercepte les requêtes LLM, compte les tokens avec Tiktoken, et économise 20-40% de coûts via sanitizer/compression.
 

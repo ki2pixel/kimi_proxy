@@ -263,10 +263,19 @@ config.toml             # Secrets here only
 ./scripts/start-mcp-servers.sh start  # MCP servers
 ```
 
+## File-Specific Rules
+
+### Clean API Router Structure
+
+Maintain only standard API routes (/models, /chat/completions) and remove any experimental editor-specific compatibility routes. Do not add additional compatibility prefixes like /v1/models or routes similar to Ollama without thorough review.
+
+### Model ID Mapping Simplicity
+
+Keep the model name mapping simple and direct: a) check exact key matches, b) otherwise use suffix split logic. Do not implement JetBrains-specific mappings, complex prefix removals, or fuzzy matching.
+
 ## References
-- `AGENTS.md` - Technical guide
 - `README.md` - User docs
 - `src/kimi_proxy/core/` - Implementation examples
 
 ---
-**Version 2.4** - **< 5000 chars**
+**Version 2.5** - **< 7000 chars**

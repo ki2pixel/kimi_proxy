@@ -7,6 +7,17 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-02-19
+
+### Refactored - MCP Client Modularization
+- **Refactorisation majeure du client MCP** : Transformation du monolithe `features/mcp/client.py` (1,230 lignes) en architecture modulaire
+- Architecture modulaire : 9 fichiers spécialisés (base, servers, client facade)
+- **Réduction taille** : 90% de réduction pour le fichier principal (200 lignes max)
+- **Compatibilité 100% préservée** : Singleton `get_mcp_client()` et API publique intactes
+- **Suite de tests complète** : 169 tests unitaires couvrant tous les serveurs MCP (Qdrant, Compression, Task Master, Sequential Thinking, Fast Filesystem, JSON Query)
+- **Correction imports cycliques** : Résolution complète des dépendances circulaires
+- **Documentation détaillée** : [Rapport de refactorisation](./docs/development/mcp-refactoring-report.md)
+
 ## [2.4.0] - 2026-02-17
 
 ### Added - Phase 4: Intégration de 4 Nouveaux Serveurs MCP
