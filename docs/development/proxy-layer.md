@@ -35,13 +35,38 @@ async def proxy_chat(request: ChatRequest) -> StreamingResponse:
     return await _proxy_to_provider(transformed, provider)
 ```
 
-## Gestion Erreurs Réseau Robuste
+## Gestion Erreurs Streaming (Pattern 6)
 
-| Pattern | Complexité | Justification |
-| ------- | ---------- | ------------- |
-| Retry exponentiel | +2 | Connexions instables |
-| Timeout adaptatif | +3 | Providers variables |
-| Extraction partielle | +5 | Tokens déjà reçus |
+**TL;DR**: Les fonctions proxy avec complexité F (>10) implémentent une gestion d'erreurs robuste via retry exponentiel et extraction partielle des tokens.
+
+### Problème Initial
+Vous envoyez une requête chat/completions. Le stream s'interrompt avec ReadError. Vous perdez le contexte et les tokens déjà consommés.
+
+### ✅ Solution Implémentée
+```python
+# Dans proxy.py:_proxy_to_provider
+try:
+    async for chunk in stream:
+        yield chunk
+        tokens += extract_tokens(chunk)
+except (ReadError, TimeoutException) as e:
+    logger.warning(f"Stream interrupted: {e}")
+    # Retry avec backoff
+    await asyncio.sleep(min(2**attempt, 30))
+    # Extraction partielle sauvegardée
+    if tokens > 0:
+        await save_partial_usage(session_id, tokens)
+```
+
+### Comparaison Gestion Erreurs
+
+| Approche | Retry | Extraction Partielle | Complexité |
+| -------- | ----- | -------------------- | ---------- |
+| Basique  | ❌    | ❌                   | A (faible) |
+| Robuste  | ✅    | ✅                   | F (élevée)|
+
+### Règle d'Or : Extraction Avant Retry
+Toujours extraire les tokens disponibles avant de retenter, pour éviter la perte de métriques même en cas d'échec.
 
 ## Architecture Technique
 

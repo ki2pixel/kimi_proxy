@@ -111,3 +111,48 @@ async def api_get_session_memory(session_id: int):
         "current": memory_stats,
         "history": history
     }
+
+
+# ============================================================================
+# AUTO SESSION - Gestion du mode auto-création de sessions
+# ============================================================================
+
+@router.get("/auto-status")
+async def api_get_auto_session_status():
+    """Récupère le statut de l'auto-session pour la session active."""
+    from ...core.auto_session import get_auto_session_status
+    
+    session = get_active_session()
+    if not session:
+        return {"enabled": True, "session_id": None}
+    
+    enabled = get_auto_session_status(session["id"])
+    return {"enabled": enabled, "session_id": session["id"]}
+
+
+@router.post("/toggle-auto")
+async def api_toggle_auto_session(request: Request):
+    """Active ou désactive l'auto-session pour la session active."""
+    from ...core.auto_session import set_auto_session_status, get_auto_session_status
+    
+    data = await request.json()
+    enabled = data.get("enabled", True)
+    
+    session = get_active_session()
+    if not session:
+        return {"error": "Aucune session active"}
+    
+    set_auto_session_status(session["id"], enabled)
+    
+    # Broadcast via WebSocket
+    manager = get_connection_manager()
+    await manager.broadcast({
+        "type": "auto_session_toggled",
+        "session_id": session["id"],
+        "enabled": enabled
+    })
+    
+    return {
+        "enabled": get_auto_session_status(session["id"]),
+        "session_id": session["id"]
+    }

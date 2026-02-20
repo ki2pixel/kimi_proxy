@@ -357,11 +357,18 @@ def extract_usage_from_response(response_data: Dict[str, Any]) -> Optional[Dict[
     Extrait les usage tokens d'une réponse complète (non-streaming).
     
     Args:
-        response_data: Données JSON de la réponse
+        response_data: Données JSON de la réponse (dict ou list pour Gemini)
         
     Returns:
         Dictionnaire avec prompt_tokens, completion_tokens, total_tokens
     """
+    # Gemini peut retourner une liste au lieu d'un dict
+    if isinstance(response_data, list) and len(response_data) > 0:
+        response_data = response_data[0]
+    
+    if not isinstance(response_data, dict):
+        return None
+    
     usage = response_data.get('usage', {})
     if usage:
         return {

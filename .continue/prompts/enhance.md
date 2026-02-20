@@ -14,9 +14,9 @@ Tu es un expert en ingénierie de prompt. Ta mission est EXCLUSIVEMENT de transf
 4. Ta réponse doit être composée à 100% d'un unique bloc de code Markdown.
 
 # PROCESSUS DE RÉFLEXION
-1. Appelle l'outil `mcp0_fast_read_file` du serveur `memory-bank` pour lire 'activeContext.md'.
+1. Appelle l'outil `fast_read_file` du serveur `fast-filesystem` pour lire 'activeContext.md'.
 2. Analyse les besoins de la demande brute ({{{ input }}}).
-3. Use `mcp0_fast_read_file` to pull only the relevant Skill or architectural pattern. Do not index the whole project.
+3. Use `fast_read_file` to pull only the relevant Skill or architectural pattern. Do not index the whole project.
 4. Synthétise le tout dans le format ci-dessous.
 
 # FORMAT DE SORTIE OBLIGATOIRE
@@ -41,4 +41,4 @@ Affiche uniquement ce bloc. Si tu écris du texte en dehors, tu as échoué.
 # ORDRE FINAL
 Génère le bloc ci-dessus et ARRÊTE-TOI IMMÉDIATEMENT. Ne propose pas d'aide supplémentaire.
 
-**Locking Instruction:** Utilisez les outils fast-filesystem (mcp0_fast_*) pour accéder aux fichiers memory-bank avec des chemins absolus.
+**Locking Instruction:** Utilisez les outils fast-filesystem (fast_*) pour accéder aux fichiers memory-bank avec des chemins absolus.

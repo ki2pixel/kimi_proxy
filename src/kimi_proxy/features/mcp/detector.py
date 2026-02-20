@@ -1,13 +1,10 @@
-"""
-Détection des balises MCP et contenus mémoire.
-"""
+"""Détection des balises MCP et contenus mémoire."""
 import re
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 
 from ...core.constants import MCP_PATTERNS, MCP_MIN_MEMORY_TOKENS
 from ...core.tokens import count_tokens_text
-
 
 @dataclass
 class MemorySegment:
@@ -25,7 +22,6 @@ class MemorySegment:
             "position": self.position
         }
 
-
 class MCPDetector:
     """Détecteur de contenu MCP mémoire."""
     
@@ -38,11 +34,6 @@ class MCPDetector:
             'mcp_result': re.compile(MCP_PATTERNS['mcp_result'], re.DOTALL | re.IGNORECASE),
             'mcp_tool': re.compile(MCP_PATTERNS['mcp_tool'], re.DOTALL | re.IGNORECASE),
             'context_memory': re.compile(MCP_PATTERNS['context_memory'], re.IGNORECASE),
-            'recall_tag': re.compile(MCP_PATTERNS['recall_tag'], re.IGNORECASE),
-            'remember_tag': re.compile(MCP_PATTERNS['remember_tag'], re.IGNORECASE),
-            'mcp_memory_bank': re.compile(MCP_PATTERNS['mcp_memory_bank'], re.IGNORECASE),
-            'memory_header': re.compile(MCP_PATTERNS['memory_header'], re.IGNORECASE),
-            'memory_write_header': re.compile(MCP_PATTERNS['memory_write_header'], re.IGNORECASE),
             # Phase 4 - Nouveaux serveurs MCP
             'mcp_task_master': re.compile(MCP_PATTERNS['mcp_task_master'], re.IGNORECASE),
             'mcp_sequential_thinking': re.compile(MCP_PATTERNS['mcp_sequential_thinking'], re.IGNORECASE),
@@ -157,7 +148,6 @@ class MCPDetector:
         
         return list(servers)
 
-
 def extract_mcp_memory_content(content: str, min_tokens: int = MCP_MIN_MEMORY_TOKENS) -> List[Dict[str, Any]]:
     """
     Extrait le contenu MCP mémoire d'un message.
@@ -172,7 +162,6 @@ def extract_mcp_memory_content(content: str, min_tokens: int = MCP_MIN_MEMORY_TO
     detector = MCPDetector(min_tokens=min_tokens)
     segments = detector.detect(content)
     return [s.to_dict() for s in segments]
-
 
 def extract_phase4_tools(content: str, min_tokens: int = MCP_MIN_MEMORY_TOKENS) -> List[Dict[str, Any]]:
     """
@@ -189,7 +178,6 @@ def extract_phase4_tools(content: str, min_tokens: int = MCP_MIN_MEMORY_TOKENS) 
     segments = detector.detect_phase4_tools(content)
     return [s.to_dict() for s in segments]
 
-
 def get_detected_mcp_servers(content: str, min_tokens: int = MCP_MIN_MEMORY_TOKENS) -> Dict[str, List[str]]:
     """
     Récupère tous les serveurs MCP détectés dans un message.
@@ -204,7 +192,6 @@ def get_detected_mcp_servers(content: str, min_tokens: int = MCP_MIN_MEMORY_TOKE
     detector = MCPDetector(min_tokens=min_tokens)
     
     return {
-        "memory_bank": detector.has_memory(content),
         "phase4_servers": detector.get_detected_phase4_servers(content),
         "has_mcp_content": detector.has_memory(content) or detector.has_phase4_tools(content)
     }

@@ -1,44 +1,27 @@
-Project: Task Management Web Application
+Titre: Adaptation Scripts d'Interception Kimi Proxy Dashboard pour Nouveaux Serveurs MCP
 
-Overview:
-Build a web application for managing tasks. The frontend will be built with React, the backend with Node.js, data stored in MongoDB, and authentication via Google OAuth.
+Objectif: Adapter les scripts d'interception du proxy Kimi Proxy Dashboard pour qu'ils supportent les nouveaux serveurs MCP suite à la suppression des anciens serveurs mb-*.
 
-Features:
-- Create, edit, and delete tasks.
-- Assign tasks to users.
-- Email notifications for task assignments and updates.
-- Dashboard displaying task statistics and analytics.
+Contexte Environnement de Test:
+- 5 Layers d'Architecture: API (FastAPI), Services (WebSocket), Features (MCP), Proxy (HTTPX), Core (SQLite)
+- Serveurs Anciens Supprimés: mb-ae-scripts, mb-kimi, mb-photomaton, mb-render-signal, mb-switchbot, mb-workflow-mediapipe
+- Nouveaux Serveurs Disponibles: render-signal-mcp, render-photomaton-mcp, render-switchbot-mcp, redis-signal-mcp-server, photomaton-postgres, switchbot-postgres
+- MCP Phase 4 Opérationnel avec Task Master, Sequential Thinking, Fast Filesystem, JSON Query
 
-Technical Stack:
-- Frontend: React (JavaScript/TypeScript), Redux for state management, React Router.
-- Backend: Node.js with Express.js.
-- Database: MongoDB (Mongoose ORM).
-- Authentication: Google OAuth 2.0.
-- Email Service: SendGrid or Nodemailer.
-- Deployment: Docker containers, CI/CD pipeline.
+Fonctionnalités Clés:
+1. Configuration de la liste des serveurs MCP dans le proxy
+2. Routage des requêtes depuis les agents AI vers les nouveaux serveurs
+3. Monitoring et health checks avec les nouveaux outils MCP
+4. Mise à jour de la couche Features pour la découverte automatique des serveurs
+5. Ajout de métriques de monitoring pour les nouveaux serveurs
+6. Documentation et configuration des dépendances
+7. Tests de compatibilité entre les couches d'architecture
+8. Rollout progressif du changement
 
-Non-Functional Requirements:
-- Responsive UI.
-- Secure authentication and data handling.
-- Scalable architecture.
-- Automated tests for critical components.
-
-Assumptions:
-- Users will have Google accounts.
-- Email service credentials will be provided.
-- Deployment environment supports Docker.
-
-Constraints:
-- Must comply with Google OAuth policies.
-- Use open-source libraries where possible.
-
-Milestones:
-1. Project setup and CI/CD.
-2. Backend API development.
-3. Frontend UI development.
-4. Integration of Google OAuth.
-5. Email notification system.
-6. Dashboard and analytics.
-7. Testing and documentation.
-
-End of PRD.
+Attendus:
+- Interception transparente des requêtes vers les nouveaux serveurs MCP
+- Aucune perte de données pendant la migration
+- Monitoring en temps réel des 5 layers
+- Maintien des standards de codage (async/await, typing strict, no any)
+- Documentation en français pour l'interface utilisateur
+- Utilisation des APIs Mistral pour analyse complexe si nécessaire

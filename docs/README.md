@@ -110,7 +110,10 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 
 ### 🛠️ Développement
 - **[Sessions de développement](./development/sessions/)**
-  - [2026-02-15 : Restructuration architecture modulaire](./development/sessions/2026-02-15-modular-restructure.md) ⭐ **Nouveau**
+  - [2026-02-20 : Auto-Session Mistral Large 2411 - Implémentation Complète](./development/sessions/2026-02-20-auto-session-mistral.md) ⭐ **Nouveau**
+  - [2026-02-20 : WebSocket Memory Operations Infrastructure](./development/sessions/2026-02-20-websocket-memory-ops.md) ⭐ **Nouveau**
+  - [2026-02-20 : Modal Display Bug Fix](./development/sessions/2026-02-20-modal-display-fix.md) ⭐ **Nouveau**
+  - [2026-02-15 : Restructuration architecture modulaire](./development/sessions/2026-02-15-modular-restructure.md)
   - [2026-02-11 : Implémentation multi-provider](./development/sessions/2026-02-11-multi-provider-implementation.md)
   - [2026-02-14 : Correction routing modèles](./development/sessions/2026-02-14-model-routing-fix.md)
   - [2026-02-14 : Corrections multi-provider](./development/sessions/2026-02-14-multi-provider-fixes.md)
@@ -182,5 +185,5 @@ Voir [Contributing](./development/contributing.md) pour les guidelines de contri
 
 ---
 
-*Dernière mise à jour : Février 2026*
-*Version: 2.0.0*
+*Dernière mise à jour : 2026-02-20*
+*Version: 2.0.1*

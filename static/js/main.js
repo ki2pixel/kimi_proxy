@@ -34,7 +34,9 @@ import {
     createNewSessionWithProvider,
     showCompactPreviewModal,
     closeCompactPreviewModal,
-    closeCompactResultModal
+    closeCompactResultModal,
+    showMemoryModal,
+    hideMemoryModal
 } from './modules/modals.js';
 import { 
     updateCompactionButton,
@@ -50,6 +52,10 @@ import {
     fetchAdvancedMemoryStats,
     fetchFrequentMemories
 } from './modules/mcp.js';
+import {
+    initAutoSession,
+    exposeAutoSessionGlobals
+} from './modules/auto-session.js';
 
 // ============================================================================
 // INITIALISATION PRINCIPALE
@@ -93,8 +99,15 @@ async function initApp() {
         // 8. Initialise le module MCP Phase 3
         initMCP();
         
-        // 9. Expose les fonctions globales nécessaires
+        // 9. Configure les handlers EventBus pour les modales mémoire
+        setupMemoryModalHandlers();
+        
+        // 10. Initialise le module Auto Session
+        await initAutoSession();
+        
+        // 11. Expose les fonctions globales nécessaires
         exposeGlobals();
+        exposeAutoSessionGlobals();
         
         console.log('✅ Application initialisée avec succès');
         
@@ -120,15 +133,11 @@ async function loadInitialAppData() {
             }
             
             // Met à jour l'UI initiale
-            if (data.stats?.cumulative_total_tokens !== undefined) {
-                const cumulative = data.stats.cumulative_total_tokens;
+            if (data.stats?.current_total_tokens !== undefined) {
+                const current = data.stats.current_total_tokens;
                 const maxContext = data.session?.max_context || 262144;
-                const percentage = (cumulative / maxContext) * 100;
-                updateDisplay(
-                    data.stats.cumulative_input_tokens || cumulative, 
-                    percentage, 
-                    cumulative
-                );
+                const percentage = (current / maxContext) * 100;
+                updateDisplay(current, percentage);
             }
             
             // Met à jour les stats et logs
@@ -141,6 +150,127 @@ async function loadInitialAppData() {
         
     } catch (error) {
         console.error('❌ Erreur chargement données initiales:', error);
+    }
+}
+
+// ============================================================================
+// FONCTIONS MODALE MÉMORISER
+// ============================================================================
+
+/**
+ * Affiche la modal de stockage mémoire
+ */
+function showMemoryStoreModal() {
+    const modal = document.getElementById('memory-store-modal');
+    const content = document.getElementById('memory-store-modal-content');
+    
+    if (!modal || !content) return;
+    
+    // Reset le formulaire
+    const contentInput = document.getElementById('memory-content-input');
+    const typeSelect = document.getElementById('memory-type-select');
+    if (contentInput) contentInput.value = '';
+    if (typeSelect) typeSelect.value = 'episodic';
+    
+    // Affiche la modal
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    
+    setTimeout(() => {
+        content.classList.remove('scale-95', 'opacity-0');
+        content.classList.add('scale-100', 'opacity-100');
+    }, 10);
+    
+    // Focus sur le textarea
+    setTimeout(() => {
+        if (contentInput) contentInput.focus();
+    }, 100);
+}
+
+/**
+ * Ferme la modal de stockage mémoire
+ */
+function closeMemoryStoreModal() {
+    const modal = document.getElementById('memory-store-modal');
+    const content = document.getElementById('memory-store-modal-content');
+    
+    if (!modal || !content) return;
+    
+    content.classList.remove('scale-100', 'opacity-100');
+    content.classList.add('scale-95', 'opacity-0');
+    
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }, 200);
+}
+
+/**
+ * Exécute le stockage d'une mémoire
+ */
+async function executeStoreMemory() {
+    const contentInput = document.getElementById('memory-content-input');
+    const typeSelect = document.getElementById('memory-type-select');
+    
+    const content = contentInput?.value?.trim();
+    const memoryType = typeSelect?.value || 'episodic';
+    
+    if (!content) {
+        eventBus.emit('notification:show', {
+            message: 'Veuillez entrer du contenu à mémoriser',
+            type: 'error'
+        });
+        return;
+    }
+    
+    try {
+        // Récupère la session courante
+        const sessionBadge = document.getElementById('session-badge');
+        const sessionId = sessionBadge?.textContent?.replace('#', '') || '1';
+        
+        // Appelle l'API de stockage
+        const response = await fetch(`/api/memory/store?session_id=${sessionId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                content: content,
+                memory_type: memoryType,
+                metadata: {
+                    source: 'manual',
+                    timestamp: new Date().toISOString()
+                }
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Erreur lors du stockage');
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            eventBus.emit('notification:show', {
+                message: `Mémoire stockée avec succès (ID: ${result.memory_id})`,
+                type: 'success'
+            });
+            
+            closeMemoryStoreModal();
+            
+            // Rafraîchit la liste des mémoires fréquentes si disponible
+            const { fetchFrequentMemories } = await import('./modules/mcp.js');
+            await fetchFrequentMemories();
+        } else {
+            throw new Error(result.detail || 'Échec du stockage');
+        }
+        
+    } catch (error) {
+        console.error('Erreur stockage mémoire:', error);
+        eventBus.emit('notification:show', {
+            message: 'Erreur lors du stockage de la mémoire',
+            type: 'error'
+        });
     }
 }
 
@@ -187,6 +317,15 @@ function exposeGlobals() {
         const { compressContent } = await import('./modules/mcp.js');
         return compressContent(content);
     };
+    
+    // Memory Modals
+    window.showMemoryModal = showMemoryModal;
+    window.hideMemoryModal = hideMemoryModal;
+    
+    // Store Memory Modal
+    window.showMemoryStoreModal = showMemoryStoreModal;
+    window.closeMemoryStoreModal = closeMemoryStoreModal;
+    window.executeStoreMemory = executeStoreMemory;
 }
 
 /**
@@ -229,6 +368,34 @@ async function exportData(format) {
 // ============================================================================
 
 /**
+ * Configure les handlers EventBus pour les modales mémoire
+ * Pourquoi : Communication découplée entre les boutons UI et les modales
+ */
+function setupMemoryModalHandlers() {
+    // Handler pour afficher la modal de compression
+    eventBus.on('memory:compress:show', () => {
+        showMemoryModal('compress');
+    });
+    
+    // Handler pour afficher la modal de similarité
+    eventBus.on('memory:similarity:show', () => {
+        showMemoryModal('similarity');
+    });
+    
+    // Handler pour afficher la modal de stockage mémoire
+    eventBus.on('memory:store:show', () => {
+        showMemoryStoreModal();
+    });
+    
+    // Handler pour cacher les modales
+    eventBus.on('memory:modal:hide', (data) => {
+        if (data?.type) {
+            hideMemoryModal(data.type);
+        }
+    });
+}
+
+/**
  * Nettoyage avant fermeture de la page
  * Pourquoi : Ferme proprement les connexions et intervals
  */
@@ -236,6 +403,14 @@ function cleanup() {
     console.log('🧹 Nettoyage...');
     disconnectWebSocket();
     stopCompactionPolling();
+    
+    // Nettoyer les modales mémoire
+    if (window.memoryModals) {
+        Object.values(window.memoryModals).forEach(modal => {
+            if (modal.hide) modal.hide();
+        });
+        window.memoryModals = {};
+    }
 }
 
 // ============================================================================

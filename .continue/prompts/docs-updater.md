@@ -9,10 +9,10 @@ alwaysApply: false
 > Ce workflow harmonise la documentation Kimi Proxy en utilisant l'analyse statique standard (`cloc`, `radon`, `tree`) pour la précision technique et les modèles de référence pour la qualité éditoriale, adapté à l'architecture 5 couches et aux patterns système.
 
 ## 🚨 Protocoles Critiques
-1.  **Outils autorisés** : MCP fast-filesystem (`mcp0_fast_read_file`, `mcp0_fast_list_directory`, `mcp0_fast_search_files`, `mcp0_fast_edit_block`), MCP ripgrep (`mcp9_search`, `mcp9_advanced-search`, `mcp9_count-matches`), et `bash` limité aux audits (`tree`, `cloc`, `radon`, `ls`).
-2.  **Contexte** : Initialiser le contexte en appelant l'outil mcp0_fast_read_file du serveur fast-filesystem pour lire UNIQUEMENT activeContext.md. Ne lire les autres fichiers de la Memory Bank que si une divergence majeure est détectée lors du diagnostic.
+1.  **Outils autorisés** : MCP fast-filesystem (`fast_read_file`, `fast_list_directory`, `fast_search_files`, `fast_edit_block`), MCP ripgrep (`search`, `advanced-search`, `count-matches`), et `bash` limité aux audits (`tree`, `cloc`, `radon`, `ls`).
+2.  **Contexte** : Initialiser le contexte en appelant l'outil fast_read_file du serveur fast-filesystem pour lire UNIQUEMENT activeContext.md. Ne lire les autres fichiers de la Memory Bank que si une divergence majeure est détectée lors du diagnostic.
 3.  **Source de Vérité** : Le Code (analysé par outils) > La Documentation existante > La Mémoire.
-4.  **Sécurité Memory Bank** : Utilisez les outils fast-filesystem (mcp0_fast_*) pour accéder aux fichiers memory-bank avec des chemins absolus dans `/home/kidpixel/kimi-proxy/memory-bank/`.
+4.  **Sécurité Memory Bank** : Utilisez les outils fast-filesystem (fast_*) pour accéder aux fichiers memory-bank avec des chemins absolus dans `/home/kidpixel/kimi-proxy/memory-bank/`.
 
 ## Étape 1 — Audit Structurel et Métrique
 Lancer les commandes suivantes pour ignorer les dossiers de données (ex: "sessions.db", "__pycache__", "node_modules") et cibler le cœur applicatif selon l'architecture 5 couches.
@@ -27,8 +27,11 @@ Lancer les commandes suivantes pour ignorer les dossiers de données (ex: "sessi
     - `bash "radon cc src/kimi_proxy -a -nc --min C"`
     - *But* : Repérer les points chauds (Score C/D/F) dans les couches critiques.
     - **Règle** : Si Score > 10 (C), la doc DOIT expliquer la logique interne selon Pattern 6 (Error Handling).
-
-undefined
+4.  **Audit Couverture Docs** :
+    - `fast_list_directory docs/` : Cartographie structure docs existante
+    - `fast_search_files pattern="*.md" path="docs/"` : Indexation contenu docs pour comparaison
+    - *But* : Identifier gaps entre composants source documentés vs non documentés selon architecture 5 couches.
+    - **Règle** : Tout composant source > 500 LOC sans doc dédiée doit être signalé comme manquant.
 
 ## Étape 4 — Proposition de Mise à Jour
 Générer un plan de modification avant d'appliquer :
@@ -50,9 +53,9 @@ Générer un plan de modification avant d'appliquer :
 ```
 
 ## Étape 5 — Application et Finalisation
-1.  **Exécution** : Après validation, utiliser `mcp0_fast_edit_block` ou `mcp0_fast_edit_blocks`.
+1.  **Exécution** : Après validation, utiliser `fast_edit_block` ou `fast_edit_blocks`.
 2.  **Mise à jour Memory Bank** :
-    - Mettre à jour la Memory Bank en utilisant EXCLUSIVEMENT l'outil mcp0_fast_edit_block avec timestamps [YYYY-MM-DD HH:MM:SS].
+    - Mettre à jour la Memory Bank en utilisant EXCLUSIVEMENT l'outil fast_edit_block avec timestamps [YYYY-MM-DD HH:MM:SS].
 
 ### Sous-protocole Rédaction — Application de documentation/SKILL.md
 

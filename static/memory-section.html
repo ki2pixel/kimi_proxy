@@ -1,0 +1,99 @@
+<!-- Colonne Centre: Mémoires Fréquentes -->
+<div class="space-y-6">
+    <!-- Mémoires Fréquentes -->
+    <div class="metric-card rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                <i data-lucide="brain" class="w-5 h-5 text-violet-400"></i>
+                Mémoires Fréquentes
+            </h2>
+            <span class="px-2 py-1 rounded-lg bg-violet-500/20 text-violet-400 text-xs font-medium">
+                MCP Phase 4
+            </span>
+        </div>
+        
+        <!-- Actions mémoire -->
+        <div class="grid grid-cols-3 gap-3 mb-4">
+            <button onclick="eventBus.emit('memory:similarity:show')" 
+                    class="flex items-center justify-center gap-2 px-3 py-3 bg-violet-600 hover:bg-violet-500 text-white rounded-xl transition-colors font-medium text-sm">
+                <i data-lucide="search" class="w-4 h-4"></i>
+                Similarité
+            </button>
+            <button onclick="eventBus.emit('memory:compress:show')" 
+                    class="flex items-center justify-center gap-2 px-3 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl transition-colors font-medium text-sm">
+                <i data-lucide="minimize-2" class="w-4 h-4"></i>
+                Compresser
+            </button>
+            <button onclick="eventBus.emit('memory:store:show')" 
+                    class="flex items-center justify-center gap-2 px-3 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-colors font-medium text-sm">
+                <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                Mémoriser
+            </button>
+        </div>
+        
+        <!-- Stats mémoires -->
+        <div class="grid grid-cols-2 gap-4 text-sm">
+            <div class="text-center p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                <p class="text-slate-500 mb-1">Total mémoires</p>
+                <p id="total-memories" class="text-xl font-bold text-white">--</p>
+            </div>
+            <div class="text-center p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                <p class="text-slate-500 mb-1">Compression</p>
+                <p id="compression-ratio" class="text-xl font-bold text-green-400">--%</p>
+            </div>
+        </div>
+        
+        <p class="text-xs text-slate-500 mt-3 text-center">
+            <i data-lucide="zap" class="w-3 h-3 inline"></i>
+            Gestion mémoire intelligente • 43 outils MCP
+        </p>
+    </div>
+</div>
+
+<!-- Modal Mémoriser -->
+<div id="memory-store-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div class="bg-slate-900 rounded-2xl border border-slate-700/50 shadow-2xl w-full max-w-lg mx-4 transform scale-95 opacity-0 transition-all duration-200" id="memory-store-modal-content">
+        <div class="p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                    <i data-lucide="plus-circle" class="w-5 h-5 text-emerald-400"></i>
+                    Nouvelle Mémoire
+                </h3>
+                <button onclick="closeMemoryStoreModal()" class="text-slate-400 hover:text-white transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-slate-400 mb-2">Contenu à mémoriser</label>
+                    <textarea id="memory-content-input" rows="4" 
+                        class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 resize-none"
+                        placeholder="Collez ou tapez le contenu important à mémoriser..."></textarea>
+                </div>
+                
+                <div>
+                    <label class="block text-sm text-slate-400 mb-2">Type de mémoire</label>
+                    <select id="memory-type-select" 
+                        class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-emerald-500/50">
+                        <option value="episodic">Épisode (conversation, événement)</option>
+                        <option value="frequent">Fréquent (pattern, snippet)</option>
+                        <option value="semantic">Sémantique (concept, relation)</option>
+                    </select>
+                </div>
+                
+                <div class="flex gap-3 pt-2">
+                    <button onclick="closeMemoryStoreModal()" 
+                        class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors">
+                        Annuler
+                    </button>
+                    <button onclick="executeStoreMemory()" 
+                        class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors flex items-center justify-center gap-2">
+                        <i data-lucide="save" class="w-4 h-4"></i>
+                        Mémoriser
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

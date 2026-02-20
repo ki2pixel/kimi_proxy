@@ -38,6 +38,28 @@ export function isWebSocketConnected() {
 }
 
 // ============================================================================
+// ENVOI DE MESSAGES
+// ============================================================================
+
+/**
+ * Envoie un message via WebSocket
+ * Pourquoi : Permet aux autres modules d'envoyer des messages au serveur
+ * @param {Object} message - Message à envoyer
+ */
+export function sendWebSocketMessage(message) {
+    if (ws && isConnected) {
+        try {
+            ws.send(JSON.stringify(message));
+            console.log('📤 WebSocket envoyé:', message.type);
+        } catch (error) {
+            console.error('Erreur envoi WebSocket:', error);
+        }
+    } else {
+        console.warn('WebSocket non connecté, message ignoré:', message.type);
+    }
+}
+
+// ============================================================================
 // CONNEXION
 // ============================================================================
 
@@ -58,6 +80,9 @@ export function connectWebSocket() {
         updateConnectionStatus(true);
         console.log('✅ WebSocket connecté');
         eventBus.emit('websocket:connected');
+        
+        // Écoute les événements d'envoi de messages
+        eventBus.on('websocket:send', sendWebSocketMessage);
     };
     
     ws.onmessage = (event) => {
@@ -173,8 +198,16 @@ function handleWebSocketMessage(data) {
             handleAutoCompactionToggled(data);
             break;
         
-        case 'reserved_tokens_updated':
-            handleReservedTokensUpdated(data);
+        case 'auto_session_created':
+            handleAutoSessionCreated(data);
+            break;
+        
+        case 'auto_session_toggled':
+            handleAutoSessionToggled(data);
+            break;
+        
+        case 'memory_similarity_result_response':
+            handleMemorySimilarityResult(data);
             break;
         
         default:
@@ -399,4 +432,25 @@ function handleAutoCompactionToggled(data) {
 function handleReservedTokensUpdated(data) {
     console.log('Tokens réservés mis à jour:', data.reserved_tokens);
     eventBus.emit('compaction:reserved_updated', { reserved_tokens: data.reserved_tokens });
+}
+
+function handleMemorySimilarityResult(data) {
+    // Route vers le similarity service
+    eventBus.emit('memory:similarity_result', data);
+}
+
+function handleAutoSessionCreated(data) {
+    // Recharge les données pour récupérer la nouvelle session
+    reloadSessionData();
+    eventBus.emit('session:auto_created', data);
+    
+    // Notification
+    showNotification(
+        data.message || 'Nouvelle session créée automatiquement',
+        'info'
+    );
+}
+
+function handleAutoSessionToggled(data) {
+    eventBus.emit('auto_session:toggled', { enabled: data.enabled });
 }

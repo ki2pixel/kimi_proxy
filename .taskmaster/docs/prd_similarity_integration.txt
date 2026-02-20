@@ -1,0 +1,94 @@
+# PRD - Intégration Production Similarité MCP Phase 4
+
+## Contexte
+La fonctionnalité de recherche de similarité actuelle fonctionne avec des données mock (5 mémoires statiques) et un algorithme simulé. L'infrastructure WebSocket est prête en production. Ce PRD définit l'intégration complète avec les vraies données et les algorithmes MCP externes.
+
+## Objectifs
+1. Remplacer les données mock par l'accès aux vraies mémoires stockées dans SQLite (table mcp_memory_entries)
+2. Intégrer les algorithmes de similarité des serveurs MCP externes (Qdrant pour recherche sémantique)
+3. Implémenter les algorithmes de fallback local (cosine, jaccard, levenshtein)
+4. Maintenir la compatibilité API WebSocket existante
+
+## Architecture Actuelle
+```
+Frontend (SimilarityService)
+    ↓ WebSocket
+Backend (memory.py → MemoryService)
+    ↓ Données mock (_generate_mock_memories)
+    ↓ Similarité simulée (hash-based)
+```
+
+## Architecture Cible
+```
+Frontend (SimilarityService)
+    ↓ WebSocket (inchangé)
+Backend (memory.py → MemoryService)
+    ↓ SQLite (mcp_memory_entries)
+    ↓ Qdrant MCP (search_similar) ← Prioritaire
+    ↓ Algorithmes locaux (fallback)
+```
+
+## Spécifications Techniques
+
+### 1. Récupération Données Réelles
+**Table:** `mcp_memory_entries` (déjà existante)
+**Colonnes pertinentes:**
+- id, session_id, memory_type, content_hash
+- content_preview, full_content, token_count
+- access_count, embedding_id, metadata
+
+**Requête SQL pour mémoires fréquentes:**
+```sql
+SELECT * FROM mcp_memory_entries 
+WHERE access_count >= 3 
+ORDER BY access_count DESC, last_accessed_at DESC
+LIMIT 50
+```
+
+### 2. Intégration Qdrant MCP
+**Client:** `QdrantMCPClient` dans `features/mcp/servers/qdrant.py`
+**Méthode:** `search_similar(query, limit, score_threshold)`
+**Performance cible:** <50ms
+
+**Flow:**
+1. Vérifier Qdrant disponible (`check_status()`)
+2. Si disponible: appeler `search_similar()` avec le texte de référence
+3. Mapper résultats Qdrant vers format `MemoryItem`
+4. Si indisponible: fallback algorithmes locaux
+
+### 3. Algorithmes de Similarité Locaux
+**Cosine:** Produit scalaire normalisé entre vecteurs de fréquence de mots
+**Jaccard:** |A ∩ B| / |A ∪ B| sur les sets de mots
+**Levenshtein:** Distance d'édition normalisée
+
+**Implémentation:**
+- Extraire mots des textes (tokenization simple)
+- Calculer similarité selon méthode demandée
+- Retourner résultats triés par score
+
+### 4. API WebSocket (Inchangée)
+**Messages:**
+- `memory_similarity_search` → `memory_similarity_result_response`
+- Payload: `{referenceId, referenceText, method, threshold, limit}`
+
+## Fichiers à Modifier
+1. `src/kimi_proxy/api/routes/memory.py` - Core service avec données réelles + Qdrant
+2. `src/kimi_proxy/features/mcp/servers/qdrant.py` - Extension si nécessaire
+
+## Critères d'Acceptation
+- [ ] Mémoires réelles récupérées depuis SQLite (plus de mock)
+- [ ] Similarité Qdrant fonctionnelle quand serveur disponible
+- [ ] Fallback algorithmes locaux fonctionnel
+- [ ] Temps réponse <500ms total (SQLite + similarité)
+- [ ] API WebSocket stable (pas de changement frontend nécessaire)
+- [ ] Gestion erreurs gracieuse (Qdrant indisponible → fallback)
+
+## Risques et Mitigations
+- **Risque:** Qdrant indisponible → **Mitigation:** Fallback algorithmes locaux
+- **Risque:** Table vide (pas de mémoires) → **Mitigation:** Garder données mock comme fallback
+- **Risque:** Performance dégradée → **Mitigation:** Cache LRU côté frontend (déjà implémenté)
+
+## Dépendances
+- Table `mcp_memory_entries` existante ✅
+- Client Qdrant MCP existant ✅
+- Infrastructure WebSocket opérationnelle ✅

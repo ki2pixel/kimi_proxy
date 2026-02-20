@@ -277,5 +277,56 @@ Keep the model name mapping simple and direct: a) check exact key matches, b) ot
 - `README.md` - User docs
 - `src/kimi_proxy/core/` - Implementation examples
 
+### Documentation Updates
+Any time you create or modify documentation (README, docs/, Markdown guides), you **must** apply the methodology defined in `.windsurf/skills/documentation/SKILL.md` (TL;DR first, problem-first opening, ❌/✅ blocks, trade-offs, Golden Rule). Treat this skill file as the authoritative checklist before writing.
+
+## Skills Invocation Guide
+
+### Use debugging-strategies Skill (@.windsurf/skills/debugging-strategies/SKILL.md)
+- Systematic debugging techniques, profiling tools, and root cause analysis
+- Tracking down elusive bugs, investigating performance issues, understanding unfamiliar codebases
+- Debugging production issues, analyzing crash dumps and stack traces
+- Debugging distributed systems
+
+### Use documentation Skill (@.windsurf/skills/documentation/SKILL.md)
+- Technical writing, README guidelines, and punctuation rules
+- Writing documentation, READMEs, technical articles, or any prose that should avoid AI-generated feel
+
+### Use kimi-proxy-config-manager Skill (@.windsurf/skills/kimi-proxy-config-manager/SKILL.md)
+- Managing TOML/YAML configurations, adding new providers, setting up API keys
+- Troubleshooting configuration issues, provider routing, model mappings
+- Environment variable integration
+
+### Use kimi-proxy-frontend-architecture Skill (@.windsurf/skills/kimi-proxy-frontend-architecture/SKILL.md)
+- Working with real-time dashboard, ES6 modules, Chart.js visualizations
+- WebSocket-based live updates, modular frontend architecture
+- Performance optimization for frontend
+
+### Use kimi-proxy-mcp-integration Skill (@.windsurf/skills/kimi-proxy-mcp-integration/SKILL.md)
+- MCP servers integration, memory management, semantic search
+- External tool integration, Phase 2-4 MCP features
+- Task Master, Sequential Thinking, Fast Filesystem, JSON Query servers
+
+### Use kimi-proxy-performance-optimization Skill (@.windsurf/skills/kimi-proxy-performance-optimization/SKILL.md)
+- Optimizing token counting, database queries, WebSocket performance
+- Reducing latency, async optimization, database indexing
+- Caching strategies, resource utilization
+
+### Use kimi-proxy-streaming-debug Skill (@.windsurf/skills/kimi-proxy-streaming-debug/SKILL.md)
+- Debugging streaming errors: ReadError, TimeoutException, ConnectError
+- SSE streaming issues, proxy streaming failures
+- Token extraction problems, WebSocket connection issues
+
+### Use kimi-proxy-testing-strategies Skill (@.windsurf/skills/kimi-proxy-testing-strategies/SKILL.md)
+- Writing tests, debugging issues, ensuring system reliability
+- Unit tests, integration tests, E2E testing, performance testing
+- pytest-asyncio strategies
+
+### Use taskmaster Skill (@.windsurf/skills/taskmaster/SKILL.md)
+- Task management with Taskmaster MCP tools and CLI commands
+- Project planning, task expansion, complexity analysis
+
+For Kimi Proxy development: Use primary skill + reference this file for unified conventions.
+
 ---
-**Version 2.5** - **< 7000 chars**
+**Version 2.6** - **< 10000 chars**

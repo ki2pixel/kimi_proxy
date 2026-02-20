@@ -2,7 +2,7 @@
 Route proxy principale /chat/completions.
 """
 import json
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -20,20 +20,69 @@ from ...core.database import (
     update_session_first_prompt,
 )
 from ...core.tokens import count_tokens_tiktoken
-from ...core.constants import DEFAULT_MAX_CONTEXT
+from ...core.constants import DEFAULT_MAX_CONTEXT, MCP_MAX_RESPONSE_TOKENS
 from ...config.loader import get_config
 from ...config.display import get_max_context_for_session
 from ...services.websocket_manager import get_connection_manager
 from ...services.rate_limiter import get_rate_limiter
-from ...services.alerts import check_threshold_alert
+from ...services.alerts import check_threshold_alert, create_context_limit_alert
 from ...features.sanitizer import sanitize_messages
-from ...features.mcp import analyze_mcp_memory_in_messages, save_memory_metrics
+from ...features.mcp import (
+    analyze_mcp_memory_in_messages, 
+    save_memory_metrics,
+    detect_and_store_memories,
+)
 from ...features.sanitizer.routing import route_dynamic_model
 from ...proxy.router import get_target_url_for_session, get_provider_host_header, map_model_name
 from ...proxy.transformers import convert_to_gemini_format, build_gemini_endpoint
 from ...proxy.stream import stream_generator, extract_usage_from_response
+from ...proxy.tool_utils import validate_and_fix_tool_calls
+from ...core.auto_session import process_auto_session
 
 router = APIRouter()
+
+
+def check_context_limit_violation(
+    estimated_tokens: int, 
+    max_context: int, 
+    session_id: Optional[int] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Vérifie si une requête dépasserait les limites de contexte.
+    
+    Args:
+        estimated_tokens: Nombre de tokens estimé
+        max_context: Limite maximale de contexte
+        session_id: ID de session pour le logging
+        
+    Returns:
+        Dict avec détails de violation si dépassement, None sinon
+    """
+    # Laisse une marge de sécurité (5% du contexte max)
+    safety_margin = int(max_context * 0.05)
+    effective_limit = max_context - safety_margin
+    
+    if estimated_tokens > effective_limit:
+        violation_ratio = estimated_tokens / max_context
+        return {
+            "violation": True,
+            "estimated_tokens": estimated_tokens,
+            "max_context": max_context,
+            "effective_limit": effective_limit,
+            "violation_ratio": violation_ratio,
+            "excess_tokens": estimated_tokens - max_context,
+            "recommendations": [
+                "Utiliser le sanitizer pour réduire la verbosité",
+                "Compresser le contexte historique",
+                "Diviser la requête en parties plus petites",
+                f"Limiter à {effective_limit:,} tokens maximum"
+            ] if violation_ratio > 1.1 else [
+                "Optimiser le prompt système",
+                "Réduire la longueur des messages utilisateur"
+            ]
+        }
+    
+    return None
 
 
 @router.post("/chat/completions")
@@ -109,8 +158,28 @@ async def proxy_chat(request: Request):
     except Exception as e:
         print(f"⚠️ [SANITIZER/MCP] Erreur lors de l'analyse: {e}")
     
-    # Récupère la session active
-    session = get_active_session()
+    # ============================================================================
+    # AUTO SESSION: Détection et création automatique de session
+    # ============================================================================
+    session_created = False
+    try:
+        if 'body_json' in locals() and body_json:
+            session, session_created = process_auto_session(body_json, get_active_session())
+            if session_created:
+                # Notifie le frontend via WebSocket
+                manager = get_connection_manager()
+                await manager.broadcast({
+                    "type": "auto_session_created",
+                    "session": session,
+                    "message": f"Nouvelle session auto créée: {session.get('name')}"
+                })
+    except Exception as e:
+        print(f"⚠️ [AUTO SESSION] Erreur: {e}")
+        session = get_active_session()
+        session_created = False
+    
+    if not session:
+        session = get_active_session()
     
     max_context = get_max_context_for_session(session, models, DEFAULT_MAX_CONTEXT)
     target_url = get_target_url_for_session(session, providers)
@@ -282,6 +351,73 @@ async def proxy_chat(request: Request):
             })
     
     # ============================================================================
+    # VÉRIFICATION PROACTIVE DE LIMITE DE CONTEXTE
+    # ============================================================================
+    context_violation = check_context_limit_violation(
+        request_tokens, max_context, session["id"] if session else None
+    )
+    
+    if context_violation:
+        print(f"🚫 [CONTEXT LIMIT] Requête rejetée: {request_tokens:,} tokens > {max_context:,} limite")
+        print(f"   Ratio violation: {context_violation['violation_ratio']:.2f}")
+        print(f"   Recommandations: {', '.join(context_violation['recommendations'])}")
+        
+        # Notifie via WebSocket
+        manager = get_connection_manager()
+        await manager.broadcast({
+            "type": "context_limit_violation",
+            "session_id": session["id"] if session else None,
+            "violation": context_violation,
+            "message": f"Requête trop volumineuse ({request_tokens:,} tokens) - {context_violation['recommendations'][0]}"
+        })
+        
+        # Retourne une erreur explicite
+        return JSONResponse(
+            content={
+                "error": "Context limit exceeded",
+                "details": context_violation,
+                "message": f"Requête de {request_tokens:,} tokens dépasse la limite de {max_context:,} tokens",
+                "recommendations": context_violation["recommendations"]
+            },
+            status_code=413  # Payload Too Large
+        )
+    
+    print(f"✅ [CONTEXT CHECK] Requête validée: {request_tokens:,} tokens ({percentage:.1f}%)")
+
+    # ============================================================================
+    # MONITORING DE PERFORMANCE CONTEXTE
+    # ============================================================================
+    try:
+        # Calcule les métriques de contexte pour monitoring
+        context_metrics = {
+            "session_id": session["id"] if session else None,
+            "estimated_tokens": request_tokens,
+            "max_context": max_context,
+            "usage_percentage": percentage,
+            "system_tokens": system_message_tokens if 'system_message_tokens' in locals() else 0,
+            "history_tokens": history_tokens if 'history_tokens' in locals() else 0,
+            "user_tokens": user_message_tokens if 'user_message_tokens' in locals() else 0,
+            "mcp_memory_tokens": mcp_memory_analysis.get('memory_tokens', 0) if 'mcp_memory_analysis' in locals() else 0,
+            "timestamp": __import__('datetime').datetime.now().isoformat()
+        }
+        
+        # Vérifie les seuils d'alerte personnalisés pour le contexte
+        context_alert = create_context_limit_alert(context_metrics)
+        if context_alert:
+            manager = get_connection_manager()
+            await manager.broadcast({
+                "type": "context_performance_alert",
+                "alert": context_alert,
+                "metrics": context_metrics,
+                "session_id": session["id"] if session else None,
+                "message": f"Alerte contexte: {context_alert['level']} - {context_alert['message']}"
+            })
+            print(f"⚠️ [CONTEXT MONITOR] {context_alert['level']}: {context_alert['message']}")
+            
+    except Exception as e:
+        print(f"⚠️ [CONTEXT MONITOR] Erreur monitoring: {e}")
+
+    # ============================================================================
     # Rate Limiting
     # ============================================================================
     rate_limiter = get_rate_limiter()
@@ -370,6 +506,20 @@ async def _proxy_to_provider(
             for k in keys_to_remove:
                 del msg[k]
         
+        # Validation et correction des tool calls (NVIDIA, etc.)
+        body_json, tool_stats = validate_and_fix_tool_calls(body_json)
+        if tool_stats["fixed_ids"] > 0:
+            print(f"🔧 [TOOL CALLS] {tool_stats['fixed_ids']} ID(s) corrigé(s) sur {tool_stats['total_tool_calls']} tool calls")
+            if tool_stats["invalid_ids"]:
+                print(f"   IDs invalides détectés: {tool_stats['invalid_ids']}")
+        
+        # Validation des tools pour Groq (limite 128 outils maximum)
+        if provider_key == "groq":
+            tools = body_json.get('tools', [])
+            if len(tools) > 128:
+                print(f"⚠️ [GROQ TOOLS LIMIT] {len(tools)} outils détectés, limite à 128 (troncature)")
+                body_json['tools'] = tools[:128]
+        
         print(f"📤 Requête: model={body_json.get('model')}, stream={body_json.get('stream', False)}")
         
         # Construction de l'URL cible
@@ -413,6 +563,44 @@ async def _proxy_to_provider(
                         error_body = await response.aread()
                         error_text = error_body.decode('utf-8', errors='ignore')[:500]
                         print(f"❌ [PROXY] Erreur {response.status_code}: {error_text}")
+                        
+                        # Gestion spécifique de l'erreur "Message exceeds context limit"
+                        if "message exceeds context limit" in error_text.lower() or "context length" in error_text.lower():
+                            print(f"🚫 [CONTEXT LIMIT] Erreur provider détectée: {error_text[:100]}...")
+                            
+                            # Notifie via WebSocket
+                            manager = get_connection_manager()
+                            await manager.broadcast({
+                                "type": "provider_context_limit_error",
+                                "session_id": session["id"] if session else None,
+                                "error": error_text,
+                                "provider": provider_key,
+                                "model": body_json.get('model', 'unknown'),
+                                "estimated_tokens": request_tokens,
+                                "max_context": max_context,
+                                "message": "Le provider a rejeté la requête pour dépassement de limite de contexte"
+                            })
+                            
+                            return JSONResponse(
+                                content={
+                                    "error": "Provider context limit exceeded",
+                                    "details": {
+                                        "provider": provider_key,
+                                        "error_message": error_text,
+                                        "estimated_tokens": request_tokens,
+                                        "max_context": max_context,
+                                        "recommendations": [
+                                            "Réduire la taille du contexte historique",
+                                            "Utiliser le sanitizer pour nettoyer les messages verbeux",
+                                            "Compresser la conversation avec le bouton 'Compresser'",
+                                            "Diviser la requête en parties plus petites"
+                                        ]
+                                    },
+                                    "message": f"Le provider {provider_key} a rejeté la requête: limite de contexte dépassée"
+                                },
+                                status_code=413
+                            )
+                        
                         return JSONResponse(
                             content={"error": error_text, "code": response.status_code},
                             status_code=response.status_code
@@ -490,6 +678,43 @@ async def _proxy_to_provider(
                 if response.status_code >= 400:
                     print(f"❌ [PROXY] Erreur {response.status_code}: {response.text[:500]}")
                     
+                    # Gestion spécifique de l'erreur "Message exceeds context limit"
+                    if "message exceeds context limit" in response.text.lower() or "context length" in response.text.lower():
+                        print(f"🚫 [CONTEXT LIMIT] Erreur provider détectée: {response.text[:100]}...")
+                        
+                        # Notifie via WebSocket
+                        manager = get_connection_manager()
+                        await manager.broadcast({
+                            "type": "provider_context_limit_error",
+                            "session_id": session["id"] if session else None,
+                            "error": response.text,
+                            "provider": provider_key,
+                            "model": body_json.get('model', 'unknown'),
+                            "estimated_tokens": request_tokens,
+                            "max_context": max_context,
+                            "message": "Le provider a rejeté la requête pour dépassement de limite de contexte"
+                        })
+                        
+                        return JSONResponse(
+                            content={
+                                "error": "Provider context limit exceeded",
+                                "details": {
+                                    "provider": provider_key,
+                                    "error_message": response.text,
+                                    "estimated_tokens": request_tokens,
+                                    "max_context": max_context,
+                                    "recommendations": [
+                                        "Réduire la taille du contexte historique",
+                                        "Utiliser le sanitizer pour nettoyer les messages verbeux",
+                                        "Compresser la conversation avec le bouton 'Compresser'",
+                                        "Diviser la requête en parties plus petites"
+                                    ]
+                                },
+                                "message": f"Le provider {provider_key} a rejeté la requête: limite de contexte dépassée"
+                            },
+                            status_code=413
+                        )
+                    
             except httpx.ReadError as e:
                 print(f"🔴 [PROXY] ReadError: {e}")
                 return JSONResponse(
@@ -548,5 +773,70 @@ async def _proxy_to_provider(
             return JSONResponse(
                 content=response.json(),
                 status_code=response.status_code,
-                headers=dict(response.headers)
+                headers=_filter_response_headers(dict(response.headers))
             )
+
+
+# ============================================================================
+# RESPONSE HEADERS FILTER
+# ============================================================================
+
+def _filter_response_headers(headers: dict) -> dict:
+    """
+    Filtre les headers de réponse pour éviter les problèmes côté client.
+    
+    Pourquoi: httpx décompresse automatiquement le corps, mais garde
+    les headers content-encoding. Le client essaie alors de décompresser
+    un corps déjà décompressé → erreur "incorrect header check".
+    """
+    filtered = {}
+    skip_headers = {
+        'content-encoding',  # Déjà décompressé par httpx
+        'transfer-encoding',  # Chunked n'a plus de sens
+        'content-length',     # La longueur change après décompression
+    }
+    
+    for key, value in headers.items():
+        if key.lower() not in skip_headers:
+            filtered[key] = value
+    
+    return filtered
+
+
+# ============================================================================
+# AUTO MEMORY DETECTION HELPER
+# ============================================================================
+
+async def _detect_auto_memories(messages: list, session_id: int):
+    """
+    Helper function pour détecter et stocker les mémoires automatiquement.
+    S'exécute en arrière-plan sans bloquer le proxy.
+    """
+    try:
+        stored = await detect_and_store_memories(
+            messages=messages,
+            session_id=session_id,
+            confidence_threshold=0.75  # Seuil élevé pour éviter faux positifs
+        )
+        
+        if stored:
+            print(f"🧠 [AUTO MEMORY] {len(stored)} mémoire(s) détectée(s) et stockée(s)")
+            # Notifie via WebSocket
+            from ...services.websocket_manager import get_connection_manager
+            manager = get_connection_manager()
+            await manager.broadcast({
+                "type": "auto_memory_stored",
+                "session_id": session_id,
+                "count": len(stored),
+                "memories": [
+                    {
+                        "id": m["id"],
+                        "type": m["type"],
+                        "confidence": m["confidence"],
+                        "reason": m["reason"]
+                    }
+                    for m in stored
+                ]
+            })
+    except Exception as e:
+        print(f"⚠️ [AUTO MEMORY] Erreur: {e}")

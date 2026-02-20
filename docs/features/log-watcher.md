@@ -58,6 +58,35 @@ PyCharm Logs → FileWatcher → LogParser
 | Erreurs | `ERROR: line 42` | compte, sévérité |
 | Tests | `pytest: 45s` | durée, succès/échec |
 
+## Parsing Métriques Log (Pattern 6)
+
+**TL;DR**: Le parser analyse les blocs CompileChat avec complexité D pour extraire métriques précises sans perdre de données.
+
+### Défis Parsing
+Les logs PyCharm mélangent métriques standard et blocs CompileChat. Une erreur de parsing peut invalider toute la session.
+
+### ✅ Logique Interne
+```python
+# Dans parser.py:_extract_standard_metrics
+def _extract_standard_metrics(self, log_line: str) -> dict:
+    # Pattern matching hiérarchique
+    if 'tokens:' in log_line:
+        # Validation numérique
+        tokens = int(re.search(r'tokens:(\d+)', log_line).group(1))
+        # Bounds checking
+        if tokens > 0 and tokens < 100000:
+            return {'tokens': tokens}
+    return {}
+```
+
+### Gestion Erreurs Parsing
+- **Validation stricte** : rejet automatique des valeurs invalides
+- **Fallback partiel** : extraction des métriques valides même si une ligne échoue
+- **Logging détaillé** : traçabilité des rejets pour debug
+
+### Règle d'Or : Validation Plutôt Que Silence
+Préférer rejeter une métrique invalide que de corrompre les statistiques globales.
+
 ### Extraction Métriques
 
 ```python

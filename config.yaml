@@ -7,27 +7,8 @@ schema: v1
 # ============================================
 
 models:
-  # === Kimi Code Officiel ===
-  - name: 🌙 Kimi - Kimi for Coding (256K)
-    provider: openai
-    model: kimi-code/kimi-for-coding
-    apiBase: http://127.0.0.1:8000
-    apiKey: dummy-key
-    contextLength: 262144
-    roles:
-      - chat
-      - edit
-      - apply
-      - autocomplete
-    capabilities:
-      - tool_use
-    defaultCompletionOptions:
-      temperature: 0.2
-      maxTokens: 16384
-      contextLength: 262144
-
   # === NVIDIA ===
-  - name: 🟢 NVIDIA - Kimi K2.5 (256K)
+  - name: 🔥 NVIDIA - Kimi K2.5 (256K)
     provider: openai
     model: nvidia/kimi-k2.5
     apiBase: http://127.0.0.1:8000
@@ -45,7 +26,7 @@ models:
       maxTokens: 16384
       contextLength: 262144
 
-  - name: 🟢 NVIDIA - Kimi K2 Thinking (256K)
+  - name: 🔥 NVIDIA - Kimi K2 Thinking (256K)
     provider: openai
     model: nvidia/kimi-k2-thinking
     apiBase: http://127.0.0.1:8000
@@ -63,10 +44,10 @@ models:
       maxTokens: 16384
       contextLength: 262144
 
-  # === Mistral ===
-  - name: 🔷 Mistral - Codestral 2501 (256K)
+  # === NVIDIA - Mistral Large 3 ===
+  - name: 🔥 NVIDIA - Mistral Large 3 - 675b (262K)
     provider: openai
-    model: mistral/codestral-2501
+    model: nvidia/mistral-large-3-675b
     apiBase: http://127.0.0.1:8000
     apiKey: dummy-key
     contextLength: 262144
@@ -74,36 +55,17 @@ models:
       - chat
       - edit
       - apply
-      - autocomplete
-    autocompleteOptions:
-      debounceDelay: 200
-      maxPromptTokens: 1024
-      onlyMyCode: true
+    capabilities:
+      - tool_use
     defaultCompletionOptions:
-      temperature: 0.1
+      temperature: 0.2
       maxTokens: 8192
       contextLength: 262144
 
-  - name: 🔷 Mistral - Mistral Large 2411 (128K)
+  # === NVIDIA - GPT-OSS 120B ===
+  - name: 🔥 NVIDIA - GPT-OSS 120B (131K)
     provider: openai
-    model: mistral/mistral-large-2411
-    apiBase: http://127.0.0.1:8000
-    apiKey: dummy-key
-    contextLength: 131072
-    roles:
-      - chat
-      - edit
-      - apply
-    capabilities:
-      - tool_use
-    defaultCompletionOptions:
-      temperature: 0.2
-      maxTokens: 8192
-      contextLength: 131072
-
-  - name: 🔷 Mistral - Pixtral Large 2411 (128K)
-    provider: openai
-    model: mistral/pixtral-large-2411
+    model: nvidia/gpt-oss-120b
     apiBase: http://127.0.0.1:8000
     apiKey: dummy-key
     contextLength: 131072
@@ -112,70 +74,18 @@ models:
       - edit
       - apply
       - autocomplete
-    capabilities:
-      - tool_use
-    defaultCompletionOptions:
-      temperature: 0.4
-      maxTokens: 8192
-      contextLength: 131072
-
-  - name: 🔷 Mistral - Ministral 8B (32K)
-    provider: openai
-    model: mistral/ministral-8b-2410
-    apiBase: http://127.0.0.1:8000
-    apiKey: dummy-key
-    contextLength: 32768
-    roles:
-      - chat
-      - edit
-      - apply
-      - autocomplete
-    defaultCompletionOptions:
-      temperature: 0.5
-      maxTokens: 8192
-      contextLength: 32768
-
-  # === OpenRouter ===
-  - name: 🔀 OpenRouter - Aurora Alpha (128K)
-    provider: openai
-    model: openrouter/aurora-alpha
-    apiBase: http://127.0.0.1:8000
-    apiKey: dummy-key
-    contextLength: 128000
-    roles:
-      - chat
-      - edit
-      - apply
-      - autocomplete
-    capabilities:
-      - tool_use
-    defaultCompletionOptions:
-      temperature: 0.2
-      maxTokens: 8192
-      contextLength: 128000
-
-  # === SiliconFlow ===
-  - name: 💧 SiliconFlow - Qwen 3 32B (131K)
-    provider: openai
-    model: siliconflow/qwen3-32b
-    apiBase: http://127.0.0.1:8000
-    apiKey: dummy-key
-    contextLength: 131072
-    roles:
-      - chat
-      - edit
-      - apply
-      - autocomplete
-    capabilities:
-      - tool_use
     defaultCompletionOptions:
       temperature: 0.2
       maxTokens: 8192
       contextLength: 131072
+      reasoning_effort: high
+      include_reasoning: true
+      reasoningBudgetTokens: 2048
 
-  - name: 💧 SiliconFlow - DeepSeek V3.2 (164K)
+  # === NVIDIA - DeepSeek V3.2 ===
+  - name: 🔥 NVIDIA - DeepSeek V3.2 (164K)
     provider: openai
-    model: siliconflow/deepseek-v3.2
+    model: nvidia/deepseek-v3.2
     apiBase: http://127.0.0.1:8000
     apiKey: dummy-key
     contextLength: 164000
@@ -191,99 +101,10 @@ models:
       maxTokens: 8192
       contextLength: 164000
 
-  # === Groq ===
-  - name: ⚡ Groq - Compound (131K)
+  # === NVIDIA - GLM-4.7 ===
+  - name: NVIDIA - GLM-4.7 (64K)
     provider: openai
-    model: groq/compound
-    apiBase: http://127.0.0.1:8000
-    apiKey: dummy-key
-    contextLength: 131072
-    roles:
-      - chat
-      - edit
-      - apply
-      - autocomplete
-    defaultCompletionOptions:
-      temperature: 0.2
-      maxTokens: 8192
-      contextLength: 131072
-
-  - name: ⚡ Groq - Qwen 3 32B (131K)
-    provider: openai
-    model: groq/qwen3-32b
-    apiBase: http://127.0.0.1:8000
-    apiKey: dummy-key
-    contextLength: 131072
-    roles:
-      - chat
-      - edit
-      - apply
-      - autocomplete
-    defaultCompletionOptions:
-      temperature: 0.2
-      maxTokens: 8192
-      contextLength: 131072
-      reasoning_format: parsed
-      reasoning_effort: default
-
-  - name: ⚡ Groq - GPT-OSS 120B (131K)
-    provider: openai
-    model: groq/gpt-oss-120b
-    apiBase: http://127.0.0.1:8000
-    apiKey: dummy-key
-    contextLength: 131072
-    roles:
-      - chat
-      - edit
-      - apply
-      - autocomplete
-    defaultCompletionOptions:
-      temperature: 0.2
-      maxTokens: 8192
-      contextLength: 131072
-      reasoning_effort: medium
-      include_reasoning: true
-      reasoningBudgetTokens: 2048
-
-  # === Cerebras ===
-  - name: 🧠 Cerebras - Qwen 3 235B (65K)
-    provider: openai
-    model: cerebras/qwen3-235b
-    apiBase: http://127.0.0.1:8000
-    apiKey: dummy-key
-    contextLength: 65536
-    roles:
-      - chat
-      - edit
-      - apply
-    capabilities:
-      - tool_use
-    defaultCompletionOptions:
-      temperature: 0.2
-      maxTokens: 8192
-      contextLength: 65536
-
-  - name: 🧠 Cerebras - GPT-OSS 120B (65K)
-    provider: openai
-    model: cerebras/gpt-oss-120b
-    apiBase: http://127.0.0.1:8000
-    apiKey: dummy-key
-    contextLength: 65536
-    roles:
-      - chat
-      - edit
-      - apply
-      - autocomplete
-    capabilities:
-      - tool_use
-    defaultCompletionOptions:
-      temperature: 0.4
-      maxTokens: 8192
-      contextLength: 65536
-
-  - name: 🧠 Cerebras - GLM-4.7 (64K)
-    provider: openai
-    model: cerebras/glm-4.7
+    model: nvidia/glm-4.7
     apiBase: http://127.0.0.1:8000
     apiKey: dummy-key
     contextLength: 64000
@@ -301,8 +122,86 @@ models:
       maxTokens: 8192
       contextLength: 64000
 
+  # === NVIDIA - GLM-5 ===
+  - name: NVIDIA - GLM-5 (204K)
+    provider: openai
+    model: nvidia/glm-5
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 204800
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 8192
+      contextLength: 204800
+
+  # === NVIDIA - Qwen3 Coder 480B ===
+  - name: NVIDIA - Qwen3 Coder 480B (262K)
+    provider: openai
+    model: nvidia/qwen3-coder-480b
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 262144
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+      - coding
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 8192
+      contextLength: 262144
+
+  # === NVIDIA - Qwen3 Next 80B Thinking ===
+  - name: NVIDIA - Qwen3 Next 80B Thinking (128K)
+    provider: openai
+    model: nvidia/qwen3-next-80b-a3b-thinking
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 131072
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+      - thinking
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 8192
+      contextLength: 131072
+
+  # === OpenRouter ===
+  - name: OpenRouter - Aurora Alpha (128K)
+    provider: openai
+    model: openrouter/aurora-alpha
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 128000
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0.2
+      maxTokens: 8192
+      contextLength: 128000
+
   # === Gemini ===
-  - name: 💎 Gemini - 2.5 Flash Lite (1M)
+  - name: Gemini - 2.5 Flash Lite (1M)
     provider: openai
     model: gemini/gemini-2.5-flash-lite
     apiBase: http://127.0.0.1:8000
@@ -320,7 +219,7 @@ models:
       maxTokens: 8192
       contextLength: 1048576
 
-  - name: 💎 Gemini - 3 Flash Preview (1M)
+  - name: Gemini - 3 Flash Preview (1M)
     provider: openai
     model: gemini/gemini-3-flash-preview
     apiBase: http://127.0.0.1:8000
@@ -338,7 +237,7 @@ models:
       maxTokens: 8192
       contextLength: 1048576
 
-  - name: 💎 Gemini - 2.5 Flash (1M)
+  - name: Gemini - 2.5 Flash (1M)
     provider: openai
     model: gemini/gemini-2.5-flash
     apiBase: http://127.0.0.1:8000
@@ -356,7 +255,7 @@ models:
       maxTokens: 8192
       contextLength: 1048576
 
-  - name: 💎 Gemini - 2.5 Pro (1M)
+  - name: Gemini - 2.5 Pro (1M)
     provider: openai
     model: gemini/gemini-2.5-pro
     apiBase: http://127.0.0.1:8000
@@ -402,7 +301,7 @@ mcpServers:
     command: npx
     args: ["-y", "task-master-ai"]
     env:
-      MISTRAL_API_KEY: "caché"
+      MISTRAL_API_KEY: "EA1LN9ddFsblnq4xIaPHnjJpFjYwQWIM"
       TASK_MASTER_TOOLS: "standard"
 
   - name: sequential-thinking
@@ -420,3 +319,39 @@ mcpServers:
   - name: json-query
     command: node
     args: ["/home/kidpixel/Téléchargements/json-query-mcp-main/dist/index.js"]
+
+  - name: render-signal-mcp
+    url: "https://mcp.render.com/mcp"
+    headers:
+      Authorization: "Bearer rnd_VQWUOIKNaGHBXm1S71xdm06nit49"
+
+  - name: render-photomaton-mcp
+    url: "https://mcp.render.com/mcp"
+    headers:
+      Authorization: "Bearer rnd_Fp6xGSjGLi59nimXWhWek4m5012a"
+
+  - name: render-switchbot-mcp
+    url: "https://mcp.render.com/mcp"
+    headers:
+      Authorization: "Bearer rnd_VKbtKTHo27mUYxbI99z6ZqBY3v4J"
+
+  - name: redis-signal-mcp-server
+    command: uvx
+    args:
+      - "--from"
+      - "redis-mcp-server@latest"
+      - "redis-mcp-server"
+      - "--url"
+      - "redis://red-d0l2c17fte5s73955i40:KCL5iVxykagTchnJxhccAyCp9S8dWFls@red-d0l2c17fte5s73955i40:6379"
+
+  - name: photomaton-postgres
+    command: uvx
+    args: ["--python", "3.12", "postgres-mcp", "--access-mode=unrestricted"]
+    env:
+      DATABASE_URI: "postgresql://neondb_owner:npg_GwWL5Fltq2kO@ep-shiny-star-ad5t7thb-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+
+  - name: switchbot-postgres
+    command: uvx
+    args: [ "--python", "3.12", "postgres-mcp", "--access-mode=unrestricted" ]
+    env:
+      DATABASE_URI: "postgresql://postgres.tpjbanbcvfwyhoqsuyxf:%40vH2f85CAXjm96tz@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require"

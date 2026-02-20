@@ -47,6 +47,13 @@ from .memory import (
     EPISODIC_MEMORY_MAX_AGE_DAYS,
 )
 
+# Auto Memory Detection
+from .auto_memory import (
+    AutomaticMemoryDetector,
+    get_memory_detector,
+    detect_and_store_memories,
+)
+
 # Phase 4 - Imports conditionnels pour éviter les imports circulaires
 from typing import TYPE_CHECKING
 
@@ -85,6 +92,10 @@ __all__ = [
     "reset_memory_manager",
     "FREQUENT_ACCESS_THRESHOLD",
     "EPISODIC_MEMORY_MAX_AGE_DAYS",
+    # Auto Memory Detection
+    "AutomaticMemoryDetector",
+    "get_memory_detector",
+    "detect_and_store_memories",
     # Phase 4
     "extract_phase4_tools",
     "get_detected_mcp_servers",

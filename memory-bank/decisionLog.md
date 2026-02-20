@@ -44,6 +44,16 @@
 - Comptage provider-side (rejeté : pas transparent)  
 **Résultat** : Comptage précis, économies 20-40% vérifiées, confiance facturation.
 
+### [2026-02-20 02:20:00] - Auto-Session Implementation Strategy
+**Problème** : Gestion manuelle des sessions multi-provider fastidieuse, utilisateurs devant créer manuellement une session pour chaque changement de modèle/provider. Risque d'erreurs 401 dues à modèles mal mappés et clés API non expansées.  
+**Décision** : Implémenter système d'auto-création de sessions avec détection automatique du provider depuis le modèle demandé, mapping correct des modèles, et expansion automatique des variables d'environnement.  
+**Implémentation** : Architecture modulaire avec `auto_session.py` pour logique métier, intégration dans proxy pipeline, UI toggle manuel, expansion env récursive, gestion asynchrone mémoire auto.  
+**Alternatives considérées** :  
+- Session unique multi-provider (rejeté : complexité routing, conflits modèles)  
+- Prompt système automatique (rejeté : pas transparent, problèmes contexte)  
+- Extension sessions existantes (rejeté : confusion utilisateur, pas de séparation claire)  
+**Résultat** : Création automatique de sessions par provider, modèles correctement mappés, clés API expansées, UX transparente, économie temps utilisateur significative.
+
 ### [2026-02-01 14:20:00] - HTTPX Async Only
 **Problème** : Utilisation mixte requests/urllib3 causant blocages event loop et timeouts.  
 **Décision** : Interdire tout client HTTP synchrone, n'utiliser que HTTPX async.  

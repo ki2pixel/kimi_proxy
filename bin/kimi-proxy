@@ -119,6 +119,22 @@ cmd_start() {
         source "$VENV_DIR/bin/activate"
     fi
     
+    # Chargement des variables d'environnement depuis .env
+    if [ -f ".env" ]; then
+        log_info "Chargement des variables d'environnement depuis .env..."
+        # Exporte les variables sans les guillemets
+        while IFS='=' read -r key value; do
+            # Ignore les lignes vides et les commentaires
+            [[ -z "$key" || "$key" =~ ^# ]] && continue
+            # Supprime les espaces et guillemets
+            key=$(echo "$key" | xargs)
+            value=$(echo "$value" | sed 's/^["'\''"]//;s/["'\''"]$//' | xargs)
+            export "$key=$value"
+        done < .env
+    else
+        log_warning "Fichier .env non trouvé"
+    fi
+    
     log_info "Démarrage du serveur sur $host:$port..."
     
     # Démarre le serveur en arrière-plan

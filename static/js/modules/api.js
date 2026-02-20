@@ -94,11 +94,24 @@ export async function loadProviders() {
  */
 export async function loadModels() {
     try {
+        // ✅ Route standardisée (/api/models)
         const response = await fetch('/api/models');
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return await response.json();
     } catch (error) {
-        console.error('Erreur chargement modèles:', error);
+        console.error('❌ Erreur chargement modèles:', error);
+        
+        // 🔧 Fallback vers ancienne route pour rétro-compatibilité
+        try {
+            const fallback = await fetch('/models/all');
+            if (fallback.ok) {
+                console.warn('⚠️ Utilisation fallback /models/all');
+                return await fallback.json();
+            }
+        } catch (e) {
+            console.error('❌ Fallback échoué:', e);
+        }
+        
         throw error;
     }
 }
@@ -318,6 +331,49 @@ export async function checkHealth() {
         return await response.json();
     } catch (error) {
         console.error('Erreur health check:', error);
+        throw error;
+    }
+}
+
+// ============================================================================
+// API AUTO SESSION
+// ============================================================================
+
+/**
+ * Récupère le statut de l'auto-session
+ * Pourquoi : Initialise le toggle d'auto-session
+ * @returns {Promise<Object>} Statut de l'auto-session
+ */
+export async function getAutoSessionStatus() {
+    try {
+        const response = await fetch('/api/sessions/auto-status');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return await response.json();
+    } catch (error) {
+        console.error('Erreur chargement statut auto-session:', error);
+        // Par défaut activé
+        return { enabled: true };
+    }
+}
+
+/**
+ * Bascule l'auto-session
+ * Pourquoi : Permet à l'utilisateur de contrôler la création auto de sessions
+ * @param {boolean} enabled - État souhaité
+ * @returns {Promise<Object>} Résultat de l'opération
+ */
+export async function toggleAutoSession(enabled) {
+    try {
+        const response = await fetch('/api/sessions/toggle-auto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled })
+        });
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return await response.json();
+    } catch (error) {
+        console.error('Erreur toggle auto-session:', error);
         throw error;
     }
 }

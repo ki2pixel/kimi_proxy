@@ -8,12 +8,43 @@ Cette phase implémente l'infrastructure de base pour la gestion avancée de la 
 
 ### 1. Service SimpleCompaction (`features/compaction/`)
 
-#### Classe `SimpleCompaction`
+#### Classe `SimpleCompaction` - Score C
 - **Stratégie de compaction**:
   1. Préserve tous les messages système
   2. Garde les N derniers échanges configurables (défaut: 2 échanges = 4 messages)
   3. Résume les messages intermédiaires en un message de contexte
   4. Calculs précis avec Tiktoken (cl100k_base)
+
+## Déclenchement Automatique Compaction
+
+**TL;DR**: L'auto-trigger analyse les seuils de contexte pour déclencher la compaction sans intervention manuelle.
+
+### Problème Contexte
+Les conversations longues dépassent les limites LLM. Vous devez décider quand compacter sans perdre d'information critique.
+
+### ✅ Logique Décision
+```python
+# Dans auto_trigger.py:check_and_trigger
+def check_and_trigger(self, session_id: str) -> bool:
+    context_size = await get_context_size(session_id)
+    threshold = self.config.get('compaction_threshold', 0.8)
+    
+    if context_size > threshold * MAX_CONTEXT:
+        # Analyse patterns fréquents
+        patterns = await analyze_frequent_patterns(session_id)
+        # Compactage sélectif
+        await compact_selective(session_id, patterns)
+        return True
+    return False
+```
+
+### Seuils et Patterns
+- **Seuil par défaut** : 80% capacité max
+- **Patterns fréquents** : répétitions, exemples similaires
+- **Compactage sélectif** : préserve questions/réponses critiques
+
+### Règle d'Or : Compactage Préventif
+Déclencher avant saturation complète pour maintenir fluidité conversation.
 
 #### Configuration
 ```python

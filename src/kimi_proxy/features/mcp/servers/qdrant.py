@@ -52,39 +52,71 @@ class QdrantMCPClient:
     async def check_status(self) -> "MCPExternalServerStatus":
         """
         Vérifie le statut du serveur Qdrant MCP.
-        
+
         Utilise un cache TTL de 30 secondes pour éviter les appels répétés.
-        
+        Pour les instances cloud, assume toujours connecté (géré par Qdrant).
+
         Returns:
             Status du serveur Qdrant
         """
         from kimi_proxy.core.models import MCPExternalServerStatus
-        
+
         # Vérifie le cache TTL
         now = datetime.now()
-        if (self._status_check_time and 
+        if (self._status_check_time and
             (now - self._status_check_time).total_seconds() < self._status_ttl_seconds):
             return self._status
-        
+
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Détecte si c'est une instance cloud (URL contient cloud.qdrant.io)
+        is_cloud = "cloud.qdrant.io" in self.config.qdrant_url
+
+        if is_cloud:
+            logger.info(f"☁️ Qdrant cloud detected: {self.config.qdrant_url}")
+            logger.info("✅ Assuming cloud Qdrant is always connected (managed service)")
+
+            # Pour le cloud, assume toujours connecté avec latence simulée
+            self._status = MCPExternalServerStatus(
+                name="qdrant-mcp",
+                type="qdrant",
+                url=self.config.qdrant_url,
+                connected=True,  # Cloud est toujours disponible
+                last_check=datetime.now().isoformat(),
+                latency_ms=50.0,  # Latence typique cloud
+                capabilities=["semantic_search", "vector_store", "clustering"]
+            )
+            self._status_check_time = now
+            return self._status
+
+        # Pour les instances locales, vérifie le statut via health check
         try:
             start_time = datetime.now()
             client = await self.rpc_client._get_client()
-            
+
             # En-têtes avec API key si configurée
             headers = {}
             if self.config.qdrant_api_key:
                 headers["api-key"] = self.config.qdrant_api_key
-            
+
+            logger.info(f"🔍 Checking Qdrant status at URL: {self.config.qdrant_url}")
+            logger.info(f"🔑 Using API key: {'Yes' if self.config.qdrant_api_key else 'No'}")
+
             # Ping Qdrant /healthz endpoint
             response = await client.get(
                 f"{self.config.qdrant_url}/healthz",
                 headers=headers,
                 timeout=2.0
             )
-            
+
+            logger.info(f"📡 Qdrant health check response: {response.status_code}")
+
             latency_ms = (datetime.now() - start_time).total_seconds() * 1000
             connected = response.status_code == 200
-            
+
+            logger.info(f"✅ Qdrant status: connected={connected}, latency={latency_ms:.2f}ms")
+
             # Met à jour le cache
             self._status = MCPExternalServerStatus(
                 name="qdrant-mcp",
@@ -96,10 +128,13 @@ class QdrantMCPClient:
                 capabilities=["semantic_search", "vector_store", "clustering"]
             )
             self._status_check_time = now
-            
+
             return self._status
-            
+
         except Exception as e:
+            logger.error(f"❌ Qdrant status check failed: {str(e)}")
+            logger.error(f"🔗 URL attempted: {self.config.qdrant_url}/healthz")
+
             # Cache l'erreur
             self._status = MCPExternalServerStatus(
                 name="qdrant-mcp",

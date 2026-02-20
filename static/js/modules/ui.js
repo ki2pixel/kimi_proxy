@@ -9,7 +9,6 @@ import {
     escapeHtml, 
     formatTokens, 
     formatPercentage,
-    formatContextSize,
     getProviderColor,
     getColorForPercentage,
     eventBus 
@@ -24,6 +23,7 @@ import {
     mergeDataSources,
     getCurrentSessionId
 } from './sessions.js';
+import { showMemoryModal } from './modals.js';
 
 // ============================================================================
 // CACHE DES ÉLÉMENTS DOM
@@ -626,6 +626,14 @@ export function initUIListeners() {
         updateStats();
     });
     
+    // Reset UI when auto-session creates a new session (model switch)
+    eventBus.on('auto_session:created', (data) => {
+        console.log('🔄 UI: Auto-session créée, reset de la jauge');
+        clearLogs();
+        updateDisplay(0, 0);
+        updateStats();
+    });
+    
     eventBus.on('session:name_changed', ({ name }) => {
         const nameEl = getElement('session-name');
         if (nameEl) nameEl.textContent = name;
@@ -707,5 +715,16 @@ export function initUIListeners() {
     // Affichage général
     eventBus.on('display:update', ({ tokens, percentage, cumulativeTokens }) => {
         updateDisplay(tokens, percentage, cumulativeTokens);
+    });
+    
+    // Actions mémoire (boutons Similarité/Compresser)
+    eventBus.on('memory:compress:show', () => {
+        console.log('🧠 UI: Affichage modal compression mémoire');
+        showMemoryModal('compress');
+    });
+    
+    eventBus.on('memory:similarity:show', () => {
+        console.log('🧠 UI: Affichage modal similarité mémoire');
+        showMemoryModal('similarity');
     });
 }

@@ -10,6 +10,12 @@ DATABASE_FILE = "sessions.db"
 DEFAULT_PROVIDER = "managed:kimi-code"
 
 # ============================================================================
+# MCP TOOL RESPONSE CHUNKING
+# ============================================================================
+MCP_MAX_RESPONSE_TOKENS = 50000  # Limite par chunk de réponse MCP (50K tokens)
+MCP_CHUNK_OVERLAP_TOKENS = 1000  # Overlap entre chunks pour continuité
+
+# ============================================================================
 # RATE LIMITING
 # ============================================================================
 RATE_LIMITS = {
@@ -57,14 +63,6 @@ MCP_PATTERNS = {
     "mcp_tool": r"<mcp-tool[^>]*>.*?</mcp-tool>",
     # Détection contexte mémoire
     "context_memory": r"Contexte\s+précédent|Mémoire\s+de\s+la\s+session|Memory\s+from\s+previous",
-    "recall_tag": r"@recall\([^)]+\)",
-    "remember_tag": r"@remember\([^)]+\)",
-    # Détection memory-bank et outils associés
-    "mcp_memory_bank": r"(memory-bank|memory_bank_read|memory_bank_update|memory_bank_write|list_projects|list_project_files)",
-    # En-têtes de lecture de fichiers mémoire
-    "memory_header": r"(Reading file|Content of|File path):.*?memory-bank/.*?.md",
-    # En-têtes d'écriture et d'archivage dans la mémoire
-    "memory_write_header": r"(Writing to|Created file|Archiving to):.*?memory-bank/.*?.md",
     # =========================================================================
     # NOUVEAUX SERVEURS MCP - Intégration Phase 4
     # =========================================================================

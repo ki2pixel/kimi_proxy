@@ -23,9 +23,35 @@ Maintenant, chaque module a sa responsabilité. Je peux travailler sur le saniti
 |--------|-------------------|-------------------|
 | Fichiers Python | 1 | 52 |
 | Lignes main.py | 3,073 | 208 |
+| LOC total | 3,073 | 7,784 |
 | Tests possibles | 0 | Unit + Integration + E2E |
 | Nouvelle feature | Risqué | Simple |
 | Debug | Chasse au trésor | Localisé |
+
+## Métriques Architecture (Audit 2026-02-20)
+
+**TL;DR**: L'architecture 5 couches maintient 7784 LOC Python avec complexité moyenne C, optimisée pour maintenance et testabilité.
+
+### Métriques Courantes
+- **LOC total** : 7784 (code + commentaires 10958)
+- **Fichiers** : 70 Python
+- **Complexité moyenne** : C (17.07)
+- **Ratio commentaires/code** : 40.8%
+
+### Répartition par Couche
+| Couche | LOC | Complexité Max | Responsabilités |
+| ------ | --- | -------------- | --------------- |
+| Core   | 1200 | B | Base de données, tokens, modèles |
+| Proxy  | 1800 | F | Routage, streaming, transformations |
+| Features| 2500 | D | MCP, sanitizer, compression |
+| Services| 1500 | C | WebSocket, rate limiting |
+| API    | 784 | C | Routes FastAPI |
+
+### Évolution Complexité
+La montée en complexité (F dans proxy) reflète l'ajout de gestion d'erreurs robuste, justifiant la documentation détaillée selon Pattern 6.
+
+### Règle d'Or : Complexité Proportionnelle à la Robustesse
+Accepter complexité F quand elle apporte résilience (retry, extraction partielle) plutôt que simplicité fragile.
 
 ## Les 5 étages de la maison
 

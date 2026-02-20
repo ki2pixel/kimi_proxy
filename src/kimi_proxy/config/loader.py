@@ -11,6 +11,30 @@ from ..core.exceptions import ConfigurationError
 _config_cache: Optional[Dict[str, Any]] = None
 
 
+def _expand_env_vars(obj: Any) -> Any:
+    """
+    Récursivement étend les variables d'environnement ${VAR} dans la config.
+    
+    Args:
+        obj: Valeur à traiter (str, dict, list)
+        
+    Returns:
+        Valeur avec variables d'environnement expansiées
+    """
+    if isinstance(obj, str):
+        # Remplace ${VAR} par la valeur de l'environnement
+        import re
+        def replace_env_var(match):
+            var_name = match.group(1)
+            return os.environ.get(var_name, match.group(0))
+        return re.sub(r'\$\{([^}]+)\}', replace_env_var, obj)
+    elif isinstance(obj, dict):
+        return {k: _expand_env_vars(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_expand_env_vars(item) for item in obj]
+    return obj
+
+
 def _clear_config_cache():
     """Vide le cache de configuration."""
     global _config_cache
@@ -53,12 +77,14 @@ def load_config(config_path: str = None) -> Dict[str, Any]:
     try:
         import tomllib
         with open(path, "rb") as f:
-            _config_cache = tomllib.load(f)
+            raw_config = tomllib.load(f)
+            _config_cache = _expand_env_vars(raw_config)
     except ImportError:
         try:
             import tomli
             with open(path, "rb") as f:
-                _config_cache = tomli.load(f)
+                raw_config = tomli.load(f)
+                _config_cache = _expand_env_vars(raw_config)
         except ImportError:
             raise ConfigurationError(
                 message="tomllib ou tomli requis pour charger la configuration",

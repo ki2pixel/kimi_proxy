@@ -119,3 +119,57 @@ def format_alert_message(level: str, percentage: float) -> str:
         "caution": f"⚡ Attention: {percentage:.1f}%"
     }
     return alerts.get(level, f"Niveau: {level} - {percentage:.1f}%")
+
+
+def create_context_limit_alert(metrics: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Crée une alerte basée sur les métriques de contexte.
+    
+    Args:
+        metrics: Métriques de contexte (session_id, estimated_tokens, max_context, etc.)
+        
+    Returns:
+        Dictionnaire d'alerte ou None si pas d'alerte nécessaire
+    """
+    usage_percentage = metrics.get("usage_percentage", 0)
+    estimated_tokens = metrics.get("estimated_tokens", 0)
+    max_context = metrics.get("max_context", 0)
+    
+    # Seuils personnalisés pour le contexte
+    if usage_percentage >= 95:
+        return {
+            "level": "critical",
+            "color": "#ef4444",
+            "message": f"🚨 CONTEXTE CRITIQUE: {estimated_tokens:,}/{max_context:,} tokens ({usage_percentage:.1f}%)",
+            "recommendations": [
+                "Utiliser immédiatement le bouton 'Compresser'",
+                "Réduire la longueur de l'historique",
+                "Activer le sanitizer pour nettoyer les messages"
+            ],
+            "metrics": metrics
+        }
+    elif usage_percentage >= 85:
+        return {
+            "level": "warning", 
+            "color": "#f97316",
+            "message": f"⚠️ CONTEXTE ÉLEVÉ: {estimated_tokens:,}/{max_context:,} tokens ({usage_percentage:.1f}%)",
+            "recommendations": [
+                "Considérer la compression du contexte",
+                "Vérifier les messages volumineux",
+                "Préparer une nouvelle session si nécessaire"
+            ],
+            "metrics": metrics
+        }
+    elif usage_percentage >= 75:
+        return {
+            "level": "caution",
+            "color": "#eab308", 
+            "message": f"⚡ ATTENTION CONTEXTE: {estimated_tokens:,}/{max_context:,} tokens ({usage_percentage:.1f}%)",
+            "recommendations": [
+                "Surveiller l'évolution du contexte",
+                "Optimiser les prochains messages"
+            ],
+            "metrics": metrics
+        }
+    
+    return None

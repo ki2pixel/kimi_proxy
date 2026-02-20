@@ -15,6 +15,7 @@ from .routes import (
     health,
     websocket,
     models,
+    memory,
 )
 
 # Router principal
@@ -32,7 +33,6 @@ api_router.include_router(compaction.router, prefix="/api/compaction", tags=["co
 api_router.include_router(health.router, prefix="", tags=["health"])
 
 # === API STANDARDS ===
-# Sert /models
-api_router.include_router(models.router, prefix="/models", tags=["models"])
-# Sert /chat/completions
+# ✅ Routes standardisées sous /api
+api_router.include_router(models.router, prefix="/api/models", tags=["models"])
 api_router.include_router(proxy.router, prefix="", tags=["proxy"])

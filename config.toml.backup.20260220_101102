@@ -1,0 +1,472 @@
+default_model = "kimi-code/kimi-for-coding"
+default_thinking = true
+default_yolo = false
+
+# ============================================
+# TOUS LES MODÈLES - Support complet Continue
+# ============================================
+
+# --- Kimi Code Officiel ---
+[models."kimi-code/kimi-for-coding"]
+provider = "managed:kimi-code"
+model = "kimi-for-coding"
+max_context_size = 262144
+capabilities = ["thinking", "video_in", "image_in"]
+
+# --- NVIDIA - Kimi K2.5 ---
+[models."nvidia/kimi-k2.5"]
+provider = "nvidia"
+model = "moonshotai/kimi-k2.5"
+max_context_size = 262144
+capabilities = ["thinking", "video_in", "image_in"]
+
+# --- NVIDIA - Kimi K2 Thinking ---
+[models."nvidia/kimi-k2-thinking"]
+provider = "nvidia"
+model = "moonshotai/kimi-k2-thinking"
+max_context_size = 262144
+capabilities = ["thinking", "video_in", "image_in"]
+
+# --- Mistral ---
+[models."mistral/codestral-2501"]
+provider = "mistral"
+model = "codestral-2501"
+max_context_size = 262144
+capabilities = ["tool_use", "autocomplete"]
+
+[models."mistral/mistral-large-2411"]
+provider = "mistral"
+model = "mistral-large-2411"
+max_context_size = 131072
+capabilities = ["tool_use"]
+
+[models."mistral/pixtral-large-2411"]
+provider = "mistral"
+model = "pixtral-large-2411"
+max_context_size = 131072
+capabilities = ["tool_use", "vision"]
+
+[models."mistral/ministral-8b-2410"]
+provider = "mistral"
+model = "ministral-8b-2410"
+max_context_size = 32768
+capabilities = ["tool_use", "autocomplete"]
+
+# --- OpenRouter ---
+[models."openrouter/aurora-alpha"]
+provider = "openrouter"
+model = "openrouter/aurora-alpha"
+max_context_size = 128000
+capabilities = ["tool_use"]
+
+# --- SiliconFlow ---
+[models."siliconflow/qwen3-32b"]
+provider = "siliconflow"
+model = "Qwen/Qwen3-32B"
+max_context_size = 131072
+capabilities = ["tool_use"]
+
+[models."siliconflow/deepseek-v3.2"]
+provider = "siliconflow"
+model = "deepseek-ai/DeepSeek-V3.2"
+max_context_size = 164000
+capabilities = ["tool_use"]
+
+# --- Groq ---
+[models."groq/compound"]
+provider = "groq"
+model = "groq/compound"
+max_context_size = 131072
+capabilities = ["tool_use", "ultra_fast"]
+
+[models."groq/qwen3-32b"]
+provider = "groq"
+model = "qwen/qwen3-32b"
+max_context_size = 131072
+capabilities = ["tool_use", "reasoning"]
+
+[models."groq/gpt-oss-120b"]
+provider = "groq"
+model = "openai/gpt-oss-120b"
+max_context_size = 131072
+capabilities = ["reasoning"]
+
+# --- Cerebras ---
+[models."cerebras/qwen3-235b"]
+provider = "cerebras"
+model = "qwen-3-235b-a22b-instruct-2507"
+max_context_size = 65536
+capabilities = ["tool_use", "thinking"]
+
+[models."cerebras/gpt-oss-120b"]
+provider = "cerebras"
+model = "gpt-oss-120b"
+max_context_size = 65536
+capabilities = ["tool_use", "thinking"]
+
+[models."cerebras/glm-4.7"]
+provider = "cerebras"
+model = "zai-glm-4.7"
+max_context_size = 64000
+capabilities = ["autocomplete", "coding"]
+
+# --- Gemini ---
+[models."gemini/gemini-2.5-flash-lite"]
+provider = "gemini"
+model = "gemini-2.5-flash-lite"
+max_context_size = 1048576
+capabilities = ["tool_use", "multimodal"]
+
+[models."gemini/gemini-3-flash-preview"]
+provider = "gemini"
+model = "gemini-3-flash-preview"
+max_context_size = 1048576
+capabilities = ["tool_use", "preview"]
+
+[models."gemini/gemini-2.5-flash"]
+provider = "gemini"
+model = "gemini-2.5-flash"
+max_context_size = 1048576
+capabilities = ["tool_use", "multimodal"]
+
+[models."gemini/gemini-2.5-pro"]
+provider = "gemini"
+model = "gemini-2.5-pro"
+max_context_size = 1048576
+capabilities = ["tool_use", "multimodal", "premium"]
+
+# ============================================
+# PROVIDERS
+# ============================================
+
+[providers."managed:kimi-code"]
+type = "kimi"
+base_url = "https://api.kimi.com/coding/v1"
+api_key = "${KIMI_API_KEY}"
+
+[providers."managed:kimi-code".oauth]
+storage = "file"
+key = "oauth/kimi-code"
+
+[providers.nvidia]
+type = "openai"
+base_url = "https://integrate.api.nvidia.com/v1"
+api_key = "${NVIDIA_API_KEY}"
+
+[providers.mistral]
+type = "openai"
+base_url = "https://api.mistral.ai/v1"
+api_key = "${MISTRAL_API_KEY}"
+
+[providers.openrouter]
+type = "openai"
+base_url = "https://openrouter.ai/api/v1"
+api_key = "${OPENROUTER_API_KEY}"
+
+[providers.siliconflow]
+type = "openai"
+base_url = "https://api.siliconflow.cn/v1"
+api_key = "${SILICONFLOW_API_KEY}"
+
+[providers.groq]
+type = "openai"
+base_url = "https://api.groq.com/openai/v1"
+api_key = "${GROQ_API_KEY}"
+
+[providers.cerebras]
+type = "openai"
+base_url = "https://api.cerebras.ai/v1"
+api_key = "${CEREBRAS_API_KEY}"
+
+[providers.gemini]
+type = "gemini"
+base_url = "https://generativelanguage.googleapis.com/v1beta"
+api_key = "${GEMINI_API_KEY}"
+
+# ============================================
+# SANITIZER - GESTION ACTIVE DU CONTEXTE (Phase 1)
+# ============================================
+
+[sanitizer]
+# Active/désactive le masking automatique des contenus verbeux
+enabled = true
+
+# Seuil de tokens pour masquer un message (défaut: 1000)
+# Les messages dépassant ce seuil seront remplacés par un aperçu
+threshold_tokens = 1000
+
+# Longueur de l'aperçu conservé (en caractères)
+preview_length = 200
+
+# Répertoire de stockage des contenus masqués
+tmp_dir = "/tmp/kimi_proxy_masked"
+
+# Tags déclencheurs pour le masking (en plus de la longueur)
+trigger_tags = ["@file", "@codebase", "@tool", "@console", "@output"]
+
+[sanitizer.routing]
+# Seuil pour le fallback automatique vers modèle plus grand (0.0 - 1.0)
+# Si prompt_tokens > max_context * threshold, basculement auto
+fallback_threshold = 0.90
+
+# Mapping modèles "Heavy Duty" par provider (fallback automatique)
+# Format: provider = ["modèle1", "modèle2"] (ordre de préférence)
+# Si vide, utilise le modèle avec le plus grand contexte du même provider
+heavy_duty_fallback = true
+
+# ============================================
+# PARAMÈTRES DE CONTRÔLE
+# ============================================
+
+[loop_control]
+max_steps_per_turn = 100
+max_retries_per_step = 3
+max_ralph_iterations = 0
+reserved_context_size = 50000
+
+[services.moonshot_search]
+base_url = "https://api.kimi.com/coding/v1/search"
+api_key = ""
+
+[services.moonshot_search.oauth]
+storage = "file"
+key = "oauth/kimi-code"
+
+[services.moonshot_fetch]
+base_url = "https://api.kimi.com/coding/v1/fetch"
+api_key = ""
+
+[services.moonshot_fetch.oauth]
+storage = "file"
+key = "oauth/kimi-code"
+
+[mcp.client]
+tool_call_timeout_ms = 60000
+
+# ============================================
+# PROXY - Configuration streaming et timeouts
+# ============================================
+
+[proxy]
+# Timeout de connexion (secondes)
+connect_timeout = 10.0
+
+# Timeout de lecture pour streaming (secondes)
+# Surcharger par provider ci-dessous
+stream_timeout = 120.0
+
+# Nombre de retries sur erreur réseau
+max_retries = 2
+
+# Délai initial entre retries (backoff exponentiel)
+retry_delay = 1.0
+
+# Timeouts spécifiques par provider (optionnel)
+[proxy.timeouts]
+gemini = 180.0
+kimi = 120.0
+nvidia = 150.0
+mistral = 120.0
+openrouter = 150.0
+siliconflow = 120.0
+groq = 60.0
+cerebras = 60.0
+
+# ============================================
+# COMPACTION - Phase 2 Fonctionnalités Utilisateur
+# ============================================
+
+[compaction]
+# Active la compaction automatique du contexte
+enabled = true
+
+# Seuil de pourcentage pour déclencher l'alerte compaction
+threshold_percentage = 80
+
+# Seuil critique pour le bouton d'urgence (Phase 3)
+critical_threshold = 95
+
+# Nombre maximum d'échanges récents à préserver (2 = 4 messages: 2 user + 2 assistant)
+max_preserved_messages = 2
+
+# Nombre minimum de tokens pour déclencher une compaction
+min_tokens_to_compact = 500
+
+# Nombre minimum de messages pour déclencher une compaction
+min_messages_to_compact = 6
+
+# Objectif de réduction de tokens (60%)
+target_reduction_ratio = 0.60
+
+# Tokens à réserver pour la compaction (espace tampon)
+reserved_tokens = 5000
+
+[compaction.auto]
+# Active la compaction automatique quand le seuil est atteint
+auto_compact = true
+
+# Seuil de déclenchement de l'auto-compaction (0.0 - 1.0)
+# Déclenche quand usage > threshold * max_context
+auto_compact_threshold = 0.85
+
+# Délai entre deux compactions automatiques (en minutes)
+auto_compact_cooldown = 5
+
+# Nombre maximum de compactions automatiques consécutives
+max_consecutive_auto_compactions = 3
+
+[compaction.ui]
+# Affiche le bouton de compaction manuelle
+show_compact_button = true
+
+# Seuil d'activation du bouton manuel (pourcentage)
+manual_button_threshold = 70
+
+# Affiche les tooltips détaillés sur la jauge
+show_detailed_tooltips = true
+
+# Active les notifications visuelles de compaction
+show_compaction_notifications = true
+
+[compaction.preview]
+# Nombre de messages à afficher dans le preview
+preview_messages_count = 5
+
+# Longueur max du preview de contenu (caractères)
+preview_max_length = 200
+
+# Affiche l'estimation des tokens économisés
+show_savings_estimate = true
+
+# ============================================
+# MCP PHASE 3 - Serveurs MCP Externes
+# ============================================
+
+[mcp]
+# Active l'intégration MCP Phase 3
+enabled = true
+
+# Serveur Qdrant MCP (github.com/qdrant/mcp-server-qdrant)
+[mcp.qdrant]
+enabled = true
+url = "https://f4852e4b-fc7f-400e-a45c-11c333a7f8df.eu-west-1-0.aws.cloud.qdrant.io"
+api_key = "${QDRANT_API_KEY}"
+collection = "kimi_proxy_memory"
+
+# Timeouts (ms)
+search_timeout_ms = 50        # Recherche sémantique <50ms
+indexing_timeout_ms = 1000    # Indexation de vecteur
+
+# Seuils
+similarity_threshold = 0.7    # Seuil de similarité (0-1)
+redundancy_threshold = 0.85   # Seuil de détection redondance
+
+# Serveur Context Compression MCP (github.com/rsakao/context-compression-mcp-server)
+[mcp.compression]
+enabled = true
+url = "http://localhost:8001"
+api_key = ""
+
+# Timeouts (ms)
+compression_timeout_ms = 5000   # Timeout compression
+deccompression_timeout_ms = 1000
+
+# Paramètres de compression
+default_algorithm = "context_aware"  # "zlib" | "context_aware"
+target_ratio = 0.5                   # Ratio cible (0.5 = 50% réduction)
+min_tokens_to_compress = 500         # Tokens minimum pour compresser
+
+# Retry configuration
+[mcp.retry]
+max_retries = 3
+retry_delay_ms = 100
+backoff_multiplier = 2.0
+
+# Priorités des serveurs (ordre de fallback)
+[mcp.priorities]
+semantic_search = ["qdrant", "local_fallback"]
+compression = ["context-compression-mcp", "zlib_fallback"]
+memory_storage = ["qdrant", "sqlite"]
+
+# Routage provider optimisé
+[mcp.routing]
+# Active le routage intelligent basé sur capacité contexte
+smart_routing = true
+
+# Marge de sécurité contexte (10% = garde 10% de marge)
+context_buffer_percent = 10
+
+# Coût maximum relatif (1.5 = 50% plus cher max pour fallback)
+max_cost_factor = 1.5
+
+# Latence maximum relative (2.0 = 2x plus lent max)
+max_latency_factor = 2.0
+
+# Seuils de décision
+[mcp.routing.thresholds]
+# Si contexte utilisé > 70%, évalue le fallback
+evaluate_fallback = 0.70
+# Si contexte utilisé > 90%, force le fallback
+force_fallback = 0.90
+# Score minimum pour accepter un provider
+min_routing_score = 0.3
+
+# ============================================
+# MCP PHASE 4 - Nouveaux Serveurs MCP
+# ============================================
+
+# Task Master MCP - Gestion de tâches (14 outils)
+[mcp.task_master]
+enabled = true
+url = "http://localhost:8002"
+api_key = "${MISTRAL_API_KEY}"
+
+# Timeouts (ms)
+timeout_ms = 30000
+
+# Répertoire racine des projets
+tasks_root = ".taskmaster"
+
+# Répertoires autorisés (sécurité)
+allowed_directories = ["."]
+
+# Sequential Thinking MCP - Raisonnement séquentiel (1 outil)
+[mcp.sequential_thinking]
+enabled = true
+url = "http://localhost:8003"
+api_key = ""
+
+# Timeouts (ms) - Plus long pour le raisonnement
+timeout_ms = 60000
+
+# Fast Filesystem MCP - Opérations fichiers (25 outils)
+[mcp.fast_filesystem]
+enabled = true
+url = "http://localhost:8004"
+api_key = ""
+
+# Timeouts (ms)
+timeout_ms = 10000
+
+# Répertoires autorisés (sécurité)
+allowed_directories = ["."]
+
+# JSON Query MCP - Requêtes JSON (3 outils)
+[mcp.json_query]
+enabled = true
+url = "http://localhost:8005"
+api_key = ""
+
+# Timeouts (ms)
+timeout_ms = 5000
+
+# Configuration commune Phase 4
+[mcp.phase4]
+# Active/désactive tous les serveurs Phase 4
+enabled = true
+
+# Auto-détection des serveurs démarrés
+auto_detect = true
+
+# Intervalle de vérification des statuts (secondes)
+status_check_interval = 30

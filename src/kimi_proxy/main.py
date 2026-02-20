@@ -61,6 +61,18 @@ def create_app() -> FastAPI:
     # Inclusion des routes API
     app.include_router(api_router)
     
+    # Route favicon.ico pour éviter les erreurs 404
+    @app.get("/favicon.ico")
+    async def favicon():
+        favicon_path = os.path.join(static_dir, "favicon.ico")
+        if os.path.exists(favicon_path):
+            from fastapi.responses import FileResponse
+            return FileResponse(favicon_path)
+        
+        # Fallback: répondre 204 No Content pour éviter l'erreur
+        from fastapi.responses import Response
+        return Response(status_code=204)
+    
     # Route principale (dashboard)
     @app.get("/", response_class=HTMLResponse)
     async def get_dashboard():
@@ -73,25 +85,55 @@ def create_app() -> FastAPI:
     # WebSocket endpoint
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
+        """
+        Endpoint WebSocket pour les mises à jour temps réel.
+
+        Envoie:
+        - Initialisation avec la session active
+        - Mises à jour de métriques en temps réel
+        - Alertes de seuils
+        - Événements de routing/sanitizer
+
+        Reçoit:
+        - Messages de commandes (compression, similarité, etc.)
+        """
         manager = create_connection_manager()
         await manager.connect(websocket)
-        
+
         try:
-            from .core.database import get_session_stats
-            
+            # Envoie l'état initial
             session = get_active_session()
             if session:
+                from .core.database import get_session_stats
                 stats = get_session_stats(session["id"])
                 await websocket.send_json({
                     "type": "init",
                     "session": session,
                     **stats
                 })
-            
+
+            # Garde la connexion ouverte et traite les messages entrants
             while True:
-                data = await websocket.receive_text()
-                # Traitement des messages entrants si nécessaire
-                
+                data_raw = await websocket.receive_text()
+                try:
+                    import json
+                    from .api.routes.memory import WEBSOCKET_HANDLERS
+                    
+                    data = json.loads(data_raw)
+                    message_type = data.get("type")
+
+                    # Dispatch vers le handler approprié
+                    if message_type in WEBSOCKET_HANDLERS:
+                        handler = WEBSOCKET_HANDLERS[message_type]
+                        await handler(websocket, data)
+                    else:
+                        print(f"⚠️ Type de message WebSocket inconnu: {message_type}")
+
+                except json.JSONDecodeError as e:
+                    print(f"⚠️ Message WebSocket invalide JSON: {e}")
+                except Exception as e:
+                    print(f"⚠️ Erreur traitement message WebSocket: {e}")
+
         except WebSocketDisconnect:
             manager.disconnect(websocket)
         except Exception as e:
