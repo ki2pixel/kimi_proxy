@@ -263,9 +263,82 @@ if access_count > FREQUENT_ACCESS_THRESHOLD:
 [YYYY-MM-DD HH:MM:SS] - [Summary concise]
 ```
 
-### Pattern 19 : Cross-References
-```markdown
-# Références croisées entre fichiers
-Voir `decisionLog.md#2026-02-18` pour détails techniques
-Référence : `productContext.md#architecture-patterns`
+## Security Patterns - Coding Standards Audit
+
+### Pattern 20 : Anti-innerHTML Security
+```javascript
+// ✅ BON - DOM APIs sécurisées
+const element = document.getElementById('container');
+element.textContent = userInput;  // Sécurisé, échappe automatiquement
+
+const link = document.createElement('a');
+link.href = url;
+link.textContent = title;
+element.appendChild(link);
+
+// ❌ MAUVAIS - innerHTML vulnérable XSS
+element.innerHTML = `<a href="${url}">${title}</a>`;  // DANGEREUX!
+```
+
+### Pattern 21 : Rate Limiting Obligatoire
+```python
+# ✅ BON - Rate limiting sur endpoints sensibles
+from flask_limiter import Limiter
+
+limiter = Limiter(app)
+
+@app.route('/api/sensitive')
+@limiter.limit("10/minute")
+def sensitive_endpoint():
+    return jsonify({'data': 'protected'})
+
+# ❌ MAUVAIS - Pas de protection
+@app.route('/api/sensitive')  # VULNÉRABLE!
+def sensitive_endpoint():
+    return jsonify({'data': 'exposed'})
+```
+
+### Pattern 22 : Database BLOB Defer Pattern
+```python
+# ✅ BON - Évite chargement BLOB inutile
+from sqlalchemy.orm import defer, selectinload
+
+query = Photo.query.options(
+    defer(Photo.data),  # Évite chargement BLOB
+    selectinload(Photo.previews).load_only(
+        PhotoPreview.id, PhotoPreview.variant
+    ),
+).filter_by(owner_username=current_user).order_by(Photo.created_at.desc())
+
+# ❌ MAUVAIS - Charge BLOBs inutilement
+photos = Photo.query.filter_by(owner_username=current_user).all()  # LENT!
+for photo in photos:
+    print(photo.data)  # CHARGE TOUS LES BLOBS!
+```
+
+### Pattern 23 : Frontend Module Cleanup
+```javascript
+// ✅ BON - Pattern init/destroy complet
+window.Photomaton.moduleName = {
+    init: function(options) {
+        // Initialisation
+        this._eventListeners = [];
+        // ...
+    },
+    
+    destroy: function() {
+        // Nettoyage mémoire
+        this._eventListeners.forEach(([el, event, handler]) => {
+            el.removeEventListener(event, handler);
+        });
+        this._eventListeners = [];
+    }
+};
+
+// ❌ MAUVAIS - Pas de destroy
+window.Photomaton.moduleName = {
+    init: function() {
+        // Pas de nettoyage = fuite mémoire
+    }
+};
 ```

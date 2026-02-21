@@ -284,50 +284,69 @@ Any time you create or modify documentation (README, docs/, Markdown guides), yo
 ## Skills Invocation Guide
 
 ### Use debugging-strategies Skill (@.continue/rules/debugging-strategies.md)
-- Systematic debugging techniques, profiling tools, and root cause analysis
-- Tracking down elusive bugs, investigating performance issues, understanding unfamiliar codebases
-- Debugging production issues, analyzing crash dumps and stack traces
-- Debugging distributed systems
+- Systematic debugging, profiling, root cause analysis for bugs and performance issues
 
 ### Use documentation Skill (@.continue/rules/documentation.md)
-- Technical writing, README guidelines, and punctuation rules
-- Writing documentation, READMEs, technical articles, or any prose that should avoid AI-generated feel
+- Technical writing, README guidelines, AI-free documentation
 
 ### Use kimi-proxy-config-manager Skill (@.continue/rules/kimi-proxy-config-manager.md)
-- Managing TOML/YAML configurations, adding new providers, setting up API keys
-- Troubleshooting configuration issues, provider routing, model mappings
-- Environment variable integration
+- TOML/YAML config management, provider routing, API key setup
 
 ### Use kimi-proxy-frontend-architecture Skill (@.continue/rules/kimi-proxy-frontend-architecture.md)
-- Working with real-time dashboard, ES6 modules, Chart.js visualizations
-- WebSocket-based live updates, modular frontend architecture
-- Performance optimization for frontend
+- Real-time dashboard, ES6 modules, Chart.js, WebSocket architecture
 
 ### Use kimi-proxy-mcp-integration Skill (@.continue/rules/kimi-proxy-mcp-integration.md)
-- MCP servers integration, memory management, semantic search
-- External tool integration, Phase 2-4 MCP features
-- Task Master, Sequential Thinking, Fast Filesystem, JSON Query servers
+- MCP servers, memory management, semantic search, Phase 2-4 features
 
 ### Use kimi-proxy-performance-optimization Skill (@.continue/rules/kimi-proxy-performance-optimization.md)
-- Optimizing token counting, database queries, WebSocket performance
-- Reducing latency, async optimization, database indexing
-- Caching strategies, resource utilization
+- Token counting, database queries, WebSocket performance, caching
 
 ### Use kimi-proxy-streaming-debug Skill (@.continue/rules/kimi-proxy-streaming-debug.md)
-- Debugging streaming errors: ReadError, TimeoutException, ConnectError
-- SSE streaming issues, proxy streaming failures
-- Token extraction problems, WebSocket connection issues
+- Streaming errors: ReadError, Timeout, ConnectError, SSE issues
 
 ### Use kimi-proxy-testing-strategies Skill (@.continue/rules/kimi-proxy-testing-strategies.md)
-- Writing tests, debugging issues, ensuring system reliability
-- Unit tests, integration tests, E2E testing, performance testing
-- pytest-asyncio strategies
+- Unit tests, integration, E2E, performance testing with pytest-asyncio
 
 ### Use taskmaster Skill (@.continue/rules/taskmaster.md)
 - Task management with Taskmaster MCP tools and CLI commands
-- Project planning, task expansion, complexity analysis
+
+## Database Schema Extensions (Phase 3 MCP)
+
+### New Tables Added
+- `mcp_memory_entries` - Standardized MCP memory storage
+- `mcp_compression_results` - Algorithmic compression results
+- `mcp_routing_decisions` - Context-aware routing decisions
+- `compaction_history` - Context compaction history
+
+## New Features (Recent Evolutions)
+
+### Context Compaction (Phase 1)
+- Automatic context reduction infrastructure
+- Intelligent history trimming based on relevance
+
+### Auto Memory (Phase 2)
+- Pattern detection and storage in conversations
+- Automatic promotion of frequent/episodic/semantic patterns
+
+### MCP Standard (Phase 3)
+- Complete MCP server integration
+- External tool orchestration (Qdrant, Compression servers)
+
+### Log Watcher
+- Real-time PyCharm/Continue monitoring
+- CompileChat block parsing and integration
+
+## Performance Patterns
+
+### VACUUM Optimization
+```python
+def vacuum_database() -> Dict[str, Any]:
+    """Cache-integrated VACUUM to avoid repeated expensive operations (30s min)"""
+    if current_time - last_vacuum < 30:
+        return {"skipped": True}  # Avoid costly operations
+```
 
 For Kimi Proxy development: Use primary skill + reference this file for unified conventions.
 
 ---
-**Version 2.6** - **< 10000 chars**
+**Version 2.7** - **< 10000 chars**

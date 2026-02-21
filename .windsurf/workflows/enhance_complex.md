@@ -52,5 +52,4 @@ Tu transformes une demande complexe en une stratégie d'exécution multi-étapes
 - **Task-Master** : Wrapper MCP automatique chargement .env local
 - **Outils disponibles** : parse-prd, expand, list, next, set-status, etc.
 - **Coût estimé** : ~$0.002-$0.01 par opération IA
-- **Structure du repo** : Kimi Proxy Dashboard (FastAPI + SQLite + WebSocket)
 ```
