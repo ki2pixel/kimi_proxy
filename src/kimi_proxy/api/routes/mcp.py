@@ -1,5 +1,5 @@
 """
-Routes API pour MCP Memory (Phase 2, Phase 3 et Phase 4).
+Routes API pour MCP Memory (Phase 2 & Phase 3).
 
 Endpoints Phase 2:
 - GET /sessions/{id}/memory: Stats mémoire d'une session
@@ -13,16 +13,6 @@ Endpoints Phase 3:
 - GET /memory/frequent: Mémoires fréquentes
 - POST /memory/cluster: Clustering de mémoires
 - GET /memory/similar/{session_id}: Mémoires similaires à une session
-
-Endpoints Phase 4:
-- GET /memory/servers/phase4: Statuts des serveurs MCP Phase 4
-- GET /memory/task-master/tasks: Liste des tâches
-- GET /memory/task-master/stats: Statistiques des tâches
-- POST /memory/task-master/call: Appel outil Task Master
-- POST /memory/sequential-thinking/call: Appel raisonnement séquentiel
-- POST /memory/filesystem/call: Appel outil Fast Filesystem
-- POST /memory/json-query/call: Appel outil JSON Query
-- POST /memory/tool/call: Appel générique d'outil MCP
 """
 from typing import Any, Dict, List, Optional
 
@@ -449,258 +439,23 @@ async def api_promote_frequent_patterns(session_id: int):
 
 
 # ============================================================================
-# Modèles Pydantic Phase 4
+# Routes Phase 3 - Serveurs MCP Externes
 # ============================================================================
 
-class TaskMasterToolRequest(BaseModel):
-    """Requête d'appel outil Task Master."""
-    tool_name: str = Field(..., description="Nom de l'outil (get_tasks, next_task, etc.)")
-    params: Dict[str, Any] = Field(default_factory=dict, description="Paramètres de l'outil")
-
-
-class SequentialThinkingRequest(BaseModel):
-    """Requête de raisonnement séquentiel."""
-    thought: str = Field(..., description="Pensée actuelle")
-    thought_number: int = Field(default=1, ge=1, description="Numéro de la pensée")
-    total_thoughts: int = Field(default=5, ge=1, description="Nombre total de pensées")
-    next_thought_needed: bool = Field(default=True, description="Si prochaine pensée nécessaire")
-    available_mcp_tools: Optional[List[str]] = Field(default=None, description="Outils MCP disponibles")
-
-
-class FastFilesystemToolRequest(BaseModel):
-    """Requête d'appel outil Fast Filesystem."""
-    tool_name: str = Field(..., description="Nom de l'outil (fast_read_file, etc.)")
-    params: Dict[str, Any] = Field(..., description="Paramètres de l'outil")
-
-
-class JsonQueryToolRequest(BaseModel):
-    """Requête d'appel outil JSON Query."""
-    tool_name: str = Field(..., description="Nom de l'outil (json_query_jsonpath, etc.)")
-    file_path: str = Field(..., description="Chemin du fichier JSON")
-    query: str = Field(..., description="Requête JSONPath ou terme de recherche")
-    limit: int = Field(default=5, ge=1, le=100, description="Nombre max de résultats")
-
-
-class GenericMCPToolRequest(BaseModel):
-    """Requête générique d'appel outil MCP."""
-    server_type: str = Field(..., description="Type de serveur (task_master, sequential_thinking, fast_filesystem, json_query)")
-    tool_name: str = Field(..., description="Nom de l'outil")
-    params: Dict[str, Any] = Field(default_factory=dict, description="Paramètres de l'outil")
-
-
-# ============================================================================
-# Routes Phase 4 - Serveurs MCP Avancés
-# ============================================================================
-
-@router.get("/memory/servers/phase4")
-async def api_get_phase4_server_statuses():
+@router.get("/memory/all-servers")
+async def api_get_all_mcp_server_statuses():
     """
-    Retourne le statut de tous les serveurs MCP Phase 4.
-    
-    Serveurs:
-    - Task Master MCP: Gestion de tâches (14 outils)
-    - Sequential Thinking MCP: Raisonnement séquentiel (1 outil)
-    - Fast Filesystem MCP: Opérations fichiers (25 outils)
-    - JSON Query MCP: Requêtes JSON (3 outils)
+    Retourne le statut de tous les serveurs MCP.
     """
     client = get_mcp_client()
-    statuses = await client.get_all_phase4_server_statuses()
-    
+
+    # Phase 3 uniquement (Qdrant, Context Compression)
+    statuses = await client.get_all_server_statuses()
+
     return {
         "servers": [s.to_dict() for s in statuses],
         "all_connected": all(s.connected for s in statuses),
         "connected_count": sum(1 for s in statuses if s.connected),
         "total_count": len(statuses),
-        "timestamp": __import__('datetime').datetime.now().isoformat()
-    }
-
-
-@router.get("/memory/task-master/tasks")
-async def api_get_task_master_tasks(status_filter: Optional[str] = None):
-    """
-    Récupère les tâches Task Master.
-    
-    Args:
-        status_filter: Filtrer par status (pending, in-progress, done, blocked, deferred)
-    """
-    client = get_mcp_client()
-    
-    if not client.is_task_master_available():
-        # Essayer de vérifier le statut
-        await client.check_task_master_status()
-    
-    tasks = await client.get_task_master_tasks(status_filter)
-    stats = await client.get_task_master_stats()
-    
-    return {
-        "tasks": [t.to_dict() for t in tasks],
-        "stats": stats.to_dict(),
-        "available": client.is_task_master_available()
-    }
-
-
-@router.get("/memory/task-master/stats")
-async def api_get_task_master_stats():
-    """Récupère les statistiques Task Master."""
-    client = get_mcp_client()
-    stats = await client.get_task_master_stats()
-    
-    return {
-        "stats": stats.to_dict(),
-        "available": client.is_task_master_available()
-    }
-
-
-@router.post("/memory/task-master/call")
-async def api_call_task_master_tool(request: TaskMasterToolRequest):
-    """
-    Appelle un outil Task Master.
-    
-    Outils disponibles:
-    - get_tasks, next_task, get_task, set_task_status, update_subtask
-    - parse_prd, expand_task, initialize_project, analyze_project_complexity
-    - expand_all, add_subtask, remove_task, add_task, complexity_report
-    """
-    client = get_mcp_client()
-    
-    result = await client.call_task_master_tool(request.tool_name, request.params)
-    
-    return {
-        "tool": request.tool_name,
-        "params": request.params,
-        "result": result,
-        "available": client.is_task_master_available()
-    }
-
-
-@router.post("/memory/sequential-thinking/call")
-async def api_call_sequential_thinking(request: SequentialThinkingRequest):
-    """
-    Appelle l'outil de raisonnement séquentiel.
-    
-    Le raisonnement séquentiel permet d'analyser des problèmes complexes
-    étape par étape avec possibilité de branches et révisions.
-    """
-    client = get_mcp_client()
-    
-    step = await client.call_sequential_thinking(
-        thought=request.thought,
-        thought_number=request.thought_number,
-        total_thoughts=request.total_thoughts,
-        next_thought_needed=request.next_thought_needed,
-        available_mcp_tools=request.available_mcp_tools
-    )
-    
-    return {
-        "step": step.to_dict(),
-        "available": client.is_sequential_thinking_available()
-    }
-
-
-@router.post("/memory/filesystem/call")
-async def api_call_fast_filesystem_tool(request: FastFilesystemToolRequest):
-    """
-    Appelle un outil Fast Filesystem.
-    
-    Outils disponibles (25):
-    - fast_list_allowed_directories, fast_read_file, fast_read_multiple_files
-    - fast_write_file, fast_large_write_file, fast_list_directory
-    - fast_get_file_info, fast_create_directory, fast_search_files
-    - fast_search_code, fast_get_directory_tree, fast_get_disk_usage
-    - fast_find_large_files, fast_edit_block, fast_safe_edit
-    - fast_edit_multiple_blocks, fast_edit_blocks, fast_extract_lines
-    - fast_copy_file, fast_move_file, fast_delete_file
-    - fast_batch_file_operations, fast_compress_files
-    - fast_extract_archive, fast_sync_directories
-    """
-    client = get_mcp_client()
-    
-    result = await client.call_fast_filesystem_tool(request.tool_name, request.params)
-    
-    return {
-        "tool": request.tool_name,
-        "params": request.params,
-        "result": result.to_dict(),
-        "available": client.is_fast_filesystem_available()
-    }
-
-
-@router.post("/memory/json-query/call")
-async def api_call_json_query_tool(request: JsonQueryToolRequest):
-    """
-    Appelle un outil JSON Query.
-    
-    Outils disponibles (3):
-    - json_query_jsonpath: Requête JSONPath
-    - json_query_search_keys: Recherche de clés
-    - json_query_search_values: Recherche de valeurs
-    """
-    client = get_mcp_client()
-    
-    result = await client.call_json_query_tool(
-        tool_name=request.tool_name,
-        file_path=request.file_path,
-        query=request.query,
-        limit=request.limit
-    )
-    
-    return {
-        "tool": request.tool_name,
-        "file_path": request.file_path,
-        "query": request.query,
-        "result": result.to_dict(),
-        "available": client.is_json_query_available()
-    }
-
-
-@router.post("/memory/tool/call")
-async def api_call_mcp_tool(request: GenericMCPToolRequest):
-    """
-    Appelle un outil MCP de manière générique.
-    
-    Types de serveurs:
-    - task_master: Gestion de tâches
-    - sequential_thinking: Raisonnement séquentiel
-    - fast_filesystem: Opérations fichiers
-    - json_query: Requêtes JSON
-    """
-    client = get_mcp_client()
-    
-    tool_call = await client.call_mcp_tool(
-        server_type=request.server_type,
-        tool_name=request.tool_name,
-        params=request.params
-    )
-    
-    return {
-        "server_type": request.server_type,
-        "tool": request.tool_name,
-        "status": tool_call.status,
-        "result": tool_call.result,
-        "execution_time_ms": round(tool_call.execution_time_ms, 2)
-    }
-
-
-@router.get("/memory/all-servers")
-async def api_get_all_mcp_server_statuses():
-    """
-    Retourne le statut de tous les serveurs MCP (Phase 3 + Phase 4).
-    """
-    client = get_mcp_client()
-    
-    # Phase 3
-    phase3_statuses = await client.get_all_server_statuses()
-    # Phase 4
-    phase4_statuses = await client.get_all_phase4_server_statuses()
-    
-    all_statuses = phase3_statuses + phase4_statuses
-    
-    return {
-        "phase3": [s.to_dict() for s in phase3_statuses],
-        "phase4": [s.to_dict() for s in phase4_statuses],
-        "all": [s.to_dict() for s in all_statuses],
-        "all_connected": all(s.connected for s in all_statuses),
-        "connected_count": sum(1 for s in all_statuses if s.connected),
-        "total_count": len(all_statuses),
         "timestamp": __import__('datetime').datetime.now().isoformat()
     }

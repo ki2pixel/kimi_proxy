@@ -9,7 +9,262 @@ import { loadInitialData } from './api.js';
 import { formatTokens, eventBus } from './utils.js';
 
 // ============================================================================
-// ÉTAT GLOBAL DES SESSIONS
+// SESSIONMANAGER CLASS - Gestion centralisée des sessions
+// ============================================================================
+
+/**
+ * SessionManager - Classe principale pour gérer les sessions et leur configuration
+ * Pourquoi : Centralise la logique de changement de session et mise à jour proxy
+ */
+export class SessionManager {
+    constructor() {
+        this.activeSession = null;
+        this.sessionHistory = [];
+        this.sessionProxyMap = new Map();
+    }
+
+    /**
+     * Change de session de manière atomique
+     * @param {string} sessionId - ID de la nouvelle session
+     * @param {Array} existingMetrics - Métriques existantes (optionnel)
+     * @returns {Promise<Object>} Nouvelle session chargée
+     */
+    async switchSession(sessionId, existingMetrics = null) {
+        try {
+            console.log(`🔄 [SessionManager] Changement vers session: ${sessionId}`);
+
+            // Récupère la session précédente
+            const previousSession = this.activeSession;
+
+            // Charge la nouvelle session
+            const newSession = await this.loadSession(sessionId);
+            if (!newSession) {
+                throw new Error(`Session ${sessionId} introuvable`);
+            }
+
+            // Ajouter les métriques existantes si fournies
+            if (existingMetrics) {
+                newSession.metrics = existingMetrics;
+                console.log(`📊 [SessionManager] Métriques existantes chargées: ${existingMetrics.length} éléments`);
+            }
+
+            // Mise à jour atomique de l'état
+            this.activeSession = newSession;
+            this.sessionHistory.push(newSession);
+
+            // Met à jour la configuration proxy
+            await this.updateProxyConfig(newSession);
+
+            // Émet l'événement de changement de session avec toutes les données nécessaires
+            eventBus.emit('sessionChanged', {
+                oldSession: previousSession,
+                newSession: newSession,
+                proxyConfig: this.getProxyConfig(newSession)
+            });
+
+            console.log(`✅ [SessionManager] Session changée: ${newSession.id}`);
+            return newSession;
+
+        } catch (error) {
+            console.error('❌ [SessionManager] Erreur changement session:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Charge une session depuis l'API
+     * @param {string} sessionId - ID de la session
+     * @returns {Promise<Object|null>} Données de session
+     */
+    async loadSession(sessionId) {
+        try {
+            const response = await fetch(`/api/sessions/${sessionId}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const sessionData = await response.json();
+            return sessionData.session || sessionData;
+        } catch (error) {
+            console.error(`Erreur chargement session ${sessionId}:`, error);
+            return null;
+        }
+    }
+
+    /**
+     * Met à jour la configuration proxy pour la session active
+     * @param {Object} session - Données de session
+     * @returns {Promise<void>}
+     */
+    async updateProxyConfig(session) {
+        try {
+            // Extraction du provider depuis le modèle
+            const provider = this.extractProvider(session.model);
+
+            // Configuration de routage
+            const routingConfig = {
+                model: session.model,
+                provider: provider,
+                api_key: session.api_key || await this.getApiKeyForProvider(provider),
+                timeout: this.getTimeoutForProvider(provider),
+                session_id: session.id
+            };
+
+            // Met à jour le cache local
+            this.sessionProxyMap.set(session.id, routingConfig);
+
+            // Met à jour via API
+            const response = await fetch('/api/proxy/config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(routingConfig)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(`Échec config proxy: ${errorData.detail || response.statusText}`);
+            }
+
+            console.log(`✅ [SessionManager] Config proxy mise à jour pour ${provider}`);
+        } catch (error) {
+            console.error('❌ [SessionManager] Erreur config proxy:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Extrait le provider depuis le nom du modèle
+     * @param {string} model - Nom du modèle (ex: "kimi-code", "gpt-4", "claude-3")
+     * @returns {string} Nom du provider
+     */
+    extractProvider(model) {
+        if (!model) return 'unknown';
+
+        // Mapping direct pour les modèles connus
+        const modelMappings = {
+            'kimi': 'nvidia',
+            'kimi-code': 'nvidia',
+            'kimi-code-2.5': 'nvidia',
+            'gpt': 'openai',
+            'claude': 'anthropic',
+            'mistral': 'mistral',
+            'llama': 'meta',
+            'gemini': 'google'
+        };
+
+        // Recherche par préfixe
+        for (const [prefix, provider] of Object.entries(modelMappings)) {
+            if (model.toLowerCase().startsWith(prefix)) {
+                return provider;
+            }
+        }
+
+        // Fallback: extraction du préfixe avant le premier tiret
+        const parts = model.split('-');
+        return parts.length > 1 ? parts[0].toLowerCase() : 'unknown';
+    }
+
+    /**
+     * Récupère la clé API pour un provider
+     * @param {string} provider - Nom du provider
+     * @returns {Promise<string|null>} Clé API
+     */
+    async getApiKeyForProvider(provider) {
+        try {
+            // Dans un environnement réel, ceci devrait venir des variables d'environnement
+            // ou d'un service de gestion des secrets
+            const apiKeys = {
+                'nvidia': process.env.KIMI_API_KEY || null,
+                'openai': process.env.OPENAI_API_KEY || null,
+                'anthropic': process.env.ANTHROPIC_API_KEY || null,
+                'mistral': process.env.MISTRAL_API_KEY || null
+            };
+
+            return apiKeys[provider] || null;
+        } catch (error) {
+            console.warn(`Clé API non trouvée pour ${provider}`);
+            return null;
+        }
+    }
+
+    /**
+     * Définit le timeout selon le provider
+     * @param {string} provider - Nom du provider
+     * @returns {number} Timeout en secondes
+     */
+    getTimeoutForProvider(provider) {
+        const timeouts = {
+            'nvidia': 30,
+            'openai': 60,
+            'anthropic': 120,
+            'mistral': 45,
+            'google': 60,
+            'meta': 90
+        };
+
+        return timeouts[provider] || 30;
+    }
+
+    /**
+     * Récupère la configuration proxy pour une session
+     * @param {Object} session - Données de session
+     * @returns {Object|null} Configuration proxy
+     */
+    getProxyConfig(session) {
+        return this.sessionProxyMap.get(session.id) || null;
+    }
+
+    /**
+     * Récupère la session active
+     * @returns {Object|null} Session active
+     */
+    getActiveSession() {
+        return this.activeSession;
+    }
+
+    /**
+     * Vérifie si une session est active
+     * @param {string} sessionId - ID de session
+     * @returns {boolean} True si active
+     */
+    isSessionActive(sessionId) {
+        return this.activeSession && this.activeSession.id === sessionId;
+    }
+
+    /**
+     * Nettoie les anciennes configurations proxy
+     * @param {number} maxHistory - Nombre maximum de sessions en historique
+     */
+    cleanupOldConfigs(maxHistory = 10) {
+        if (this.sessionHistory.length > maxHistory) {
+            const oldSessions = this.sessionHistory.splice(0, this.sessionHistory.length - maxHistory);
+            oldSessions.forEach(session => {
+                this.sessionProxyMap.delete(session.id);
+            });
+        }
+    }
+}
+
+// ============================================================================
+// INSTANCE GLOBALE (pour compatibilité)
+// ============================================================================
+
+let sessionManagerInstance = null;
+
+/**
+ * Récupère l'instance globale du SessionManager
+ * @returns {SessionManager}
+ */
+export function getSessionManager() {
+    if (!sessionManagerInstance) {
+        sessionManagerInstance = new SessionManager();
+    }
+    return sessionManagerInstance;
+}
+
+// ============================================================================
+// ÉTAT GLOBAL DES SESSIONS (legacy - à migrer)
 // ============================================================================
 
 let currentSessionId = null;
@@ -124,6 +379,12 @@ export function loadSessionData(data) {
 export async function reloadSessionData() {
     try {
         const data = await loadInitialData();
+        
+        // Reload complete session data including provider and model info
+        if (data && data.session) {
+            eventBus.emit('session:loaded', data);
+        }
+        
         return loadSessionData(data);
     } catch (error) {
         console.error('❌ Erreur rechargement données:', error);

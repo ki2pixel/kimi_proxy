@@ -11,14 +11,14 @@ default_yolo = false
 provider = "nvidia"
 model = "moonshotai/kimi-k2.5"
 max_context_size = 262144
-capabilities = ["thinking", "video_in", "image_in"]
+capabilities = ["thinking", "video_in", "image_in", "tool_use"]
 
 # --- NVIDIA - Kimi K2 Thinking ---
 [models."nvidia/kimi-k2-thinking"]
 provider = "nvidia"
 model = "moonshotai/kimi-k2-thinking"
 max_context_size = 262144
-capabilities = ["thinking", "video_in", "image_in"]
+capabilities = ["thinking", "video_in", "image_in", "tool_use"]
 
 # --- NVIDIA - Mistral Large 3 ---
 [models."nvidia/mistral-large-3-675b"]
@@ -32,37 +32,29 @@ capabilities = ["tool_use"]
 provider = "nvidia"
 model = "openai/gpt-oss-120b"
 max_context_size = 131072
-capabilities = ["reasoning"]
+capabilities = ["reasoning", "tool_use"]
 
 # --- NVIDIA - DeepSeek V3.2 ---
 [models."nvidia/deepseek-v3.2"]
 provider = "nvidia"
 model = "deepseek-ai/deepseek-v3.2"
 max_context_size = 164000
-capabilities = ["tool_use"]
+capabilities = ["tool_use", "thinking"]
 
 # --- NVIDIA - GLM-4.7 ---
 [models."nvidia/glm-4.7"]
 provider = "nvidia"
 model = "z-ai/glm4.7"
 max_context_size = 64000
-capabilities = ["autocomplete", "coding"]
+capabilities = ["autocomplete", "coding", "tool_use"]
 
 # --- NVIDIA - GLM-5 ---
 [models."nvidia/glm-5"]
 provider = "nvidia"
 model = "z-ai/glm5"
 max_context_size = 204800
-capabilities = ["tool_use"]
+capabilities = ["tool_use", "thinking"]
 
-# --- NVIDIA - Qwen3 Coder 480B ---
-[models."nvidia/qwen3-coder-480b"]
-provider = "nvidia"
-model = "qwen/qwen3-coder-480b-a35b-instruct"
-max_context_size = 262144
-capabilities = ["tool_use", "coding"]
-
-# --- NVIDIA - Qwen3 Next 80B Thinking ---
 [models."nvidia/qwen3-next-80b-a3b-thinking"]
 provider = "nvidia"
 model = "qwen/qwen3-next-80b-a3b-thinking"
@@ -74,32 +66,32 @@ capabilities = ["tool_use", "thinking"]
 provider = "openrouter"
 model = "openrouter/aurora-alpha"
 max_context_size = 128000
-capabilities = ["tool_use"]
+capabilities = ["tool_use", "coding"]
 
 # --- Gemini ---
 [models."gemini/gemini-2.5-flash-lite"]
 provider = "gemini"
 model = "gemini-2.5-flash-lite"
 max_context_size = 1048576
-capabilities = ["tool_use", "multimodal"]
+capabilities = ["tool_use", "multimodal", "coding", "autocomplete", "thinking"]
 
 [models."gemini/gemini-3-flash-preview"]
 provider = "gemini"
 model = "gemini-3-flash-preview"
 max_context_size = 1048576
-capabilities = ["tool_use", "preview"]
+capabilities = ["tool_use", "preview", "coding", "autocomplete", "thinking"]
 
 [models."gemini/gemini-2.5-flash"]
 provider = "gemini"
 model = "gemini-2.5-flash"
 max_context_size = 1048576
-capabilities = ["tool_use", "multimodal"]
+capabilities = ["tool_use", "multimodal", "coding", "autocomplete", "thinking"]
 
 [models."gemini/gemini-2.5-pro"]
 provider = "gemini"
 model = "gemini-2.5-pro"
 max_context_size = 1048576
-capabilities = ["tool_use", "multimodal", "premium"]
+capabilities = ["tool_use", "multimodal", "premium", "coding", "autocomplete", "thinking"]
 
 # ============================================
 # PROVIDERS
@@ -326,63 +318,3 @@ evaluate_fallback = 0.70
 force_fallback = 0.90
 # Score minimum pour accepter un provider
 min_routing_score = 0.3
-
-# ============================================
-# MCP PHASE 4 - Nouveaux Serveurs MCP
-# ============================================
-
-# Task Master MCP - Gestion de tâches (14 outils)
-[mcp.task_master]
-enabled = true
-url = "http://localhost:8002"
-api_key = "${MISTRAL_API_KEY}"
-
-# Timeouts (ms)
-timeout_ms = 30000
-
-# Répertoire racine des projets
-tasks_root = ".taskmaster"
-
-# Répertoires autorisés (sécurité)
-allowed_directories = ["."]
-
-# Sequential Thinking MCP - Raisonnement séquentiel (1 outil)
-[mcp.sequential_thinking]
-enabled = true
-url = "http://localhost:8003"
-api_key = ""
-
-# Timeouts (ms) - Plus long pour le raisonnement
-timeout_ms = 60000
-
-# Fast Filesystem MCP - Opérations fichiers (25 outils)
-[mcp.fast_filesystem]
-enabled = true
-url = "http://localhost:8004"
-api_key = ""
-
-# Timeouts (ms)
-timeout_ms = 10000
-
-# Répertoires autorisés (sécurité)
-allowed_directories = ["."]
-
-# JSON Query MCP - Requêtes JSON (3 outils)
-[mcp.json_query]
-enabled = true
-url = "http://localhost:8005"
-api_key = ""
-
-# Timeouts (ms)
-timeout_ms = 5000
-
-# Configuration commune Phase 4
-[mcp.phase4]
-# Active/désactive tous les serveurs Phase 4
-enabled = true
-
-# Auto-détection des serveurs démarrés
-auto_detect = true
-
-# Intervalle de vérification des statuts (secondes)
-status_check_interval = 30

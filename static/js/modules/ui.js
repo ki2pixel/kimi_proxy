@@ -26,6 +26,219 @@ import {
 import { showMemoryModal } from './modals.js';
 
 // ============================================================================
+// UIMANAGER CLASS - Gestion centralisée des boutons UI
+// ============================================================================
+
+/**
+ * UIManager - Classe principale pour gérer l'état des boutons UI
+ * Pourquoi : Centralise la logique de gestion d'état des boutons selon les capacités des sessions
+ */
+export class UIManager {
+    constructor() {
+        this.buttonStates = new Map();
+        this.sessionCapabilities = new Map();
+    }
+
+    /**
+     * Met à jour l'état de tous les boutons selon la session active
+     * @param {Object} session - Données de session
+     */
+    updateButtonStates(session) {
+        console.log(`🔄 [UIManager] Mise à jour boutons pour session: ${session.id}`);
+
+        const buttons = {
+            'compaction-btn': this.isCompactionSupported(session),
+            'warning-btn': this.isWarningSupported(session),
+            'export-btn': true, // Toujours supporté
+            'delete-btn': this.isDeleteSupported(session)
+        };
+
+        // Met à jour chaque bouton
+        for (const [buttonId, isEnabled] of Object.entries(buttons)) {
+            const button = document.getElementById(buttonId);
+            if (button) {
+                this.setButtonState(button, isEnabled, buttonId);
+            }
+        }
+
+        // Met à jour le cache des états
+        this.buttonStates.set(session.id, buttons);
+    }
+
+    /**
+     * Définit l'état d'un bouton (activé/désactivé)
+     * @param {HTMLElement} button - Élément bouton
+     * @param {boolean} isEnabled - État activé
+     * @param {string} buttonId - ID du bouton pour tooltips
+     */
+    setButtonState(button, isEnabled, buttonId) {
+        const wasEnabled = !button.disabled;
+
+        button.disabled = !isEnabled;
+        button.classList.toggle('disabled', !isEnabled);
+        button.setAttribute('aria-disabled', !isEnabled);
+
+        // Met à jour le tooltip si nécessaire
+        if (!isEnabled) {
+            const tooltip = button.querySelector('.tooltip') || button;
+            if (tooltip) {
+                tooltip.title = this.getDisabledTooltip(buttonId);
+            }
+        }
+
+        // Log si l'état a changé
+        if (wasEnabled !== isEnabled) {
+            console.log(`🔄 [UIManager] Bouton ${buttonId}: ${wasEnabled ? 'activé' : 'désactivé'} → ${isEnabled ? 'activé' : 'désactivé'}`);
+        }
+    }
+
+    /**
+     * Vérifie si la compaction est supportée pour cette session
+     * @param {Object} session - Données de session
+     * @returns {boolean} True si supporté
+     */
+    isCompactionSupported(session) {
+        if (!session?.model) return false;
+
+        // Extraction du provider
+        const provider = this.extractProvider(session.model);
+
+        // Providers qui ne supportent pas la compaction
+        const unsupportedProviders = ['nvidia', 'mistral'];
+        if (unsupportedProviders.includes(provider)) {
+            return false;
+        }
+
+        // Vérifications supplémentaires selon le modèle
+        const model = session.model.toLowerCase();
+
+        // Certains modèles spécifiques
+        if (model.includes('kimi-code-2.5')) {
+            return false; // Version expérimentale
+        }
+
+        return true;
+    }
+
+    /**
+     * Vérifie si les avertissements de contexte sont supportés
+     * @param {Object} session - Données de session
+     * @returns {boolean} True si supporté
+     */
+    isWarningSupported(session) {
+        if (!session?.total_tokens) return false;
+
+        // Seulement si le contexte est volumineux (>10k tokens)
+        const hasLargeContext = session.total_tokens > 10000;
+
+        // Certains providers ont des limites spécifiques
+        const provider = this.extractProvider(session.model);
+        const warningSupportedProviders = ['openai', 'anthropic', 'google'];
+
+        return hasLargeContext && warningSupportedProviders.includes(provider);
+    }
+
+    /**
+     * Vérifie si la suppression est supportée
+     * @param {Object} session - Données de session
+     * @returns {boolean} True si supporté
+     */
+    isDeleteSupported(session) {
+        // La suppression est généralement toujours supportée
+        // Mais pourrait être désactivée pour certaines sessions système
+        return session?.id && !session?.is_system;
+    }
+
+    /**
+     * Extrait le provider depuis le nom du modèle
+     * @param {string} model - Nom du modèle
+     * @returns {string} Provider extrait
+     */
+    extractProvider(model) {
+        if (!model) return 'unknown';
+
+        const modelMappings = {
+            'kimi': 'nvidia',
+            'kimi-code': 'nvidia',
+            'kimi-code-2.5': 'nvidia',
+            'gpt': 'openai',
+            'claude': 'anthropic',
+            'mistral': 'mistral',
+            'llama': 'meta',
+            'gemini': 'google'
+        };
+
+        for (const [prefix, provider] of Object.entries(modelMappings)) {
+            if (model.toLowerCase().startsWith(prefix)) {
+                return provider;
+            }
+        }
+
+        const parts = model.split('-');
+        return parts.length > 1 ? parts[0].toLowerCase() : 'unknown';
+    }
+
+    /**
+     * Récupère le tooltip pour un bouton désactivé
+     * @param {string} buttonId - ID du bouton
+     * @returns {string} Texte du tooltip
+     */
+    getDisabledTooltip(buttonId) {
+        const tooltips = {
+            'compaction-btn': 'Compaction non supportée pour ce modèle/provider',
+            'warning-btn': 'Avertissements nécessitent un contexte volumineux (>10k tokens) et un provider compatible',
+            'delete-btn': 'Suppression non autorisée pour cette session',
+            'export-btn': 'Export toujours disponible'
+        };
+
+        return tooltips[buttonId] || 'Fonctionnalité non disponible';
+    }
+
+    /**
+     * Récupère l'état des boutons pour une session
+     * @param {string} sessionId - ID de session
+     * @returns {Object} États des boutons
+     */
+    getButtonStates(sessionId) {
+        return this.buttonStates.get(sessionId) || {};
+    }
+
+    /**
+     * Réinitialise les états pour une nouvelle session
+     * @param {string} sessionId - ID de session
+     */
+    resetButtonStates(sessionId) {
+        this.buttonStates.delete(sessionId);
+    }
+
+    /**
+     * Met à jour les capacités connues pour un provider
+     * @param {string} provider - Nom du provider
+     * @param {Object} capabilities - Capacités du provider
+     */
+    updateProviderCapabilities(provider, capabilities) {
+        this.sessionCapabilities.set(provider, capabilities);
+    }
+}
+
+// ============================================================================
+// INSTANCE GLOBALE (pour compatibilité)
+// ============================================================================
+
+let uiManagerInstance = null;
+
+/**
+ * Récupère l'instance globale du UIManager
+ * @returns {UIManager}
+ */
+export function getUIManager() {
+    if (!uiManagerInstance) {
+        uiManagerInstance = new UIManager();
+    }
+    return uiManagerInstance;
+}
+
+// ============================================================================
 // CACHE DES ÉLÉMENTS DOM
 // ============================================================================
 
@@ -147,6 +360,13 @@ export function updateSessionDisplay(data) {
             <span class="w-2 h-2 rounded-full bg-${color}-500"></span>
             ${providerName}
         `;
+    }
+    
+    // Modèle
+    const modelEl = getElement('session-model');
+    if (modelEl) {
+        const modelName = session.model || '-';
+        modelEl.textContent = modelName;
     }
     
     // Max context

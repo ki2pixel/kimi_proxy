@@ -70,6 +70,7 @@ def detect_provider_from_model(model: str, models_config: Dict[str, Any]) -> Opt
 
 def should_auto_create_session(
     detected_provider: str,
+    detected_model: str,
     current_session: Optional[Dict[str, Any]]
 ) -> bool:
     """
@@ -77,6 +78,7 @@ def should_auto_create_session(
     
     Args:
         detected_provider: Provider détecté depuis la requête
+        detected_model: Modèle détecté depuis la requête
         current_session: Session active actuelle
         
     Returns:
@@ -85,10 +87,10 @@ def should_auto_create_session(
     if not current_session:
         return True  # Pas de session active, créer une nouvelle
     
-    current_provider = current_session.get("provider", "managed:kimi-code")
+    current_model = current_session.get("model")
     
-    # Si les providers sont différents, créer une nouvelle session
-    if detected_provider != current_provider:
+    # Si les modèles sont différents, créer une nouvelle session
+    if detected_model != current_model:
         return True
     
     return False
@@ -125,6 +127,18 @@ def auto_create_session(
         
         print(f"🔄 [AUTO SESSION] Nouvelle session créée: #{new_session['id']} "
               f"({detected_provider}/{detected_model})")
+        
+        # Diffuser via WebSocket pour que l'UI recharge
+        from ..services.websocket_manager import get_connection_manager
+        manager = get_connection_manager()
+        if manager:
+            import asyncio
+            asyncio.create_task(manager.broadcast({
+                "type": "auto_session_created",
+                "session": new_session,
+                "provider": detected_provider,
+                "model": detected_model
+            }))
         
         return new_session
         
@@ -165,7 +179,7 @@ def process_auto_session(
     mapped_model = map_model_name(model, models_config)
     
     # Vérifier si on doit créer une nouvelle session
-    if not should_auto_create_session(detected_provider, current_session):
+    if not should_auto_create_session(detected_provider, mapped_model, current_session):
         return current_session, False
     
     # Vérifier si l'auto-session est activée pour cette session

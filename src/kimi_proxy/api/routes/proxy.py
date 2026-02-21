@@ -26,18 +26,9 @@ from ...config.display import get_max_context_for_session
 from ...services.websocket_manager import get_connection_manager
 from ...services.rate_limiter import get_rate_limiter
 from ...services.alerts import check_threshold_alert, create_context_limit_alert
-from ...features.sanitizer import sanitize_messages
-from ...features.mcp import (
-    analyze_mcp_memory_in_messages, 
-    save_memory_metrics,
-    detect_and_store_memories,
-)
-from ...features.sanitizer.routing import route_dynamic_model
 from ...proxy.router import get_target_url_for_session, get_provider_host_header, map_model_name
-from ...proxy.transformers import convert_to_gemini_format, build_gemini_endpoint
 from ...proxy.stream import stream_generator, extract_usage_from_response
-from ...proxy.tool_utils import validate_and_fix_tool_calls
-from ...core.auto_session import process_auto_session
+from ...proxy.client import create_proxy_client
 
 router = APIRouter()
 
@@ -88,349 +79,96 @@ def check_context_limit_violation(
 @router.post("/chat/completions")
 async def proxy_chat(request: Request):
     """
-    Proxy vers l'API provider avec:
-    - Injection robuste de la clé API
-    - Mise à jour correcte du header Host
-    - Calcul des tokens
-    - SANITIZER: Masking des contenus verbeux
-    - ROUTING: Fallback dynamique vers modèle plus grand
-    - Broadcast WebSocket
-    - Support multi-provider (OpenAI-compatible + Gemini)
+    Proxy simple vers l'API provider.
+    Plus de traitement MCP - les serveurs locaux gèrent tout.
     """
     body = await request.body()
     headers = dict(request.headers)
     
-    # Récupère la configuration
+    # Configuration basique
     config = get_config()
     providers = config.get("providers", {})
     models = config.get("models", {})
-    sanitizer_config = config.get("sanitizer", {})
     
-    # ============================================================================
-    # PHASE 1: SANITIZER - Analyse et masking des messages
-    # ============================================================================
-    sanitized_body = body
-    masking_metadata = {"masked_count": 0, "tokens_saved": 0}
+    # Session - Vérifier si on doit créer une nouvelle session automatiquement
+    from ...core.auto_session import process_auto_session
     
-    # ============================================================================
-    # PHASE 2: MCP MEMORY - Analyse mémoire long terme
-    # ============================================================================
-    mcp_memory_analysis = {
-        'memory_tokens': 0,
-        'chat_tokens': 0,
-        'memory_ratio': 0,
-        'has_memory': False,
-        'segments': []
-    }
-    original_messages = []
+    current_session = get_active_session()
+    json_body = json.loads(body) if body else {}
     
-    try:
-        body_json = json.loads(body)
-        original_messages = body_json.get("messages", [])
-        
-        # Analyse MCP mémoire (Phase 2)
-        if original_messages:
-            mcp_result = analyze_mcp_memory_in_messages(original_messages)
-            mcp_memory_analysis = mcp_result.to_dict()
-            if mcp_memory_analysis['has_memory']:
-                print(f"🧠 [MCP MEMORY] Détecté: {mcp_memory_analysis['memory_tokens']} tokens mémoire "
-                      f"({mcp_memory_analysis['memory_ratio']:.1f}%) - "
-                      f"{mcp_memory_analysis['segment_count']} segment(s)")
-        
-        # Sanitizer (Phase 1)
-        if original_messages and sanitizer_config.get("enabled", True):
-            sanitized_messages, masking_metadata = sanitize_messages(
-                original_messages,
-                config={
-                    "enabled": True,
-                    "threshold_tokens": sanitizer_config.get("threshold_tokens", 1000),
-                    "preview_length": sanitizer_config.get("preview_length", 200)
-                }
-            )
-            
-            if masking_metadata["masked_count"] > 0:
-                body_json["messages"] = sanitized_messages
-                sanitized_body = json.dumps(body_json).encode('utf-8')
-                print(f"🧹 [SANITIZER] {masking_metadata['masked_count']} message(s) nettoyé(s), "
-                      f"~{masking_metadata['tokens_saved']} tokens économisés")
-        
-        body = sanitized_body
-    except Exception as e:
-        print(f"⚠️ [SANITIZER/MCP] Erreur lors de l'analyse: {e}")
+    # Traiter la logique d'auto-session
+    session, new_session_created = process_auto_session(json_body, current_session)
     
-    # ============================================================================
-    # AUTO SESSION: Détection et création automatique de session
-    # ============================================================================
-    session_created = False
-    try:
-        if 'body_json' in locals() and body_json:
-            session, session_created = process_auto_session(body_json, get_active_session())
-            if session_created:
-                # Notifie le frontend via WebSocket
-                manager = get_connection_manager()
-                await manager.broadcast({
-                    "type": "auto_session_created",
-                    "session": session,
-                    "message": f"Nouvelle session auto créée: {session.get('name')}"
-                })
-    except Exception as e:
-        print(f"⚠️ [AUTO SESSION] Erreur: {e}")
-        session = get_active_session()
-        session_created = False
-    
-    if not session:
-        session = get_active_session()
+    if new_session_created:
+        print(f"🔄 [AUTO SESSION] Nouvelle session créée: #{session['id']}")
     
     max_context = get_max_context_for_session(session, models, DEFAULT_MAX_CONTEXT)
     target_url = get_target_url_for_session(session, providers)
     provider_key = session.get("provider", "managed:kimi-code") if session else "managed:kimi-code"
     
-    # ============================================================================
-    # Calcul des tokens
-    # ============================================================================
+    # Calcul tokens simple
     estimated_tokens = 0
-    percentage = 0
-    content_preview = ""
-    request_tokens = 0
-    
     try:
         json_body = json.loads(body)
         messages = json_body.get("messages", [])
-        
-        # ============================================================================
-        # IDENTIFICATION DU "CONTEXTE FANTÔME"
-        # ============================================================================
-        # Calcule la taille du message système vs l'historique
-        system_message_tokens = 0
-        history_tokens = 0
-        user_message_tokens = 0
-        
         for msg in messages:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-            msg_tokens = count_tokens_tiktoken([msg])
-            
-            if role == "system":
-                system_message_tokens += msg_tokens
-            elif role == "user":
-                user_message_tokens += msg_tokens
-                # Le dernier message utilisateur est le "nouveau" contenu
-            else:  # assistant, etc.
-                history_tokens += msg_tokens
-        
-        history_tokens += user_message_tokens  # Tous les messages sauf système = historique
-        
-        # Log console pour identifier le contexte fantôme
-        print(f"\n📊 [CONTEXT BREAKDOWN] Session: {session['id'] if session else 'N/A'}")
-        print(f"   ├─ Message Système: {system_message_tokens:,} tokens ({system_message_tokens/max(request_tokens, 1)*100:.1f}%)")
-        print(f"   ├─ Historique:      {history_tokens:,} tokens ({history_tokens/max(request_tokens, 1)*100:.1f}%)")
-        print(f"   └─ Total Requête:   {request_tokens:,} tokens")
-        
-        if system_message_tokens > 5000:
-            print(f"   ⚠️  [GHOST CONTEXT] Système > 5k tokens! Vérifiez le prompt système.")
-        if len(messages) > 20:
-            print(f"   ⚠️  [LONG HISTORY] {len(messages)} messages dans l'historique")
-        
-        
-        # Vérifie si on doit faire un fallback de modèle
-        if session and request_tokens > 0:
-            updated_session, routing_notification = await route_dynamic_model(
-                session, request_tokens, models
-            )
-            if routing_notification:
-                session = updated_session
-                max_context = get_max_context_for_session(session, models)
-                manager = get_connection_manager()
-                await manager.broadcast({
-                    "type": "sanitizer_event",
-                    "event": routing_notification,
-                    "session_id": session["id"]
-                })
-                print(f"🔄 [ROUTING] Notification envoyée: {routing_notification['message']}")
-        
-        # Récupère les tokens cumulés pour les stats (facturation)
-        cumulative_totals = get_session_cumulative_tokens(session["id"]) if session else {"total_tokens": 0}
-        cumulative_tokens = cumulative_totals["total_tokens"]
-        
-        # La JAUGE montre uniquement les tokens de la requête ACTUELLE
-        # (Le contexte LLM est stateless - chaque requête contient tout le contexte)
-        # C'est request_tokens qui représente le remplissage réel de la fenêtre
-        total_current = request_tokens  # PAS cumulative + request
-        percentage = (total_current / max_context) * 100
-        
-        # Extrait un aperçu du contenu
-        preview_messages = original_messages if masking_metadata.get("masked_count", 0) > 0 else messages
-        for msg in preview_messages:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-            if role == "user" and content:
-                if isinstance(content, str):
-                    content_preview = content[:100]
-                elif isinstance(content, list) and len(content) > 0:
-                    text_parts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
-                    content_preview = (text_parts[0] if text_parts else str(content[0]))[:100]
-                break
-    except Exception as e:
-        request_tokens = 0
-        total_current = 0
-        percentage = 0
-        content_preview = f"Erreur parsing: {str(e)[:50]}"
+            estimated_tokens += count_tokens_tiktoken([msg])
+    except:
+        estimated_tokens = 0
     
-    # ============================================================================
-    # Sauvegarde en DB et broadcast
-    # ============================================================================
-    metric_id = None
-    if session and content_preview and not is_system_message(content_preview):
-        print(f"📊 [PROXY] Contexte actuel: {request_tokens:,} tokens ({percentage:.1f}%) - Cumul facturé: {cumulative_tokens:,} - {content_preview[:50]}...")
-        
-        update_session_first_prompt(session["id"], content_preview)
-        
-        # Sauvegarde aussi les métriques mémoire si présentes
-        if mcp_memory_analysis.get('has_memory'):
-            save_memory_metrics(
-                session_id=session["id"],
-                memory_tokens=mcp_memory_analysis['memory_tokens'],
-                chat_tokens=mcp_memory_analysis['chat_tokens'],
-                memory_ratio=mcp_memory_analysis['memory_ratio']
-            )
-        
-        metric_id = save_metric(
-            session_id=session["id"],
-            tokens=request_tokens,
-            percentage=percentage,
-            preview=content_preview,
-            is_estimated=True,
-            source='proxy',
-            memory_tokens=mcp_memory_analysis.get('memory_tokens', 0),
-            chat_tokens=mcp_memory_analysis.get('chat_tokens', 0),
-            memory_ratio=mcp_memory_analysis.get('memory_ratio', 0)
-        )
-        
-        alert = check_threshold_alert(percentage)
-        manager = get_connection_manager()
-        
-        # Calcule le delta (nouveau contenu ajouté = dernier message utilisateur)
-        delta_tokens = user_message_tokens if 'user_message_tokens' in locals() else 0
-        
-        await manager.broadcast({
-            "type": "metric",
-            "metric": {
-                "id": metric_id,
-                "timestamp": __import__('datetime').datetime.now().isoformat(),
-                "estimated_tokens": request_tokens,  # Taille totale de la requête (contexte)
-                "cumulative_tokens": total_current,   # Pour compatibilité (même que estimated)
-                "cumulative_billing": cumulative_tokens,  # Total facturé (cumul)
-                "delta_tokens": delta_tokens,         # Nouveau contenu réel ajouté
-                "system_tokens": system_message_tokens if 'system_message_tokens' in locals() else 0,
-                "history_tokens": history_tokens if 'history_tokens' in locals() else 0,
-                "percentage": percentage,
-                "content_preview": content_preview,
-                "is_estimated": True,
-                "source": "proxy"
-            },
-            "session_id": session["id"],
-            "session_updated": True,
-            "alert": alert,
-            "sanitizer": masking_metadata if masking_metadata.get("masked_count", 0) > 0 else None,
-            "mcp_memory": mcp_memory_analysis if mcp_memory_analysis.get('has_memory') else None
-        })
-        
-        # WebSocket event spécifique pour métriques mémoire
-        if mcp_memory_analysis.get('has_memory'):
-            await manager.broadcast({
-                "type": "memory_metrics_update",
-                "session_id": session["id"],
-                "timestamp": __import__('datetime').datetime.now().isoformat(),
-                "memory": {
-                    "memory_tokens": mcp_memory_analysis['memory_tokens'],
-                    "chat_tokens": mcp_memory_analysis['chat_tokens'],
-                    "total_tokens": mcp_memory_analysis['total_tokens'],
-                    "memory_ratio": mcp_memory_analysis['memory_ratio'],
-                    "segment_count": mcp_memory_analysis['segment_count']
-                }
-            })
-    
-    # ============================================================================
-    # VÉRIFICATION PROACTIVE DE LIMITE DE CONTEXTE
-    # ============================================================================
-    context_violation = check_context_limit_violation(
-        request_tokens, max_context, session["id"] if session else None
-    )
-    
-    if context_violation:
-        print(f"🚫 [CONTEXT LIMIT] Requête rejetée: {request_tokens:,} tokens > {max_context:,} limite")
-        print(f"   Ratio violation: {context_violation['violation_ratio']:.2f}")
-        print(f"   Recommandations: {', '.join(context_violation['recommendations'])}")
-        
-        # Notifie via WebSocket
-        manager = get_connection_manager()
-        await manager.broadcast({
-            "type": "context_limit_violation",
-            "session_id": session["id"] if session else None,
-            "violation": context_violation,
-            "message": f"Requête trop volumineuse ({request_tokens:,} tokens) - {context_violation['recommendations'][0]}"
-        })
-        
-        # Retourne une erreur explicite
+    # Vérification limite contexte
+    if estimated_tokens > max_context:
         return JSONResponse(
             content={
                 "error": "Context limit exceeded",
-                "details": context_violation,
-                "message": f"Requête de {request_tokens:,} tokens dépasse la limite de {max_context:,} tokens",
-                "recommendations": context_violation["recommendations"]
+                "message": f"Request of {estimated_tokens:,} tokens exceeds limit of {max_context:,} tokens"
             },
-            status_code=413  # Payload Too Large
+            status_code=413
         )
     
-    print(f"✅ [CONTEXT CHECK] Requête validée: {request_tokens:,} tokens ({percentage:.1f}%)")
-
-    # ============================================================================
-    # MONITORING DE PERFORMANCE CONTEXTE
-    # ============================================================================
-    try:
-        # Calcule les métriques de contexte pour monitoring
-        context_metrics = {
-            "session_id": session["id"] if session else None,
-            "estimated_tokens": request_tokens,
-            "max_context": max_context,
-            "usage_percentage": percentage,
-            "system_tokens": system_message_tokens if 'system_message_tokens' in locals() else 0,
-            "history_tokens": history_tokens if 'history_tokens' in locals() else 0,
-            "user_tokens": user_message_tokens if 'user_message_tokens' in locals() else 0,
-            "mcp_memory_tokens": mcp_memory_analysis.get('memory_tokens', 0) if 'mcp_memory_analysis' in locals() else 0,
-            "timestamp": __import__('datetime').datetime.now().isoformat()
-        }
+    # Métriques basiques
+    if session:
+        content_preview = ""
+        try:
+            messages = json_body.get("messages", [])
+            for msg in messages:
+                if msg.get("role") == "user" and msg.get("content"):
+                    content_preview = str(msg.get("content"))[:100]
+                    break
+        except:
+            content_preview = "Parse error"
         
-        # Vérifie les seuils d'alerte personnalisés pour le contexte
-        context_alert = create_context_limit_alert(context_metrics)
-        if context_alert:
-            manager = get_connection_manager()
-            await manager.broadcast({
-                "type": "context_performance_alert",
-                "alert": context_alert,
-                "metrics": context_metrics,
-                "session_id": session["id"] if session else None,
-                "message": f"Alerte contexte: {context_alert['level']} - {context_alert['message']}"
-            })
-            print(f"⚠️ [CONTEXT MONITOR] {context_alert['level']}: {context_alert['message']}")
-            
-    except Exception as e:
-        print(f"⚠️ [CONTEXT MONITOR] Erreur monitoring: {e}")
-
-    # ============================================================================
-    # Rate Limiting
-    # ============================================================================
-    rate_limiter = get_rate_limiter()
-    rate_status = await rate_limiter.throttle_if_needed()
+        metric_id = save_metric(
+            session_id=session["id"],
+            tokens=estimated_tokens,
+            percentage=(estimated_tokens / max_context) * 100,
+            preview=content_preview,
+            is_estimated=True,
+            source='proxy'
+        )
+        
+        # Vérifier auto-compaction après sauvegarde des métriques
+        from ...core.database import get_session_cumulative_tokens
+        from ...features.compaction.auto_trigger import get_auto_trigger
+        
+        cumulative_tokens = get_session_cumulative_tokens(session["id"])["total_tokens"]
+        auto_trigger = get_auto_trigger()
+        
+        # Vérifier si auto-compaction doit être déclenchée
+        compaction_result = await auto_trigger.check_and_trigger(
+            session_id=session["id"],
+            current_tokens=cumulative_tokens,  # Utiliser les tokens cumulés
+            max_context=max_context,
+            messages=json_body.get("messages", []),  # Messages de la requête
+            trigger_callback=lambda result, info: print(f"🗜️ [AUTO-COMPACTION] Déclenchée: {info}")
+        )
+        
+        if compaction_result:
+            print(f"✅ [AUTO-COMPACTION] Exécutée pour session {session['id']}: {compaction_result.tokens_saved} tokens économisés")
     
-    if provider_key in ["nvidia", "mistral", "openrouter"]:
-        rate_alert = rate_limiter.check_alert()
-        if rate_alert:
-            print(f"{rate_alert}")
+    print(f"📊 [PROXY] {estimated_tokens:,} tokens → {provider_key}")
     
-    # ============================================================================
-    # PROXY VERS LE PROVIDER
-    # ============================================================================
+    # Proxy direct
     return await _proxy_to_provider(
         body=body,
         headers=headers,
@@ -439,8 +177,9 @@ async def proxy_chat(request: Request):
         models=models,
         target_url=target_url,
         session=session,
-        metric_id=metric_id,
-        max_context=max_context
+        metric_id=metric_id if 'metric_id' in locals() else None,
+        max_context=max_context,
+        request_tokens=estimated_tokens
     )
 
 
@@ -453,9 +192,12 @@ async def _proxy_to_provider(
     target_url: str,
     session: dict,
     metric_id: int,
-    max_context: int
+    max_context: int,
+    request_tokens: int
 ):
-    """Effectue le proxy vers le provider."""
+    """
+    Effectue le proxy vers le provider IA avec gestion d'erreurs robuste et métriques temps réel.
+    """
     provider_config = providers.get(provider_key, {})
     provider_api_key = provider_config.get("api_key", "")
     provider_type = provider_config.get("type", "openai")
@@ -499,30 +241,21 @@ async def _proxy_to_provider(
             body_json['model'] = mapped_model
             print(f"📝 Modèle mappé: {original_model} → {mapped_model}")
         
-        # Nettoyage des messages pour compatibilité API stricte (Mistral, etc.)
-        # Supprime les clés internes commençant par underscore (_masked, _original_hash, etc.)
+        # Nettoyage basique des messages
         for msg in body_json.get('messages', []):
             keys_to_remove = [k for k in msg.keys() if k.startswith('_')]
             for k in keys_to_remove:
                 del msg[k]
         
-        # Validation et correction des tool calls (NVIDIA, etc.)
-        body_json, tool_stats = validate_and_fix_tool_calls(body_json)
-        if tool_stats["fixed_ids"] > 0:
-            print(f"🔧 [TOOL CALLS] {tool_stats['fixed_ids']} ID(s) corrigé(s) sur {tool_stats['total_tool_calls']} tool calls")
-            if tool_stats["invalid_ids"]:
-                print(f"   IDs invalides détectés: {tool_stats['invalid_ids']}")
-        
-        # Validation des tools pour Groq (limite 128 outils maximum)
-        if provider_key == "groq":
-            tools = body_json.get('tools', [])
-            if len(tools) > 128:
-                print(f"⚠️ [GROQ TOOLS LIMIT] {len(tools)} outils détectés, limite à 128 (troncature)")
-                body_json['tools'] = tools[:128]
+        # Mapping modèle simple
+        mapped_model = map_model_name(model_name, models)
+        if mapped_model != model_name:
+            body_json['model'] = mapped_model
+            print(f"📝 Modèle mappé: {original_model} → {mapped_model}")
         
         print(f"📤 Requête: model={body_json.get('model')}, stream={body_json.get('stream', False)}")
         
-        # Construction de l'URL cible
+        # Construction URL et body
         if provider_type == "gemini":
             target_endpoint = build_gemini_endpoint(
                 target_url, body_json.get('model'), provider_api_key, body_json.get('stream', False)
@@ -716,65 +449,37 @@ async def _proxy_to_provider(
                         )
                     
             except httpx.ReadError as e:
-                print(f"🔴 [PROXY] ReadError: {e}")
+                print(f"🔴 [PROXY] ReadError streaming: {e}")
                 return JSONResponse(
                     content={
-                        "error": "Erreur de lecture",
-                        "detail": str(e)
+                        "error": "Connexion interrompue par le provider",
+                        "detail": str(e),
+                        "type": "streaming_error"
                     },
                     status_code=502
                 )
                 
             except httpx.TimeoutException as e:
-                print(f"🔴 [PROXY] Timeout: {e}")
+                print(f"🔴 [PROXY] Timeout streaming: {e}")
                 return JSONResponse(
                     content={
-                        "error": "Timeout",
-                        "detail": str(e)
+                        "error": "Timeout lors du streaming",
+                        "detail": str(e),
+                        "type": "timeout_error"
                     },
                     status_code=504
                 )
-            
-            # Extrait les tokens de la réponse
-            if metric_id and session:
-                try:
-                    response_data = response.json()
-                    usage = extract_usage_from_response(response_data)
-                    if usage:
-                        print(f"✅ Vrais tokens reçus (non-stream): {usage}")
-                        
-                        real_data = update_metric_with_real_tokens(
-                            metric_id,
-                            usage["prompt_tokens"],
-                            usage["completion_tokens"],
-                            usage["total_tokens"],
-                            max_context
-                        )
-                        
-                        new_totals = get_session_total_tokens(session["id"])
-                        cumulative_total = new_totals["total_tokens"]
-                        cumulative_percentage = (cumulative_total / max_context) * 100
-                        
-                        alert = check_threshold_alert(cumulative_percentage)
-                        manager = get_connection_manager()
-                        await manager.broadcast({
-                            "type": "metric_updated",
-                            "metric_id": metric_id,
-                            "session_id": session["id"],
-                            "real_tokens": real_data,
-                            "cumulative_tokens": cumulative_total,
-                            "cumulative_percentage": cumulative_percentage,
-                            "alert": alert,
-                            "source": "proxy"
-                        })
-                except Exception as e:
-                    print(f"⚠️ Erreur extraction usage (non-stream): {e}")
-            
-            return JSONResponse(
-                content=response.json(),
-                status_code=response.status_code,
-                headers=_filter_response_headers(dict(response.headers))
-            )
+                
+            except Exception as e:
+                print(f"🔴 [PROXY] Erreur streaming inattendue: {e}")
+                return JSONResponse(
+                    content={
+                        "error": "Erreur streaming",
+                        "detail": str(e),
+                        "type": "unknown_error"
+                    },
+                    status_code=500
+                )
 
 
 # ============================================================================

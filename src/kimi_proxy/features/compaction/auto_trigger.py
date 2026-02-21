@@ -75,7 +75,7 @@ class CompactionAutoTrigger:
         
         Args:
             session_id: ID de la session
-            current_tokens: Nombre de tokens actuels
+            current_tokens: Nombre de tokens actuels (cumulés pour le seuil)
             max_context: Taille maximale du contexte
             messages: Messages de la session
             trigger_callback: Callback optionnel appelé après déclenchement
@@ -103,7 +103,7 @@ class CompactionAutoTrigger:
         # Utilise le seuil personnalisé de la session ou celui par défaut
         threshold = compaction_state.get("auto_compaction_threshold", self.config.threshold)
         
-        # Vérifie si le seuil est atteint
+        # Vérifie si le seuil est atteint - utilise current_tokens (qui devrait être cumulés)
         usage_ratio = current_tokens / max_context if max_context > 0 else 0
         if usage_ratio < threshold:
             return None

@@ -17,71 +17,59 @@ This skill provides comprehensive MCP integration guidance for Kimi Proxy Dashbo
 - Detects `<mcp-memory>`, `@memory[]`, `@recall()` tags
 - Distinguishes frequent/episodic/semantic memory types
 
-**Phase 3**: External MCP servers
+**Phase 3**: External MCP servers (via proxy)
 - Qdrant MCP: Semantic search (<50ms)
 - Context Compression MCP: Advanced compression
 
-**Phase 4**: Extended MCP ecosystem
-- Task Master MCP (14 tools): Task management
-- Sequential Thinking MCP (1 tool): Structured reasoning
-- Fast Filesystem MCP (25 tools): File operations
-- JSON Query MCP (3 tools): JSON querying
+**Phase 4**: Local MCP processes (in Continue.dev)
+- Task Master MCP: Task management (process local)
+- Sequential Thinking MCP: Structured reasoning (process local)
+- Fast Filesystem MCP: File operations (process local)
+- JSON Query MCP: JSON querying (process local)
 
 ## MCP Server Management
 
 ### Starting MCP Servers
 
 ```bash
-# Start all MCP servers automatically
+# Start Phase 3 servers (via proxy)
 ./scripts/start-mcp-servers.sh start
 
-# Start individual servers
-./scripts/start-mcp-servers.sh start-task-master
-./scripts/start-mcp-servers.sh start-sequential-thinking
-./scripts/start-mcp-servers.sh start-filesystem
-./scripts/start-mcp-servers.sh start-json-query
+# Phase 4 servers are now local processes in Continue.dev
+# No separate startup needed - managed by Continue.dev IDE
 
-# Check server status
-./scripts/start-mcp-servers.sh status
+# Check proxy server status
+curl http://localhost:8000/api/memory/all-servers
 ```
 
 ### Server Configuration
 
 ```toml
-# config.toml MCP configuration
-[mcp.task_master]
+# config.toml - Phase 3 servers only
+[mcp.qdrant]
 enabled = true
-url = "http://localhost:8002"
-timeout_ms = 30000
+url = "https://f4852e4b-fc7f-400e-a45c-11c333a7f8df.eu-west-1-0.aws.cloud.qdrant.io"
 
-[mcp.sequential_thinking]
+[mcp.context_compression]
 enabled = true
-url = "http://localhost:8003"
-timeout_ms = 60000
+url = "http://localhost:8001"
+endpoint = "/rpc"  # JSON-RPC 2.0
 
-[mcp.fast_filesystem]
-enabled = true
-url = "http://localhost:8004"
-timeout_ms = 10000
-workspace_path = "/home/kidpixel/kimi-proxy"
-
-[mcp.json_query]
-enabled = true
-url = "http://localhost:8005"
-timeout_ms = 5000
+# Phase 4 servers are configured in Continue.dev's config.yaml
+# See .continue/config.yaml for local MCP process configuration
 ```
 
 ### Server Health Monitoring
 
 ```bash
-# Check all MCP servers
+# Check all Phase 3 proxy servers
 curl http://localhost:8000/api/memory/all-servers
 
-# Check Phase 4 servers specifically
-curl http://localhost:8000/api/memory/servers/phase4
+# Phase 4 servers status visible in Continue.dev IDE
+# Local processes managed by Continue.dev's MCP system
 
-# Monitor server status
-watch -n 5 'curl -s http://localhost:8000/api/memory/all-servers | jq ".servers[].status"'
+# Monitor proxy server status
+watch -n 5 'curl -s http://localhost:8000/api/memory/all-servers | jq ".phase3[].status"'
 ```
 
 ## Task Master MCP Integration

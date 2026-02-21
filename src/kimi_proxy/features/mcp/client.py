@@ -23,6 +23,8 @@ BACKUP: Fichier original sauvegardé dans client.py.backup (1,230 lignes)
 """
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+import json
+import time
 
 from kimi_proxy.core.models import (
     QdrantSearchResult,
@@ -44,10 +46,6 @@ from .base.rpc import MCPRPCClient, MCPClientError, MCPConnectionError, MCPTimeo
 from .servers import (
     QdrantMCPClient,
     CompressionMCPClient,
-    TaskMasterMCPClient,
-    SequentialThinkingMCPClient,
-    FileSystemMCPClient,
-    JsonQueryMCPClient,
 )
 
 
@@ -225,10 +223,6 @@ class MCPExternalClient:
         # Instancie les clients spécialisés
         self.qdrant = QdrantMCPClient(self.config, self._rpc_client)
         self.compression = CompressionMCPClient(self.config, self._rpc_client)
-        self.task_master = TaskMasterMCPClient(self.config, self._rpc_client)
-        self.sequential = SequentialThinkingMCPClient(self.config, self._rpc_client)
-        self.filesystem = FileSystemMCPClient(self.config, self._rpc_client)
-        self.json_query = JsonQueryMCPClient(self.config, self._rpc_client)
         
         # Cache statut global
         self._status_cache: Dict[str, MCPExternalServerStatus] = {}
@@ -521,143 +515,11 @@ class MCPExternalClient:
         """Décompresse du contenu."""
         return await self.compression.decompress(compressed_data, algorithm)
     
-    # ========================================================================
-    # Task Master - Gestion de tâches (Phase 4)
-    # ========================================================================
-    
-    async def check_task_master_status(self) -> MCPPhase4ServerStatus:
-        """Vérifie le statut du serveur Task Master MCP."""
-        status = await self.task_master.check_status()
-        self._status_cache["task_master"] = status
-        return status
-    
-    async def call_task_master_tool(self, tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Appelle un outil Task Master."""
-        return await self.task_master.call_tool(tool_name, params)
-    
-    async def get_task_master_tasks(self, status_filter: Optional[str] = None) -> List[TaskMasterTask]:
-        """Récupère les tâches Task Master."""
-        return await self.task_master.get_tasks(status_filter)
-    
-    async def get_task_master_stats(self) -> TaskMasterStats:
-        """Récupère les statistiques Task Master."""
-        return await self.task_master.get_stats()
-    
-    # ========================================================================
-    # Sequential Thinking - Raisonnement séquentiel (Phase 4)
-    # ========================================================================
-    
-    async def check_sequential_thinking_status(self) -> MCPPhase4ServerStatus:
-        """Vérifie le statut du serveur Sequential Thinking MCP."""
-        status = await self.sequential.check_status()
-        self._status_cache["sequential_thinking"] = status
-        return status
-    
-    async def call_sequential_thinking(
-        self,
-        thought: str,
-        thought_number: int = 1,
-        total_thoughts: int = 5,
-        next_thought_needed: bool = True,
-        available_mcp_tools: Optional[List[str]] = None
-    ) -> SequentialThinkingStep:
-        """Appelle l'outil de raisonnement séquentiel."""
-        return await self.sequential.call_tool(
-            thought, thought_number, total_thoughts, next_thought_needed, available_mcp_tools
-        )
-    
-    # ========================================================================
-    # Fast Filesystem - Opérations fichiers (Phase 4)
-    # ========================================================================
-    
-    async def check_fast_filesystem_status(self) -> MCPPhase4ServerStatus:
-        """Vérifie le statut du serveur Fast Filesystem MCP."""
-        status = await self.filesystem.check_status()
-        self._status_cache["fast_filesystem"] = status
-        return status
-    
-    async def call_fast_filesystem_tool(self, tool_name: str, params: Dict[str, Any]) -> FileSystemResult:
-        """Appelle un outil Fast Filesystem.
-        
-        Exemple d'outils valides:
-        - fast_read_file
-        - fast_write_file
-        - fast_search_code
-        - fast_list_directory
-        - fast_edit_block
-        - fast_copy_file
-        - fast_delete_file
-        - ... (25 outils au total)
-        """
-        return await self.filesystem.call_tool(tool_name, params)
-    
-    # Helpers courants pour filesystem
-    async def fast_read_file(self, path: str, line_count: Optional[int] = None) -> FileSystemResult:
-        """Lit un fichier."""
-        return await self.filesystem.read_file(path, line_count)
-    
-    async def fast_write_file(self, path: str, content: str, append: bool = False) -> FileSystemResult:
-        """Écrit dans un fichier."""
-        return await self.filesystem.write_file(path, content, append)
-    
-    async def fast_search_code(self, path: str, pattern: str, max_results: int = 50) -> FileSystemResult:
-        """Recherche dans le code."""  
-        return await self.filesystem.search_code(path, pattern, max_results)
-    
-    async def fast_list_directory(self, path: str, recursive: bool = False) -> FileSystemResult:
-        """Liste un répertoire."""
-        return await self.filesystem.list_directory(path, recursive)
-    
-    # ========================================================================
-    # JSON Query - Requêtes JSON (Phase 4)
-    # ========================================================================
-    
-    async def check_json_query_status(self) -> MCPPhase4ServerStatus:
-        """Vérifie le statut du serveur JSON Query MCP."""
-        status = await self.json_query.check_status()
-        self._status_cache["json_query"] = status
-        return status
-    
-    async def call_json_query_tool(self, tool_name: str, file_path: str, query: str, limit: int = 5) -> JsonQueryResult:
-        """Appelle un outil JSON Query.
-        
-        Outils valides:
-        - json_query_jsonpath
-        - json_query_search_keys  
-        - json_query_search_values
-        """
-        return await self.json_query.call_tool(tool_name, file_path, query, limit)
-    
-    async def jsonpath_query(self, file_path: str, jsonpath_expr: str) -> JsonQueryResult:
-        """Requête JSONPath."""
-        return await self.json_query.jsonpath(file_path, jsonpath_expr)
-    
-    async def search_json_keys(self, file_path: str, key_name: str) -> JsonQueryResult:
-        """Recherche de clés JSON."""
-        return await self.json_query.search_keys(file_path, key_name)
-    
-    async def search_json_values(self, file_path: str, value: str, limit: int = 10) -> JsonQueryResult:
-        """Recherche de valeurs JSON."""
-        return await self.json_query.search_values(file_path, value, limit)
-    
-    # ========================================================================
-    # Statuts globaux
-    # ========================================================================
-    
     async def get_all_server_statuses(self) -> List[MCPExternalServerStatus]:
         """Récupère le statut de tous les serveurs MCP externes."""
         statuses = []
         statuses.append(await self.qdrant.check_status())
         statuses.append(await self.compression.check_status())
-        return statuses
-    
-    async def get_all_phase4_server_statuses(self) -> List[MCPPhase4ServerStatus]:
-        """Récupère le statut de tous les serveurs MCP Phase 4."""
-        statuses = []
-        statuses.append(await self.task_master.check_status())
-        statuses.append(await self.sequential.check_status())
-        statuses.append(await self.filesystem.check_status())
-        statuses.append(await self.json_query.check_status())
         return statuses
     
     # ========================================================================
@@ -671,22 +533,6 @@ class MCPExternalClient:
     def is_compression_available(self) -> bool:
         """Vérifie si le serveur de compression est disponible."""
         return self.compression.is_available()
-    
-    def is_task_master_available(self) -> bool:
-        """Vérifie si Task Master est disponible."""
-        return self.task_master.is_available()
-    
-    def is_sequential_thinking_available(self) -> bool:
-        """Vérifie si Sequential Thinking est disponible."""
-        return self.sequential.is_available()
-    
-    def is_fast_filesystem_available(self) -> bool:
-        """Vérifie si Fast Filesystem est disponible."""
-        return self.filesystem.is_available()
-    
-    def is_json_query_available(self) -> bool:
-        """Vérifie si JSON Query est disponible."""
-        return self.json_query.is_available()
     
     # ========================================================================
     # API générique (compatibilité ascendante)
@@ -717,119 +563,27 @@ class MCPExternalClient:
             if cached_result:
                 return cached_result
             
-            if server_type == "task_master":
-                result = await self.call_task_master_tool(tool_name, params)
-            elif server_type == "sequential_thinking":
-                step = await self.call_sequential_thinking(
-                    thought=params.get("thought", ""),
-                    thought_number=params.get("thought_number", 1),
-                    total_thoughts=params.get("total_thoughts", 5),
-                    next_thought_needed=params.get("next_thought_needed", True)
-                )
-                result = {
-                    "step_number": step.step_number,
-                    "thought": step.thought,
-                    "next_thought_needed": step.next_thought_needed,
-                    "total_thoughts": step.total_thoughts,
-                    "branches": step.branches
-                }
-            elif server_type == "fast_filesystem":
-                fs_result = await self.call_fast_filesystem_tool(tool_name, params)
-                result = {
-                    "success": fs_result.success,
-                    "path": fs_result.path,
-                    "operation": fs_result.operation,
-                    "content": fs_result.content,
-                    "bytes_affected": fs_result.bytes_affected
-                }
-                
-                # Compresse les réponses volumineuses du filesystem
-                if fs_result.content and isinstance(fs_result.content, str):
-                    result["content"] = await self._compress_large_response(fs_result.content)
-                    
-            elif server_type == "json_query":
-                jq_result = await self.call_json_query_tool(
-                    tool_name=tool_name,
-                    file_path=params.get("file_path", ""),
-                    query=params.get("query", ""),
-                    limit=params.get("limit", 5)
-                )
-                result = {
-                    "success": jq_result.success,
-                    "query": jq_result.query,
-                    "file_path": jq_result.file_path,
-                    "results": jq_result.results,
-                    "execution_time_ms": jq_result.execution_time_ms
-                }
-            else:
-                execution_time_ms = (datetime.now() - start_time).total_seconds() * 1000
-                return MCPToolCall(
-                    server_type=server_type,
-                    tool_name=tool_name,
-                    params=params,
-                    status="error",
-                    result={"error": f"Type de serveur inconnu: {server_type}"},
-                    execution_time_ms=execution_time_ms
-                )
-            
-            execution_time_ms = (datetime.now() - start_time).total_seconds() * 1000
-            
-            # Met en cache le résultat si approprié
-            self._cache_tool_result(server_type, tool_name, params, result, execution_time_ms)
-            
-            # Vérifie si la réponse doit être chunkée
-            if should_chunk_response(result, tool_name):
-                content_to_chunk = ""
-                if isinstance(result, dict) and "content" in result:
-                    content_to_chunk = str(result.get("content", ""))
-                else:
-                    content_to_chunk = str(result)
-                
-                # Chunk la réponse volumineuse
-                chunks = chunk_large_response(content_to_chunk)
-                
-                if len(chunks) > 1:
-                    # Retourne le premier chunk avec métadonnées de chunking
-                    chunked_result = result.copy() if isinstance(result, dict) else {"original_result": result}
-                    chunked_result["chunked"] = True
-                    chunked_result["total_chunks"] = len(chunks)
-                    chunked_result["current_chunk"] = 1
-                    chunked_result["content"] = chunks[0]
-                    
-                    # Stocke les chunks restants pour récupération ultérieure
-                    self._store_remaining_chunks(
-                        server_type, tool_name, params, chunks[1:], 
-                        result, execution_time_ms
-                    )
-                    
-                    print(f"📦 [MCP CHUNKING] Retour chunk 1/{len(chunks)} ({len(chunks[0]):,} chars)")
-                    
-                    return MCPToolCall(
-                        server_type=server_type,
-                        tool_name=tool_name,
-                        params=params,
-                        status="success",
-                        result=chunked_result,
-                        execution_time_ms=execution_time_ms
-                    )
-            
-            return MCPToolCall(
-                server_type=server_type,
-                tool_name=tool_name,
-                params=params,
-                status="success",
-                result=result,
-                execution_time_ms=execution_time_ms
-            )
-            
-        except Exception as e:
+            # Type de serveur inconnu
             execution_time_ms = (datetime.now() - start_time).total_seconds() * 1000
             return MCPToolCall(
                 server_type=server_type,
                 tool_name=tool_name,
                 params=params,
                 status="error",
-                result={"error": str(e)},
+                result={"error": f"Type de serveur inconnu: {server_type}"},
+                execution_time_ms=execution_time_ms
+            )
+            
+        except Exception as e:
+            execution_time_ms = (datetime.now() - start_time).total_seconds() * 1000
+            print(f" [MCP TOOL] Erreur lors de l'appel {server_type}.{tool_name}: {e}")
+            
+            return MCPToolCall(
+                server_type=server_type,
+                tool_name=tool_name,
+                params=params,
+                status="error",
+                result={"error": str(e), "server_type": server_type, "tool_name": tool_name},
                 execution_time_ms=execution_time_ms
             )
 

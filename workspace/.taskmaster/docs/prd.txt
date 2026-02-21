@@ -1,0 +1,44 @@
+# PRD: Refactorisation Critique de la Fonction `proxy_chat`
+
+## Contexte Métier
+La fonction `proxy_chat` (src/kimi_proxy/api/routes/proxy.py:89) présente une complexité cyclomatique critique (score F, 40+). Cette fonction est le point d'entrée principal du proxy Kimi, et sa maintenance est actuellement impossible en raison de sa complexité. Une refactorisation urgente est nécessaire pour assurer la stabilité et l'évolutivité du système.
+
+## Objectifs
+1. **Immédiat** : Documenter la fonction `proxy_chat` avec le Pattern 6 complet (préconditions, invariants, exemples) pour faciliter la compréhension et la maintenance.
+2. **Court terme** : Extraire des fonctions utilitaires pour la validation, le routing et la transformation des données.
+3. **Long terme** : Refactoriser la fonction en classes/services (`ProxyChatHandler`, `Router`, `Transformer`) pour respecter les principes SOLID et améliorer la maintenabilité.
+
+## Exigences Fonctionnelles
+### Phase 1 : Documentation (Pattern 6)
+- **Préconditions** : Décrire les conditions nécessaires avant l'exécution de la fonction.
+- **Invariants** : Documenter les invariants qui doivent être maintenus pendant l'exécution.
+- **Exemples** : Fournir des exemples d'utilisation avec des entrées et sorties attendues.
+
+### Phase 2 : Extraction de Fonctions Utilitaires
+- **Validation** : Extraire la logique de validation des entrées dans une fonction dédiée.
+- **Routing** : Extraire la logique de routage des requêtes vers les fournisseurs appropriés.
+- **Transformation** : Extraire la logique de transformation des réponses.
+
+### Phase 3 : Refactorisation en Classes/Services
+- **ProxyChatHandler** : Gérer la logique principale de la fonction `proxy_chat`.
+- **Router** : Gérer le routage des requêtes vers les fournisseurs.
+- **Transformer** : Gérer la transformation des réponses des fournisseurs.
+
+## Contraintes Techniques
+- Respecter l'architecture 5 couches du projet : API ← Services ← Features ← Proxy ← Core.
+- Utiliser des typages stricts et des patterns async/await.
+- Maintenir la compatibilité avec les tests existants (pytest-asyncio).
+- Documenter en français.
+- Utiliser `fast_edit_block` pour toutes les modifications de code.
+- Valider les structures de données avec `json_query_jsonpath` avant toute modification critique.
+
+## Livrables
+1. **Documentation** : Fichier de documentation Pattern 6 pour la fonction `proxy_chat`.
+2. **Fonctions Utilitaires** : Extraction et tests des fonctions de validation, routing et transformation.
+3. **Classes/Services** : Refactorisation complète en classes/services avec tests associés.
+
+## Critères de Succès
+- Réduction de la complexité cyclomatique de la fonction `proxy_chat` à un score B (8-12) en 1 mois.
+- Élimination des fonctions avec un score E/F en 2 semaines.
+- Passage de tous les tests existants et nouveaux.
+- Amélioration de la lisibilité et de la maintenabilité du code.

@@ -9,9 +9,11 @@ from . import exports
 from . import sanitizer
 from . import mcp
 from . import compression
+from . import compaction
 from . import health
 from . import websocket
 from . import models
+from . import memory
 
 __all__ = [
     "sessions",
@@ -21,7 +23,9 @@ __all__ = [
     "sanitizer",
     "mcp",
     "compression",
+    "compaction",
     "health",
     "websocket",
     "models",
+    "memory",
 ]

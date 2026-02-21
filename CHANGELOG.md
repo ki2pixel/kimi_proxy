@@ -7,6 +7,15 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+### Removed - Nettoyage du Code Hérité MCP
+- **Suppression fonctions obsolètes** : Retrait de 3 fonctions développées pour l'intégration MCP Phase 4 mais non utilisées en production
+  - `validate_and_fix_tool_calls` - Validation complexe des tool calls MCP (127 LOC)
+  - `reconstruct_from_corrupted_arguments` - Reconstruction paramètres MCP corrompus (54 LOC)  
+  - `infer_function_name_from_arguments` - Inférence noms de fonctions MCP (58 LOC)
+- **Mise à jour tests** : Suppression des tests associés aux fonctions supprimées
+- **Raison du nettoyage** : MCP Phase 4 (Task Master, Sequential Thinking, Fast Filesystem, JSON Query) désormais exécutés localement, plus dans le proxy
+- **Impact** : Réduction code mort sans perte de fonctionnalité active
+
 ## [2.4.1] - 2026-02-19
 
 ### Refactored - MCP Client Modularization

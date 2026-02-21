@@ -11,6 +11,10 @@ from ...core.database import (
     get_active_session,
     get_all_sessions,
     get_session_stats,
+    set_active_session,
+    delete_session,
+    delete_sessions_bulk,
+    vacuum_database,
 )
 from ...services.websocket_manager import get_connection_manager
 from ...config.loader import get_config
@@ -98,18 +102,38 @@ async def api_get_active_session():
     }
 
 
-@router.get("/{session_id}/memory")
-async def api_get_session_memory(session_id: int):
-    """Retourne les statistiques mémoire d'une session."""
-    from ...features.mcp.storage import get_memory_history
+@router.post("/{session_id}/activate")
+async def api_activate_session(session_id: int):
+    """Active une session spécifique."""
+    session = get_active_session()
+    if session and session["id"] == session_id:
+        return {"message": "Session déjà active", "session_id": session_id}
     
-    memory_stats = get_session_memory_stats(session_id)
-    history = get_memory_history(session_id)
+    # Désactive la session actuelle si elle existe
+    if session:
+        # Note: La fonction set_active_session gère la logique de désactivation
+        pass
+    
+    # Active la nouvelle session
+    success = set_active_session(session_id)
+    if not success:
+        return {"error": "Session non trouvée", "session_id": session_id}
+    
+    # Récupère la session activée
+    new_active = get_active_session()
+    
+    # Broadcast via WebSocket
+    manager = get_connection_manager()
+    await manager.broadcast({
+        "type": "session_activated",
+        "session_id": session_id,
+        "session": new_active
+    })
     
     return {
+        "message": "Session activée",
         "session_id": session_id,
-        "current": memory_stats,
-        "history": history
+        "session": new_active
     }
 
 
@@ -156,3 +180,117 @@ async def api_toggle_auto_session(request: Request):
         "enabled": get_auto_session_status(session["id"]),
         "session_id": session["id"]
     }
+
+
+@router.delete("/{session_id}")
+async def api_delete_session(session_id: int):
+    """Supprime une session spécifique et toutes ses données associées."""
+    # Vérifie que la session n'est pas active
+    active_session = get_active_session()
+    if active_session and active_session["id"] == session_id:
+        return {"error": "Impossible de supprimer une session active"}
+
+    # Supprime la session
+    if not delete_session(session_id):
+        return {"error": f"Session {session_id} introuvable ou erreur lors de la suppression"}
+
+    # Exécute VACUUM automatiquement après suppression
+    vacuum_result = vacuum_database()
+    print(f"🧹 VACUUM automatique après suppression session {session_id}: {vacuum_result.get('message', 'Erreur')}")
+
+    # Broadcast via WebSocket
+    manager = get_connection_manager()
+    await manager.broadcast({
+        "type": "session_deleted",
+        "session_id": session_id
+    })
+
+    return {"message": f"Session {session_id} supprimée avec succès"}
+
+
+@router.post("/vacuum")
+async def api_vacuum_database():
+    """Exécute VACUUM sur la base de données pour récupérer l'espace disque après suppressions."""
+    import os
+    import sqlite3
+    from ...core.constants import DATABASE_FILE
+    
+    try:
+        # Vérifie que le fichier existe
+        if not os.path.exists(DATABASE_FILE):
+            return {"error": "Base de données introuvable"}
+        
+        # Récupère la taille avant VACUUM
+        size_before = os.path.getsize(DATABASE_FILE)
+        
+        # Exécute VACUUM
+        conn = sqlite3.connect(DATABASE_FILE)
+        cursor = conn.cursor()
+        
+        # Démarre une transaction pour VACUUM
+        cursor.execute("VACUUM")
+        conn.commit()
+        conn.close()
+        
+        # Récupère la taille après VACUUM
+        size_after = os.path.getsize(DATABASE_FILE)
+        space_saved = size_before - size_after
+        space_saved_mb = space_saved / (1024 * 1024)
+        
+        return {
+            "message": "VACUUM exécuté avec succès",
+            "database": {
+                "path": DATABASE_FILE,
+                "size_before_bytes": size_before,
+                "size_after_bytes": size_after,
+                "space_saved_bytes": space_saved,
+                "space_saved_mb": round(space_saved_mb, 2)
+            }
+        }
+        
+    except Exception as e:
+        return {"error": f"Erreur lors du VACUUM: {str(e)}"}
+
+
+@router.get("/diagnostic")
+async def api_get_sessions_diagnostic():
+    """Fournit des informations de diagnostic sur les sessions et la base de données."""
+    import os
+    from ...core.database import get_all_sessions
+    from ...core.constants import DATABASE_FILE
+    
+    try:
+        # Informations sur les sessions
+        sessions = get_all_sessions()
+        session_count = len(sessions)
+        
+        # Informations sur la base de données
+        db_size = os.path.getsize(DATABASE_FILE) if os.path.exists(DATABASE_FILE) else 0
+        db_size_mb = db_size / (1024 * 1024)
+        
+        # Sessions par provider
+        provider_stats = {}
+        for session in sessions:
+            provider = session.get("provider", "unknown")
+            provider_stats[provider] = provider_stats.get(provider, 0) + 1
+        
+        # Sessions actives
+        active_sessions = [s for s in sessions if s.get("is_active")]
+        
+        return {
+            "database": {
+                "file_size_bytes": db_size,
+                "file_size_mb": round(db_size_mb, 2),
+                "path": DATABASE_FILE
+            },
+            "sessions": {
+                "total_count": session_count,
+                "active_count": len(active_sessions),
+                "inactive_count": session_count - len(active_sessions),
+                "by_provider": provider_stats
+            },
+            "note": "Pour récupérer l'espace disque après suppressions, exécutez: VACUUM sur la base de données"
+        }
+        
+    except Exception as e:
+        return {"error": f"Erreur diagnostic: {str(e)}"}

@@ -9,15 +9,17 @@
 // IMPORTS
 // ============================================================================
 
-import { eventBus } from './modules/utils.js';
+import { eventBus, showNotification } from './modules/utils.js';
 import { loadInitialData } from './modules/api.js';
-import { initGauge, initHistoryChart, initCompactionChart } from './modules/charts.js';
+import { getChartManager } from './modules/charts.js';
 import { 
     loadSessionData, 
     setCurrentMaxContext,
-    clearMetrics 
+    clearMetrics,
+    reloadSessionData
 } from './modules/sessions.js';
-import { connectWebSocket, disconnectWebSocket } from './modules/websocket.js';
+import { getWebSocketManager } from './modules/websocket.js';
+import { getUIManager } from './modules/ui.js';
 import { 
     initElements, 
     initUIListeners,
@@ -46,7 +48,7 @@ import {
     executeCompaction,
     toggleAutoCompaction
 } from './modules/compaction.js';
-import {
+import { 
     init as initMCP,
     fetchServerStatuses,
     fetchAdvancedMemoryStats,
@@ -77,35 +79,43 @@ async function initApp() {
         // 2. Cache les éléments DOM fréquemment utilisés
         initElements();
         
-        // 3. Initialise les graphiques Chart.js
-        initGauge();
-        initHistoryChart();
-        initCompactionChart();
+        // 3. Initialise les managers principaux
+        const chartManager = getChartManager();
+        const webSocketManager = getWebSocketManager();
+        const uiManager = getUIManager();
         
-        // 4. Configure les listeners de modules
+        // 4. Initialise les graphiques Chart.js
+        chartManager.initGauge();
+        chartManager.initHistoryChart();
+        chartManager.initCompactionChart();
+        
+        // 5. Configure les listeners de modules
         initUIListeners();
         initModalListeners();
         initCompactionListeners();
         
-        // 5. Charge les données initiales
+        // 6. Charge les données initiales
         await loadInitialAppData();
         
-        // 6. Démarre la connexion WebSocket
-        connectWebSocket();
+        // 7. Démarre la connexion WebSocket
+        webSocketManager.connect();
         
-        // 7. Démarre le polling de compaction
+        // 8. Démarre le polling de compaction
         startCompactionPolling();
         
-        // 8. Initialise le module MCP Phase 3
+        // 9. Initialise le module MCP Phase 3
         initMCP();
         
-        // 9. Configure les handlers EventBus pour les modales mémoire
+        // 10. Configure les handlers EventBus pour les modales mémoire
         setupMemoryModalHandlers();
         
-        // 10. Initialise le module Auto Session
+        // 11. Configure les handlers pour le changement de session
+        setupSessionChangeHandlers(chartManager, webSocketManager, uiManager);
+        
+        // 12. Initialise le module Auto Session
         await initAutoSession();
         
-        // 11. Expose les fonctions globales nécessaires
+        // 13. Expose les fonctions globales nécessaires
         exposeGlobals();
         exposeAutoSessionGlobals();
         
@@ -307,6 +317,12 @@ function exposeGlobals() {
         updateStats();
     };
     
+    // Session Management
+    window.toggleSelectAll = toggleSelectAll;
+    window.updateBulkDeleteButton = updateBulkDeleteButton;
+    window.deleteSelectedSessions = deleteSelectedSessions;
+    window.deleteSession = deleteSession;
+    
     // MCP Phase 3
     window.refreshMCPStatus = fetchServerStatuses;
     window.searchSimilar = async (query) => {
@@ -396,12 +412,60 @@ function setupMemoryModalHandlers() {
 }
 
 /**
+ * Configure les handlers pour le changement de session
+ * Pourquoi : Coordination entre tous les managers lors du changement de session
+ * @param {ChartManager} chartManager - Instance du ChartManager
+ * @param {WebSocketManager} webSocketManager - Instance du WebSocketManager  
+ * @param {UIManager} uiManager - Instance du UIManager
+ */
+function setupSessionChangeHandlers(chartManager, webSocketManager, uiManager) {
+    eventBus.on('sessionChanged', (event) => {
+        const { newSession } = event.detail;
+        
+        console.log(`🔄 [Main] Changement de session détecté: ${newSession.id}`);
+        
+        // 1. Met à jour le contexte de session pour ChartManager
+        chartManager.handleSessionChange(event);
+        
+        // 2. Met à jour l'ID de session active pour WebSocketManager
+        webSocketManager.setActiveSessionId(newSession.id);
+        
+        // 3. Met à jour l'état des boutons UI selon la session
+        uiManager.updateButtonStates(newSession);
+        
+        console.log(`✅ [Main] Gestionnaires de session synchronisés pour ${newSession.id}`);
+    });
+    
+    // Gestionnaire pour les suppressions de sessions (WebSocket)
+    eventBus.on('session:deleted', (data) => {
+        console.log(`🗑️ [Main] Session supprimée détectée: ${data.session_id}, rechargement du dropdown...`);
+        
+        // Recharge la liste des sessions pour mettre à jour le dropdown
+        // Note: On attend un court instant pour éviter les conflits de requêtes
+        setTimeout(() => {
+            loadSessions();
+        }, 100);
+    });
+}
+
+/**
  * Nettoyage avant fermeture de la page
  * Pourquoi : Ferme proprement les connexions et intervals
  */
 function cleanup() {
     console.log('🧹 Nettoyage...');
-    disconnectWebSocket();
+    
+    // Utilise les nouvelles instances de managers
+    const webSocketManager = getWebSocketManager();
+    const chartManager = getChartManager();
+    
+    // Ferme la connexion WebSocket
+    webSocketManager.disconnect();
+    
+    // Nettoie les graphiques
+    chartManager.destroy();
+    
+    // Arrête le polling de compaction
     stopCompactionPolling();
     
     // Nettoyer les modales mémoire
@@ -421,13 +485,324 @@ function cleanup() {
 document.addEventListener('DOMContentLoaded', initApp);
 
 // Nettoyage au déchargement
-window.addEventListener('beforeunload', cleanup);
+// ============================================================================
+// SESSION SWITCHING FUNCTIONS
+// ============================================================================
 
-// Gestion du rechargement de page (évite les erreurs de reconnexion)
-window.addEventListener('pageshow', (event) => {
-    if (event.persisted) {
-        // Page restaurée depuis le cache bfcache
-        console.log('🔄 Page restaurée depuis le cache');
-        connectWebSocket();
+/**
+ * Toggle la visibilité du sélecteur de session
+ */
+window.toggleSessionSelector = function() {
+    const selector = document.getElementById('sessionSelector');
+    if (selector.classList.contains('hidden')) {
+        loadSessions();
+        selector.classList.remove('hidden');
+    } else {
+        selector.classList.add('hidden');
+    }
+};
+
+/**
+ * Charge et affiche la liste des sessions disponibles
+ */
+async function loadSessions() {
+    try {
+        const response = await fetch('/api/sessions');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const sessions = await response.json();
+        const sessionList = document.getElementById('sessionList');
+        const currentSessionName = document.getElementById('currentSessionName');
+        
+        // Met à jour le nom de la session courante
+        const activeSession = sessions.find(s => s.is_active);
+        if (activeSession) {
+            currentSessionName.textContent = activeSession.name;
+        }
+        
+        // Génère la liste des sessions
+        sessionList.innerHTML = '';
+        
+        // Header avec sélection multiple
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'flex items-center justify-between p-3 border-b border-slate-700/50 mb-2';
+        headerDiv.innerHTML = `
+            <div class="flex items-center gap-3">
+                <input type="checkbox" id="selectAllSessions" class="w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-blue-500">
+                <label for="selectAllSessions" class="text-xs text-slate-400 cursor-pointer">Tout sélectionner</label>
+            </div>
+            <button id="bulkDeleteBtn" 
+                    class="hidden px-3 py-1 text-xs bg-red-600 hover:bg-red-500 text-white rounded transition-colors flex items-center gap-1">
+                <i data-lucide="trash-2" class="w-3 h-3"></i>
+                Supprimer sélection
+            </button>
+        `;
+        sessionList.appendChild(headerDiv);
+        
+        // Add event listener programmatically
+        const selectAllCheckbox = headerDiv.querySelector('#selectAllSessions');
+        selectAllCheckbox.addEventListener('change', toggleSelectAll);
+        
+        const bulkDeleteBtn = headerDiv.querySelector('#bulkDeleteBtn');
+        bulkDeleteBtn.addEventListener('click', deleteSelectedSessions);
+        
+        sessions.forEach(session => {
+            const sessionItem = document.createElement('div');
+            sessionItem.className = `flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all duration-200 ${
+                session.is_active 
+                    ? 'bg-blue-500/20 border border-blue-500/30' 
+                    : 'hover:bg-slate-600/80 hover:shadow-lg hover:shadow-slate-900/50 hover:scale-[1.02] hover:border-slate-600/50'
+            }`;
+            
+            sessionItem.onclick = () => switchSession(session.id);
+            
+            sessionItem.innerHTML = `
+                <div class="flex items-center gap-3">
+                    ${!session.is_active ? 
+                        `<input type="checkbox" class="session-checkbox w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-blue-500" value="${session.id}">` : 
+                        '<div class="w-4"></div>'
+                    }
+                    <div class="w-8 h-8 rounded-lg flex items-center justify-center ${
+                        session.is_active ? 'bg-blue-500/20' : 'bg-slate-700/50'
+                    }">
+                        <i data-lucide="${session.is_active ? 'folder-open' : 'folder'}" class="w-4 h-4 ${
+                            session.is_active ? 'text-blue-400' : 'text-slate-400'
+                        }"></i>
+                    </div>
+                    <div>
+                        <p class="text-white font-medium text-sm">#${session.id} ${session.name}</p>
+                        <p class="text-slate-400 text-xs">${session.provider} • ${session.model || 'N/A'}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    ${session.is_active ? 
+                        '<span class="text-xs text-blue-400 font-medium">ACTIVE</span>' : 
+                        `<button class="delete-session-btn text-slate-500 hover:text-red-400 transition-colors p-1 rounded hover:bg-red-500/10" 
+                                title="Supprimer la session">
+                            <i data-lucide="trash-2" class="w-3 h-3"></i>
+                        </button>`
+                    }
+                    <div class="text-xs text-slate-500">
+                        ${new Date(session.created_at).toLocaleDateString('fr-FR')}
+                    </div>
+                </div>
+            `;
+            
+            sessionList.appendChild(sessionItem);
+            
+            // Add event listeners programmatically
+            if (!session.is_active) {
+                const checkbox = sessionItem.querySelector('.session-checkbox');
+                if (checkbox) {
+                    checkbox.addEventListener('click', (e) => e.stopPropagation());
+                    checkbox.addEventListener('change', updateBulkDeleteButton);
+                }
+                
+                const deleteBtn = sessionItem.querySelector('.delete-session-btn');
+                if (deleteBtn) {
+                    deleteBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        deleteSession(session.id);
+                    });
+                }
+            }
+        });
+        
+        // Re-initialise les icônes Lucide pour les nouveaux éléments
+        if (window.lucide) {
+            window.lucide.createIcons();
+        }
+        
+    } catch (error) {
+        console.error('Erreur chargement sessions:', error);
+        const sessionList = document.getElementById('sessionList');
+        sessionList.innerHTML = '<div class="text-red-400 text-center py-4 text-sm">Erreur chargement sessions</div>';
+    }
+}
+
+/**
+ * Change vers une session spécifique
+ */
+async function switchSession(sessionId) {
+    try {
+        console.log(`🔄 Changement vers session ${sessionId}...`);
+        
+        // Ferme le sélecteur
+        document.getElementById('sessionSelector').classList.add('hidden');
+        
+        // Active la nouvelle session
+        const response = await fetch(`/api/sessions/${sessionId}/activate`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log(`✅ Session ${sessionId} activée:`, result);
+        
+        // Recharge les données de l'application
+        await reloadSessionData();
+        
+        // Met à jour l'affichage du sélecteur
+        const currentSessionName = document.getElementById('currentSessionName');
+        if (result.session) {
+            currentSessionName.textContent = result.session.name;
+        }
+        
+        // Notification
+        showNotification(`Session changée: ${result.session?.name || sessionId}`, 'success');
+        
+    } catch (error) {
+        console.error('❌ Erreur changement session:', error);
+        showNotification(`Erreur changement session: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Ferme le sélecteur de session quand on clique ailleurs
+ */
+document.addEventListener('click', (event) => {
+    const selector = document.getElementById('sessionSelector');
+    const button = document.getElementById('sessionSelectorBtn');
+    
+    if (selector && button && 
+        !selector.contains(event.target) && 
+        !button.contains(event.target)) {
+        selector.classList.add('hidden');
     }
 });
+
+/**
+ * Ferme le sélecteur avec la touche Échap
+ */
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        const selector = document.getElementById('sessionSelector');
+        if (selector) {
+            selector.classList.add('hidden');
+        }
+    }
+});
+
+/**
+ * Supprime une session avec confirmation
+ */
+async function deleteSession(sessionId) {
+    // Confirmation
+    const confirmed = confirm(`Êtes-vous sûr de vouloir supprimer la session #${sessionId} ?\\n\\nCette action est irréversible et supprimera toutes les données associées à cette session.`);
+    
+    if (!confirmed) return;
+    
+    try {
+        console.log(`🗑️ Suppression de la session ${sessionId}...`);
+        
+        // Appelle l'API de suppression
+        const response = await fetch(`/api/sessions/${sessionId}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log(`✅ Session ${sessionId} supprimée:`, result);
+        
+        // Recharge la liste des sessions
+        await loadSessions();
+        
+        // Notification
+        showNotification(`Session #${sessionId} supprimée avec succès`, 'success');
+        
+    } catch (error) {
+        console.error('❌ Erreur suppression session:', error);
+        showNotification(`Erreur suppression session: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Bascule la sélection de toutes les sessions
+ */
+function toggleSelectAll() {
+    const selectAllCheckbox = document.getElementById('selectAllSessions');
+    const checkboxes = document.querySelectorAll('.session-checkbox');
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAllCheckbox.checked;
+    });
+    
+    updateBulkDeleteButton();
+}
+
+/**
+ * Met à jour la visibilité du bouton de suppression en bulk
+ */
+function updateBulkDeleteButton() {
+    const checkboxes = document.querySelectorAll('.session-checkbox:checked');
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    
+    if (checkboxes.length > 0) {
+        bulkDeleteBtn.classList.remove('hidden');
+        bulkDeleteBtn.innerHTML = `<i data-lucide="trash-2" class="w-3 h-3"></i> Supprimer (${checkboxes.length})`;
+    } else {
+        bulkDeleteBtn.classList.add('hidden');
+    }
+    
+    // Re-initialise les icônes Lucide
+    if (window.lucide) {
+        window.lucide.createIcons();
+    }
+}
+
+/**
+ * Supprime les sessions sélectionnées en bulk
+ */
+async function deleteSelectedSessions() {
+    const checkboxes = document.querySelectorAll('.session-checkbox:checked');
+    const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    
+    if (selectedIds.length === 0) return;
+    
+    // Confirmation
+    const confirmed = confirm(`Êtes-vous sûr de vouloir supprimer ${selectedIds.length} session(s) ?\\n\\nIDs: ${selectedIds.join(', ')}\\n\\nCette action est irréversible et supprimera toutes les données associées.`);
+    
+    if (!confirmed) return;
+    
+    try {
+        console.log(`🗑️ Suppression en bulk des sessions: ${selectedIds.join(', ')}`);
+        
+        // Appelle l'API de suppression en bulk
+        const response = await fetch('/api/sessions', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ session_ids: selectedIds })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log(`✅ Sessions supprimées en bulk:`, result);
+        
+        // Recharge la liste des sessions
+        await loadSessions();
+        
+        // Notification
+        const deletedCount = result.results ? result.results.deleted_count : selectedIds.length;
+        showNotification(`${deletedCount} session(s) supprimée(s) avec succès`, 'success');
+        
+    } catch (error) {
+        console.error('❌ Erreur suppression en bulk:', error);
+        showNotification(`Erreur suppression en bulk: ${error.message}`, 'error');
+    }
+}
+
+window.addEventListener('beforeunload', cleanup);

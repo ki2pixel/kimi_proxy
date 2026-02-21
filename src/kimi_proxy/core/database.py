@@ -620,15 +620,14 @@ def get_session_stats(session_id: int) -> Dict[str, Any]:
         )
         stats = dict(cursor.fetchone())
         
-        # Pour la jauge: tokens de la dernière requête (contexte actuel)
-        current_totals = get_session_total_tokens(session_id)
-        stats["current_input_tokens"] = current_totals["input_tokens"]
-        stats["current_output_tokens"] = current_totals["output_tokens"]
-        stats["current_total_tokens"] = current_totals["total_tokens"]
-        
-        # Pour les stats cumulées: total facturé
+        # Pour la jauge: utilise les tokens cumulés estimés pour cohérence avec compaction
         cumulative_totals = get_session_cumulative_tokens(session_id)
-        stats["cumulative_input_tokens"] = cumulative_totals["input_tokens"]
+        stats["current_input_tokens"] = cumulative_totals["input_tokens"] if cumulative_totals["input_tokens"] > 0 else cumulative_totals["total_tokens"]
+        stats["current_output_tokens"] = cumulative_totals["output_tokens"]
+        stats["current_total_tokens"] = cumulative_totals["total_tokens"]
+        
+        # Pour les stats cumulées: utilise aussi les tokens cumulés pour cohérence
+        stats["cumulative_input_tokens"] = cumulative_totals["input_tokens"] if cumulative_totals["input_tokens"] > 0 else cumulative_totals["total_tokens"]
         stats["cumulative_output_tokens"] = cumulative_totals["output_tokens"]
         stats["cumulative_total_tokens"] = cumulative_totals["total_tokens"]
         
@@ -991,3 +990,128 @@ def reset_consecutive_auto_compactions(session_id: int) -> bool:
         except Exception as e:
             print(f"⚠️ Erreur réinitialisation compteur: {e}")
             return False
+
+def delete_session(session_id: int) -> bool:
+    """
+    Supprime une session et toutes ses données associées.
+    
+    Args:
+        session_id: ID de la session à supprimer
+        
+    Returns:
+        True si supprimée avec succès
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            # Supprime les métriques associées
+            cursor.execute("DELETE FROM metrics WHERE session_id = ?", (session_id,))
+            cursor.execute("DELETE FROM memory_metrics WHERE session_id = ?", (session_id,))
+            cursor.execute("DELETE FROM memory_segments WHERE session_id = ?", (session_id,))
+            cursor.execute("DELETE FROM compression_log WHERE session_id = ?", (session_id,))
+            cursor.execute("DELETE FROM compaction_history WHERE session_id = ?", (session_id,))
+            cursor.execute("DELETE FROM mcp_memory_entries WHERE session_id = ?", (session_id,))
+            cursor.execute("DELETE FROM mcp_compression_results WHERE session_id = ?", (session_id,))
+            cursor.execute("DELETE FROM mcp_routing_decisions WHERE session_id = ?", (session_id,))
+            
+            # Supprime la session
+            cursor.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            
+            deleted = cursor.rowcount > 0
+            if deleted:
+                conn.commit()
+                print(f"✅ Session {session_id} supprimée avec toutes ses données")
+            
+            return deleted
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ Erreur suppression session {session_id}: {e}")
+            return False
+
+def delete_sessions_bulk(session_ids: List[int]) -> Dict[str, Any]:
+    """
+    Supprime plusieurs sessions en bulk.
+    
+    Args:
+        session_ids: Liste des IDs de sessions à supprimer
+        
+    Returns:
+        Résumé des suppressions {success: bool, deleted_count: int, failed_ids: List[int]}
+    """
+    results = {
+        'success': True,
+        'deleted_count': 0,
+        'failed_ids': []
+    }
+    
+    for session_id in session_ids:
+        if delete_session(session_id):
+            results['deleted_count'] += 1
+        else:
+            results['success'] = False
+            results['failed_ids'].append(session_id)
+    
+    return results
+
+
+def vacuum_database() -> Dict[str, Any]:
+    """
+    Exécute VACUUM sur la base de données pour récupérer l'espace disque.
+    Cette fonction est optimisée pour éviter les appels répétés coûteux.
+    
+    Returns:
+        Dictionnaire avec les résultats du VACUUM
+    """
+    import os
+    import time
+    
+    # Cache pour éviter les VACUUM répétés (délai minimum de 30 secondes)
+    if not hasattr(vacuum_database, '_last_vacuum'):
+        vacuum_database._last_vacuum = 0
+    
+    current_time = time.time()
+    if current_time - vacuum_database._last_vacuum < 30:  # 30 secondes minimum
+        return {
+            "message": "VACUUM ignoré (délai minimum non écoulé)",
+            "skipped": True,
+            "next_available": vacuum_database._last_vacuum + 30
+        }
+    
+    try:
+        # Vérifie que le fichier existe
+        if not os.path.exists(DATABASE_FILE):
+            return {"error": "Base de données introuvable"}
+        
+        # Récupère la taille avant VACUUM
+        size_before = os.path.getsize(DATABASE_FILE)
+        
+        # Exécute VACUUM
+        conn = sqlite3.connect(DATABASE_FILE)
+        cursor = conn.cursor()
+        
+        cursor.execute("VACUUM")
+        conn.commit()
+        conn.close()
+        
+        # Met à jour le cache
+        vacuum_database._last_vacuum = current_time
+        
+        # Récupère la taille après VACUUM
+        size_after = os.path.getsize(DATABASE_FILE)
+        space_saved = size_before - size_after
+        space_saved_mb = space_saved / (1024 * 1024)
+        
+        return {
+            "message": "VACUUM exécuté avec succès",
+            "database": {
+                "path": DATABASE_FILE,
+                "size_before_bytes": size_before,
+                "size_after_bytes": size_after,
+                "space_saved_bytes": space_saved,
+                "space_saved_mb": round(space_saved_mb, 2)
+            },
+            "skipped": False
+        }
+        
+    except Exception as e:
+        return {"error": f"Erreur lors du VACUUM: {str(e)}", "skipped": False}

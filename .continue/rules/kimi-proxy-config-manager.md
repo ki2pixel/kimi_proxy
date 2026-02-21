@@ -185,23 +185,22 @@ backoff_factor = 2.0
 
 ### MCP Server Configuration
 
+**Phase 3 servers (via proxy):**
 ```toml
-[mcp.task_master]
+[mcp.qdrant]
 enabled = true
-url = "http://localhost:8002"
-timeout_ms = 30000
+url = "https://f4852e4b-fc7f-400e-a45c-11c333a7f8df.eu-west-1-0.aws.cloud.qdrant.io"
 
-[mcp.sequential_thinking]
+[mcp.context_compression]
 enabled = true
-url = "http://localhost:8003"
-timeout_ms = 60000
-
-[mcp.fast_filesystem]
-enabled = true
-url = "http://localhost:8004"
-timeout_ms = 10000
-workspace_path = "/home/kidpixel/kimi-proxy"
+url = "http://localhost:8001"
+endpoint = "/rpc"  # JSON-RPC 2.0
 ```
+
+**Phase 4 servers (local processes in Continue.dev):**
+- Configured in `.continue/config.yaml` as `command`/`args` entries
+- See `.continue/config.yaml` for task-master, sequential-thinking, fast-filesystem, json-query
+- No longer configured in proxy's `config.toml`
 
 ## Configuration Templates
 

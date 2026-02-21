@@ -55,7 +55,12 @@ class LogParser:
         return self._extract_standard_metrics(line)
     
     def _extract_standard_metrics(self, line: str) -> Optional[TokenMetrics]:
-        """Extrait les métriques standard d'une ligne."""
+        """
+        Extrait les métriques standard d'une ligne de log avec support multi-formats.
+        
+        Supporte les formats OpenAI, Continue, Gemini, et JSON-like.
+        Gère les estimations avec tilde (~) et les erreurs API.
+        """
         metrics = TokenMetrics(
             source="logs",
             raw_line=line[:200],

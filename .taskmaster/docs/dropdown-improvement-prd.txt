@@ -1,0 +1,39 @@
+Titre: Amélioration UI Dropdown Session
+
+Exigences:
+1. Corriger la transparence du fond du dropdown pour améliorer la lisibilité
+2. Ajouter des effets visuels au survol des sessions listées
+3. Afficher l'ID/numéro de session dans chaque élément du dropdown
+4. Implémenter la fonctionnalité de suppression (individuelle et multiple) des sessions
+
+Critères d'acceptation:
+- Le dropdown doit avoir un fond opaque contrasté (bg-slate-800 au lieu de bg-slate-800/95)
+- Les sessions doivent afficher leur ID unique dans le format "#ID Session Name"
+- Au survol, les éléments doivent avoir un effet visuel clair (background-color: rgba(71, 85, 105, 0.8), box-shadow, transform scale)
+- Bouton de suppression individuelle par session avec icône trash et confirmation
+- Mode sélection multiple avec checkboxes et bouton "Supprimer la sélection"
+- Confirmation avant suppression avec modal
+- Mise à jour en temps réel via WebSocket pour synchronisation
+- Gestion d'erreur pour suppressions échouées
+
+Risques identifiés:
+- Conflits CSS avec thème existant (backdrop-blur supprimé)
+- Gestion d'état WebSocket lors de suppressions multiples
+- Validation des permissions de suppression côté backend
+- Gestion des erreurs réseau avec retry automatique
+- Synchronisation UI après suppression (rechargement dropdown)
+
+Architecture proposée:
+- Frontend: Modification loadSessions() dans main.js pour générer HTML étendu
+- CSS: Classes personnalisées dans dropdown.css pour effets visuels
+- Backend: Nouveaux endpoints DELETE /api/sessions/{id} et DELETE /api/sessions/bulk
+- WebSocket: Événements 'session:deleted' pour notifications temps réel
+- État: Gestion sélection multiple avec Set pour IDs sélectionnés
+
+Étapes d'implémentation:
+1. CSS - Fond opaque et effets survol
+2. HTML - Affichage ID et boutons suppression
+3. JavaScript - Gestion événements et sélections multiples
+4. Backend - Endpoints suppression
+5. WebSocket - Notifications suppression
+6. Tests - Vérification fonctionnalités

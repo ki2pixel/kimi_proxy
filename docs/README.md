@@ -110,9 +110,15 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 
 ### 🛠️ Développement
 - **[Sessions de développement](./development/sessions/)**
-  - [2026-02-20 : Auto-Session Mistral Large 2411 - Implémentation Complète](./development/sessions/2026-02-20-auto-session-mistral.md) ⭐ **Nouveau**
+  - **[Session 2026-02-20 : Auto-Session Mistral Large 2411](./development/sessions/2026-02-20-auto-session-mistral.md)** ⭐ **Nouveau**
+  - Création automatique de sessions par modèle (au lieu de par provider)
+  - Mapping dynamique des providers basé sur les préfixes de modèles
+  - Expansion automatique des variables d'environnement
   - [2026-02-20 : WebSocket Memory Operations Infrastructure](./development/sessions/2026-02-20-websocket-memory-ops.md) ⭐ **Nouveau**
   - [2026-02-20 : Modal Display Bug Fix](./development/sessions/2026-02-20-modal-display-fix.md) ⭐ **Nouveau**
+    - Dropdown de sélection des sessions dans l'UI mémoire
+    - Possibilité de suppression des sessions avec VACUUM automatique
+    - Gestion complète des modales (ouverture/fermeture, événements)
   - [2026-02-15 : Restructuration architecture modulaire](./development/sessions/2026-02-15-modular-restructure.md)
   - [2026-02-11 : Implémentation multi-provider](./development/sessions/2026-02-11-multi-provider-implementation.md)
   - [2026-02-14 : Correction routing modèles](./development/sessions/2026-02-14-model-routing-fix.md)
@@ -152,6 +158,7 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 - **Sanitizer Phase 1** : Masking automatique contenus verbeux
 - **MCP Phase 2** : Intégration mémoire standardisée
 - **Compression Phase 3** : Bouton d'urgence compression
+- **MCP Phase 4** : 4 serveurs MCP (Task Master, Sequential Thinking, Fast Filesystem, JSON Query) - **Exécution locale dans Continue.dev**
 - **Monitoring temps réel** : WebSockets, Log Watcher, dashboard
 - **Persistance** : SQLite avec historique complet
 
@@ -185,5 +192,5 @@ Voir [Contributing](./development/contributing.md) pour les guidelines de contri
 
 ---
 
-*Dernière mise à jour : 2026-02-20*
-*Version: 2.0.1*
+*Dernière mise à jour : 2026-02-21*
+*Version: 2.0.2*

@@ -21,17 +21,30 @@ Lancer les commandes suivantes pour ignorer les dossiers de données (ex: "sessi
 2.  **Volumétrie (Code Source)** :
     - `bash "cloc src/kimi_proxy --md --exclude-dir=__pycache__,tests"`
     - *But* : Quantifier le code réel par couche (API/Services/Features/Proxy/Core).
-3.  **Complexité Cyclomatique (Python Core)** :
-    - `bash "radon cc src/kimi_proxy -a -nc --min C"`
-    - *But* : Repérer les points chauds (Score C/D/F) dans les couches critiques.
-    - **Règle** : Si Score > 10 (C), la doc DOIT expliquer la logique interne selon Pattern 6 (Error Handling).
-4.  **Audit Couverture Docs** :
-    - `fast_list_directory docs/` : Cartographie structure docs existante
-    - `fast_search_files pattern="*.md" path="docs/"` : Indexation contenu docs pour comparaison
-    - *But* : Identifier gaps entre composants source documentés vs non documentés selon architecture 5 couches.
-    - **Règle** : Tout composant source > 500 LOC sans doc dédiée doit être signalé comme manquant.
+4.  **Sessions Développement (Nouvelles Fonctionnalités)** :
+    - `find_by_name docs/development/sessions/ -name "*.md" | head -10`
+    - *But* : Détecter les nouvelles fonctionnalités documentées dans les sessions de développement récentes.
+    - **Règle** : Intégrer les nouvelles features dans la documentation principale si elles ne sont pas encore référencées.
+5.  **Analyse APIs (Endpoints & Routes)** :
+    - `grep_search Query="@app\.(get|post|put|delete|patch)" SearchPath=src/kimi_proxy/api`
+    - *But* : Détecter tous les endpoints API et vérifier leur documentation dans `docs/api/`.
+    - **Règle** : Tout endpoint DOIT avoir une doc API correspondante.
+6.  **Analyse Frontend (Modules & Éléments UI)** :
+    - `grep_search Query="class.*\{|function.*\(|const.*=.*\(" SearchPath=static/js/modules`
+    - `grep_search Query="<.*id=|class=" SearchPath=static`
+    - *But* : Détecter les modules JavaScript et éléments HTML pour vérifier la cohérence avec `docs/ui/` et `docs/features/`.
+7.  **Analyse Base de Données (Migrations & Schémas)** :
+    - `list_dir DirectoryPath=src/kimi_proxy/core`
+    - `grep_search Query="CREATE TABLE|ALTER TABLE|INSERT INTO|UPDATE|DELETE FROM" SearchPath=src/kimi_proxy/core`
+    - *But* : Détecter les changements de schéma et vérifier la documentation des entités dans `docs/core/`.
+8.  **Analyse Configuration (Nouveaux Providers/Paramètres)** :
+    - `grep_search Query="providers\[|models\[|config\." SearchPath=src/kimi_proxy`
+    - *But* : Détecter les nouveaux providers/modèles et vérifier leur documentation dans `docs/features/multi-provider-support.md`.
+9.  **Analyse Métriques & Monitoring** :
+    - `grep_search Query="METRICS|LOGGING|ALERT" SearchPath=src/kimi_proxy`
+    - *But* : Détecter les nouveaux systèmes de métriques et vérifier leur documentation.
 
-## Étape 4 — Proposition de Mise à Jour
+## Étape 2 — Analyse Comparative Code vs Docs
 Générer un plan de modification avant d'appliquer :
 
 ```markdown
@@ -48,7 +61,6 @@ Générer un plan de modification avant d'appliquer :
   ```markdown
   [Contenu proposé respectant les patterns système Kimi Proxy]
   ```
-```
 
 ## Étape 5 — Application et Finalisation
 1.  **Exécution** : Après validation, utiliser `fast_edit_block` ou `fast_edit_blocks`.
