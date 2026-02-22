@@ -307,8 +307,17 @@ Any time you create or modify documentation (README, docs/, Markdown guides), yo
 ### Use kimi-proxy-testing-strategies Skill (@.continue/rules/kimi-proxy-testing-strategies.md)
 - Unit tests, integration, E2E, performance testing with pytest-asyncio
 
-### Use taskmaster Skill (@.continue/rules/taskmaster.md)
-- Task management with Taskmaster MCP tools and CLI commands
+### Use shrimp-task-manager Skill (@.continue/rules/shrimp-task-manager.md)
+- Task management with Shrimp Task Manager
+
+### Use sequentialthinking-logic Skill (@.continue/rules/sequentialthinking-logic.md)
+- Sequential Thinking Logic for complex architecture and extension logic
+
+### Use fast-filesystem Skill (@.continue/rules/fast-filesystem.md)
+- Fast file system operations for efficient file management
+
+### Use json-query-expert Skill (@.continue/rules/json-query-expert.md)
+- JSON Query Expert for efficient data extraction and manipulation
 
 ## Database Schema Extensions (Phase 3 MCP)
 

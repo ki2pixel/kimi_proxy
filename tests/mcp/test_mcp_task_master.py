@@ -214,11 +214,11 @@ async def test_parse_prd_workflow(client, mock_rpc):
     mock_rpc.make_rpc_call = AsyncMock(return_value={
         "success": True,
         "tasks_created": 5,
-        "file": ".taskmaster/tasks.json"
+        "file": ".shrimp-task-manager/tasks.json"
     })
     
     result = await client.parse_prd(
-        input_file="docs/prd.md",
+        input_file="plan/prd.md",
         research_enabled=True,
         num_tasks=5
     )
@@ -230,7 +230,7 @@ async def test_parse_prd_workflow(client, mock_rpc):
     args = mock_rpc.make_rpc_call.call_args
     assert args[0][0] == "http://localhost:8002"
     assert args[1]["method"] == "parse_prd"
-    assert args[1]["params"]["input"] == "docs/prd.md"
+    assert args[1]["params"]["input"] == "plan/prd.md"
     assert args[1]["params"]["research"] is True
     assert args[1]["params"]["numTasks"] == 5
 

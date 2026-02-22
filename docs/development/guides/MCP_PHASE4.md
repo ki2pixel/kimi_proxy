@@ -1,13 +1,14 @@
-# MCP Phase 4 - Intégration des 4 Nouveaux Serveurs MCP
+# MCP Phase 4 - Serveurs Locaux dans Continue.dev
 
 **Date**: 2026-02-17  
-**Version**: 2.4.0
+**Version**: 2.5.0  
+**Statut**: Architecture modifiée - serveurs désormais locaux
 
 ---
 
 ## Vue d'ensemble
 
-La Phase 4 étend l'intégration MCP avec 4 nouveaux serveurs, ajoutant **43 outils** à l'écosystème existant. Ces serveurs sont démarrés en amont du proxy Kimi, similairement au serveur `memory-bank` existant.
+La Phase 4 a été refactorisée pour exécuter les serveurs MCP **localement** dans Continue.dev plutôt que dans le proxy Kimi. Cette architecture décentralisée élimine le couplage entre le proxy et les outils MCP spécifiques.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -18,21 +19,25 @@ La Phase 4 étend l'intégration MCP avec 4 nouveaux serveurs, ajoutant **43 out
 │  • analyzer.py                    • Compression (port 8001)     │
 │  • storage.py                                                   │
 ├─────────────────────────────────────────────────────────────────┤
-│  🆕 Phase 4: Nouveaux Serveurs MCP                              │
-│  • Task Master (port 8002)        • Sequential Thinking (8003)  │
-│  • Fast Filesystem (port 8004)    • JSON Query (port 8005)      │
+│  ❌ Phase 4: SUPPRIMÉ DU PROXY - Maintenant Local               │
+│  • Shrimp Task Manager MCP (port 8002)    ✅ → Continue.dev     │
+│  • Sequential Thinking MCP (8003) ✅ → Continue.dev             │
+│  • Fast Filesystem MCP (8004)     ✅ → Continue.dev             │
+│  • JSON Query MCP (8005)          ✅ → Continue.dev             │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+**Changement architectural**: Les serveurs Phase 4 ne sont plus intégrés au proxy. Ils fonctionnent comme processus locaux dans Continue.dev.
+
 ---
 
-## Les 4 Nouveaux Serveurs
+## Les 4 Serveurs (Maintenant Locaux)
 
-### 1. Task Master MCP (14 outils)
+### 1. Shrimp Task Manager MCP (14 outils)
 
-**Port**: 8002  
-**Timeout**: 30s  
-**Configuration**: `[mcp.task_master]` dans `config.toml`
+**Exécution**: Locale dans Continue.dev  
+**Port**: 8002 (processus séparé)  
+**Accès**: Via extension Continue.dev uniquement
 
 Gestion complète de tâches avec priorisation, dépendances et analyse de complexité.
 
@@ -47,7 +52,7 @@ Gestion complète de tâches avec priorisation, dépendances et analyse de compl
 | `update_subtask` | Met à jour une sous-tâche |
 | `parse_prd` | Analyse un document PRD (Product Requirements) |
 | `expand_task` | Décompose une tâche en sous-tâches |
-| `initialize_project` | Initialise un nouveau projet Task Master |
+| `initialize_project` | Initialise un nouveau projet Shrimp Task Manager |
 | `analyze_project_complexity` | Analyse la complexité du projet |
 | `expand_all` | Décompose toutes les tâches en sous-tâches |
 | `add_subtask` | Ajoute une sous-tâche |
@@ -55,38 +60,17 @@ Gestion complète de tâches avec priorisation, dépendances et analyse de compl
 | `add_task` | Ajoute une nouvelle tâche |
 | `complexity_report` | Génère un rapport de complexité |
 
-#### API Endpoints
+#### Configuration
 
-```
-GET  /api/memory/task-master/tasks       # Liste des tâches
-GET  /api/memory/task-master/stats       # Statistiques
-POST /api/memory/task-master/call        # Appel d'outil
-```
-
-#### Exemple d'utilisation
-
-```python
-from kimi_proxy.features.mcp import get_mcp_client
-
-client = get_mcp_client()
-
-# Récupérer les tâches
-tasks = await client.get_task_master_tasks(status_filter="pending")
-
-# Appeler un outil spécifique
-result = await client.call_task_master_tool(
-    "expand_task",
-    {"task_id": "123", "num_subtasks": 5}
-)
-```
+Voir la configuration `config.yaml` de Continue.dev pour activer le serveur Shrimp Task Manager MCP local.
 
 ---
 
 ### 2. Sequential Thinking MCP (1 outil)
 
-**Port**: 8003  
-**Timeout**: 60s  
-**Configuration**: `[mcp.sequential_thinking]` dans `config.toml`
+**Exécution**: Locale dans Continue.dev  
+**Port**: 8003 (processus séparé)  
+**Accès**: Via extension Continue.dev uniquement
 
 Raisonnement séquentiel structuré pour résolution de problèmes complexes.
 
@@ -108,38 +92,13 @@ Raisonnement séquentiel structuré pour résolution de problèmes complexes.
 }
 ```
 
-#### API Endpoint
-
-```
-POST /api/memory/sequential-thinking/call
-```
-
-#### Exemple d'utilisation
-
-```python
-from kimi_proxy.features.mcp import get_mcp_client
-
-client = get_mcp_client()
-
-# Démarrer un raisonnement séquentiel
-step = await client.call_sequential_thinking(
-    thought="Analyser le problème de routing...",
-    thought_number=1,
-    total_thoughts=5,
-    next_thought_needed=True
-)
-
-print(f"Étape {step.step_number}: {step.thought}")
-print(f"Prochaine étape nécessaire: {step.next_thought_needed}")
-```
-
 ---
 
 ### 3. Fast Filesystem MCP (25 outils)
 
-**Port**: 8004  
-**Timeout**: 10s  
-**Configuration**: `[mcp.fast_filesystem]` dans `config.toml`
+**Exécution**: Locale dans Continue.dev  
+**Port**: 8004 (processus séparé)  
+**Accès**: Via extension Continue.dev uniquement
 
 Opérations fichiers haute performance avec API optimisée.
 
@@ -190,39 +149,13 @@ Opérations fichiers haute performance avec API optimisée.
 - `fast_get_disk_usage` - Usage disque
 - `fast_find_large_files` - Recherche de gros fichiers
 
-#### API Endpoint
-
-```
-POST /api/memory/filesystem/call
-```
-
-#### Exemple d'utilisation
-
-```python
-from kimi_proxy.features.mcp import get_mcp_client
-
-client = get_mcp_client()
-
-# Lire un fichier
-result = await client.call_fast_filesystem_tool(
-    "fast_read_file",
-    {"path": "/path/to/file.txt", "auto_chunk": True}
-)
-
-# Rechercher du code
-result = await client.call_fast_filesystem_tool(
-    "fast_search_code",
-    {"path": "/project", "pattern": "def.*get_", "file_pattern": "*.py"}
-)
-```
-
 ---
 
 ### 4. JSON Query MCP (3 outils)
 
-**Port**: 8005  
-**Timeout**: 5s  
-**Configuration**: `[mcp.json_query]` dans `config.toml`
+**Exécution**: Locale dans Continue.dev  
+**Port**: 8005 (processus séparé)  
+**Accès**: Via extension Continue.dev uniquement
 
 Requêtes JSON avancées avec JSONPath et recherche.
 
@@ -234,313 +167,84 @@ Requêtes JSON avancées avec JSONPath et recherche.
 | `json_query_search_keys` | Recherche de clés par pattern |
 | `json_query_search_values` | Recherche de valeurs |
 
-#### API Endpoint
+---
 
+## Architecture Actuelle
+
+### Flux de données
 ```
-POST /api/memory/json-query/call
+Client → Continue.dev → Serveurs MCP locaux (ports 8002-8005)
+Proxy → Routage HTTP agnostique (aucune connaissance MCP)
 ```
 
-#### Exemple d'utilisation
+### Avantages de l'architecture locale
+1. **Découplage complet** : Proxy et serveurs MCP évoluent indépendamment
+2. **Performance** : Pas de latence réseau entre proxy et serveurs MCP
+3. **Maintenance** : Mise à jour des serveurs sans impact sur le proxy
+4. **Sécurité** : Serveurs locaux avec contrôles d'accès locaux
 
-```python
-from kimi_proxy.features.mcp import get_mcp_client
-
-client = get_mcp_client()
-
-# Requête JSONPath
-result = await client.call_json_query_tool(
-    "json_query_jsonpath",
-    file_path="/data/config.json",
-    query="$.servers[?(@.port > 8000)].name",
-    limit=10
-)
-
-# Recherche de clés
-result = await client.call_json_query_tool(
-    "json_query_search_keys",
-    file_path="/data/large.json",
-    query="*timeout*",
-    limit=20
-)
-```
+### Inconvénients
+1. **Configuration séparée** : Chaque serveur configuré dans Continue.dev
+2. **Monitoring décentralisé** : Statuts non visibles dans le dashboard proxy
+3. **Dépendance Continue.dev** : Fonctionnalités uniquement disponibles dans l'IDE
 
 ---
 
-## Détection Automatique
+## Migration et Historique
 
-### Patterns de détection
+### Ce qui a changé
+- ❌ **Avant**: Serveurs intégrés au proxy avec endpoints `/api/memory/*`
+- ✅ **Maintenant**: Serveurs locaux dans Continue.dev, proxy agnostique
 
-Les patterns regex dans `constants.py` détectent automatiquement les appels d'outils MCP:
+### APIs supprimées
+Les endpoints suivants ont été supprimés du proxy :
+- `/api/memory/task-master/*`
+- `/api/memory/sequential-thinking/*`
+- `/api/memory/filesystem/*`
+- `/api/memory/json-query/*`
+- `/api/memory/servers/phase4`
 
-```python
-MCP_PATTERNS = {
-    # Phase 4 - Nouveaux serveurs MCP
-    "mcp_task_master": r"(get_tasks|next_task|...|complexity_report)",
-    "mcp_sequential_thinking": r"(sequentialthinking_tools|sequential_thinking)",
-    "mcp_fast_filesystem": r"(fast_list_allowed_directories|fast_read_file|...|fast_sync_directories)",
-    "mcp_json_query": r"(json_query_jsonpath|json_query_search_keys|json_query_search_values)",
-}
-```
-
-### Utilisation du détecteur
-
-```python
-from kimi_proxy.features.mcp import MCPDetector, get_detected_mcp_servers
-
-# Détecter les outils Phase 4
-detector = MCPDetector()
-phase4_segments = detector.detect_phase4_tools(content)
-servers = detector.get_detected_phase4_servers(content)
-
-# Détection complète
-all_servers = get_detected_mcp_servers(content)
-# Returns: {"memory_bank": True, "phase4_servers": ["task_master", ...], "has_mcp_content": True}
-```
+### Configuration migrée
+- ❌ **Avant**: `config.toml` avec sections `[mcp.task_master]`, etc.
+- ✅ **Maintenant**: `config.yaml` de Continue.dev
 
 ---
 
-## Configuration
+## Utilisation
 
-### config.toml
+### Dans Continue.dev
+Les serveurs MCP Phase 4 sont maintenant accessibles uniquement via l'extension Continue.dev dans votre IDE.
 
-```toml
-# ============================================
-# MCP PHASE 4 - Nouveaux Serveurs MCP
-# ============================================
+### Configuration
+Voir la documentation Continue.dev pour configurer les serveurs MCP locaux.
 
-[mcp.task_master]
-enabled = true
-url = "http://localhost:8002"
-api_key = ""
-timeout_ms = 30000
-tasks_root = ".taskmaster"
-
-[mcp.sequential_thinking]
-enabled = true
-url = "http://localhost:8003"
-api_key = ""
-timeout_ms = 60000
-
-[mcp.fast_filesystem]
-enabled = true
-url = "http://localhost:8004"
-api_key = ""
-timeout_ms = 10000
-allowed_directories = ["."]
-
-[mcp.json_query]
-enabled = true
-url = "http://localhost:8005"
-api_key = ""
-timeout_ms = 5000
-
-[mcp.phase4]
-enabled = true
-auto_detect = true
-status_check_interval = 30
-```
-
----
-
-## API Endpoints Phase 4
-
-### Statuts des serveurs
-
-```
-GET /api/memory/servers/phase4      # Statuts des 4 serveurs Phase 4
-GET /api/memory/all-servers         # Tous les serveurs (Phase 3 + Phase 4)
-```
-
-### Task Master
-
-```
-GET  /api/memory/task-master/tasks       # Liste des tâches
-GET  /api/memory/task-master/stats       # Statistiques
-POST /api/memory/task-master/call        # Appel outil
-```
-
-### Sequential Thinking
-
-```
-POST /api/memory/sequential-thinking/call    # Raisonnement séquentiel
-```
-
-### Fast Filesystem
-
-```
-POST /api/memory/filesystem/call         # Opération filesystem
-```
-
-### JSON Query
-
-```
-POST /api/memory/json-query/call         # Requête JSON
-```
-
-### Générique
-
-```
-POST /api/memory/tool/call               # Appel générique d'outil MCP
-```
-
----
-
-## Modèles de données
-
-### TaskMasterTask
-
-```python
-@dataclass
-class TaskMasterTask:
-    id: str
-    title: str
-    description: str
-    status: str           # pending, in-progress, done, blocked, deferred
-    priority: str         # high, medium, low
-    dependencies: List[str]
-    subtasks: List[Dict]
-    created_at: Optional[str]
-    updated_at: Optional[str]
-```
-
-### TaskMasterStats
-
-```python
-@dataclass
-class TaskMasterStats:
-    total_tasks: int
-    pending: int
-    in_progress: int
-    done: int
-    blocked: int
-    deferred: int
-    total_complexity_score: float
-```
-
-### SequentialThinkingStep
-
-```python
-@dataclass
-class SequentialThinkingStep:
-    step_number: int
-    thought: str
-    next_thought_needed: bool
-    total_thoughts: int
-    branches: List[Dict]
-```
-
-### FileSystemResult
-
-```python
-@dataclass
-class FileSystemResult:
-    success: bool
-    path: str
-    operation: str
-    content: Optional[str]
-    error: Optional[str]
-    bytes_affected: int
-```
-
-### JsonQueryResult
-
-```python
-@dataclass
-class JsonQueryResult:
-    success: bool
-    query: str
-    file_path: str
-    results: List[Dict]
-    error: Optional[str]
-    execution_time_ms: float
-```
-
----
-
-## Client MCP
-
-### Extension de MCPExternalClient
-
-```python
-from kimi_proxy.features.mcp import get_mcp_client
-
-client = get_mcp_client()
-
-# Vérification des statuts
-task_master_status = await client.check_task_master_status()
-sequential_status = await client.check_sequential_thinking_status()
-filesystem_status = await client.check_fast_filesystem_status()
-json_query_status = await client.check_json_query_status()
-
-# Récupération de tous les statuts Phase 4
-all_phase4 = await client.get_all_phase4_server_statuses()
-
-# Appel d'outils spécifiques
-tasks = await client.get_task_master_tasks()
-stats = await client.get_task_master_stats()
-
-# Appel générique
-tool_call = await client.call_mcp_tool(
-    server_type="task_master",
-    tool_name="expand_task",
-    params={"task_id": "123", "num_subtasks": 3}
-)
-
-# Vérification de disponibilité
-if client.is_task_master_available():
-    # Utiliser Task Master
-    pass
-```
-
----
-
-## Dépannage
-
-### Ports déjà utilisés
-
-```bash
-# Vérifier les ports Phase 4
-netstat -tlnp | grep -E ':(8002|8003|8004|8005)'
-
-# Tester les endpoints
-curl http://localhost:8000/api/memory/servers/phase4
-curl http://localhost:8000/api/memory/task-master/stats
-```
-
-### Serveurs non détectés
-
-Vérifiez la configuration dans `config.toml`:
-- URLs correctes
-- Ports disponibles
-- `enabled = true`
-
-### Timeouts
-
-Augmentez les timeouts si nécessaire:
-```toml
-[mcp.sequential_thinking]
-timeout_ms = 90000  # Augmenter pour raisonnement complexe
-```
+### Développement
+Pour contribuer aux serveurs MCP, voir les dépôts individuels :
+- Shrimp Task Manager: https://github.com/your-org/shrimp-task-manager-mcp
+- Sequential Thinking: https://github.com/your-org/sequential-thinking-mcp
+- Fast Filesystem: https://github.com/your-org/fast-filesystem-mcp
+- JSON Query: https://github.com/your-org/json-query-mcp
 
 ---
 
 ## Tests
 
-Les tests Phase 4 sont dans `tests/test_mcp_phase4.py`:
+Les tests Phase 4 sont maintenant exécutés dans l'environnement Continue.dev :
 
 ```bash
-PYTHONPATH=src python -m pytest tests/test_mcp_phase4.py -v
+# Tests dans Continue.dev uniquement
+continue test mcp-phase4
 ```
 
 ---
 
 ## Résumé
 
-| Serveur | Port | Outils | Timeout | Use Case |
-|---------|------|--------|---------|----------|
-| Task Master | 8002 | 14 | 30s | Gestion de projet |
-| Sequential Thinking | 8003 | 1 | 60s | Résolution de problèmes |
-| Fast Filesystem | 8004 | 25 | 10s | Opérations fichiers |
-| JSON Query | 8005 | 3 | 5s | Requêtes JSON |
+| Serveur | Statut | Accès | Outils |
+|---------|--------|-------|--------|
+| Shrimp Task Manager | ✅ Local | Continue.dev | 14 |
+| Sequential Thinking | ✅ Local | Continue.dev | 1 |
+| Fast Filesystem | ✅ Local | Continue.dev | 25 |
+| JSON Query | ✅ Local | Continue.dev | 3 |
 
-**Total**: 43 nouveaux outils MCP pour étendre les capacités du proxy Kimi.
+**Total**: 43 outils MCP maintenant exécutés localement dans Continue.dev, découplés du proxy Kimi.

@@ -99,7 +99,7 @@ websocket.onmessage = (event) => {
 - **Lazy loading** : Chargement composants à la demande
 
 ### Métriques Actuelles
-- **90 fonctions utilitaires** pour manipulation DOM
+- **107 fonctions utilitaires** pour manipulation DOM
 - **Complexité moyenne** : B (8-12)
 - **Coverage événements** : 15+ types d'événements gérés
 

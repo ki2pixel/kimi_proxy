@@ -87,6 +87,12 @@ dev-debug.log
 *.sw?
 # OS specific
 
+# MCP Shrimp Task Manager (optimized local installation)
+mcp/mcp-shrimp-task-manager-main/ 
+
+# MCP JSON Query (optimized local installation)
+mcp/json-query-mcp-main/ 
+
 # Task files
 tasks.json
 tasks/ 

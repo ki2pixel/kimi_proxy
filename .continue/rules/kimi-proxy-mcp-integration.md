@@ -97,7 +97,7 @@ await client.call("initialize_project", {
 # Parse PRD to generate tasks
 curl -X POST http://localhost:8000/api/memory/task-master/parse-prd \
   -H "Content-Type: application/json" \
-  -d '{"input": "/home/kidpixel/kimi-proxy/.taskmaster/docs/prd.txt", "projectRoot": "/home/kidpixel/kimi-proxy", "force": true}'
+  -d '{"input": "/home/kidpixel/kimi-proxy/.shrimp-task-manager/plan/prd.txt", "projectRoot": "/home/kidpixel/kimi-proxy", "force": true}'
 
 # Get all tasks
 curl http://localhost:8000/api/memory/task-master/tasks

@@ -14,7 +14,7 @@ Structure:
 Serveurs supportés (7 serveurs, 43 outils):
 - Qdrant MCP (Phase 3): Recherche sémantique, clustering
 - Context Compression MCP (Phase 3): Compression avancée
-- Task Master MCP (Phase 4, 14 outils): Gestion de tâches
+- Shrimp Task Manager MCP (Phase 4, 14 outils): Gestion de tâches
 - Sequential Thinking MCP (Phase 4, 1 outil): Raisonnement séquentiel
 - Fast Filesystem MCP (Phase 4, 25 outils): Opérations fichiers
 - JSON Query MCP (Phase 4, 3 outils): Requêtes JSON

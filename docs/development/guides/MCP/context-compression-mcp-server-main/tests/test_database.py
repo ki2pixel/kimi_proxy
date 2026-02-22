@@ -160,7 +160,7 @@ class TestDatabaseManager(unittest.TestCase):
         """Test searching context records."""
         # Insert test data
         test_contexts = [
-            ("search_001", "Python Documentation", '["python", "docs"]'),
+            ("search_001", "Python Documentation", '["python", "plan"]'),
             ("search_002", "JavaScript Guide", '["javascript", "tutorial"]'),
             ("search_003", "Python Tutorial", '["python", "beginner"]'),
             ("search_004", "Database Design", '["database", "sql"]')

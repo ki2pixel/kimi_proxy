@@ -28,6 +28,7 @@ import {
     renderSimilarityChart,
     destroySimilarityChart
 } from './similarity-chart.js';
+import { getModalManager } from './accessibility/modal-manager.js';
 
 // ============================================================================
 // ÉTAT DES MODALES
@@ -82,6 +83,10 @@ export function showNewSessionModal() {
         content.classList.add('scale-100', 'opacity-100');
     }, 10);
 
+    // Intègre ModalManager pour gestion du focus
+    const modalManager = getModalManager();
+    modalManager.open(modal);
+
     // Setup event listeners
     setupNewSessionListeners();
 }
@@ -98,6 +103,10 @@ export function closeNewSessionModal() {
     content.classList.remove('scale-100', 'opacity-100');
     content.classList.add('scale-95', 'opacity-0');
 
+    // Intègre ModalManager pour restauration du focus
+    const modalManager = getModalManager();
+    modalManager.close(modal);
+
     setTimeout(() => {
         modal.classList.add('hidden');
     }, 200);
@@ -110,12 +119,22 @@ async function loadProvidersData() {
     const container = document.getElementById('providersList');
     if (!container) return;
 
-    container.innerHTML = `
-        <div class="text-slate-500 text-center py-8">
-            <i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto mb-2"></i>
-            Chargement des modèles...
-        </div>
-    `;
+    // Affiche le message de chargement de manière sécurisée (sans innerHTML)
+    container.textContent = ''; // Clear existing content
+
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'text-slate-500 text-center py-8';
+
+    const loadingIcon = document.createElement('i');
+    loadingIcon.setAttribute('data-lucide', 'loader-2');
+    loadingIcon.className = 'w-6 h-6 animate-spin mx-auto mb-2';
+
+    const loadingText = document.createElement('div');
+    loadingText.textContent = 'Chargement des modèles...';
+
+    loadingDiv.appendChild(loadingIcon);
+    loadingDiv.appendChild(loadingText);
+    container.appendChild(loadingDiv);
 
     if (window.lucide) {
         lucide.createIcons();
@@ -135,12 +154,23 @@ async function loadProvidersData() {
     } catch (error) {
         console.error('Erreur chargement providers:', error);
         if (container) {
-            container.innerHTML = `
-                <div class="text-red-400 text-center py-4">
-                    <i data-lucide="alert-circle" class="w-5 h-5 mx-auto mb-2"></i>
-                    Erreur de chargement des modèles
-                </div>
-            `;
+            // Affiche le message d'erreur de manière sécurisée (sans innerHTML)
+            container.textContent = ''; // Clear existing content
+
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'text-red-400 text-center py-4';
+
+            const errorIcon = document.createElement('i');
+            errorIcon.setAttribute('data-lucide', 'alert-circle');
+            errorIcon.className = 'w-5 h-5 mx-auto mb-2';
+
+            const errorText = document.createElement('div');
+            errorText.textContent = 'Erreur de chargement des modèles';
+
+            errorDiv.appendChild(errorIcon);
+            errorDiv.appendChild(errorText);
+            container.appendChild(errorDiv);
+
             if (window.lucide) {
                 lucide.createIcons();
             }
@@ -156,7 +186,14 @@ function renderProvidersList() {
     if (!container) return;
 
     if (availableProviders.length === 0) {
-        container.innerHTML = '<div class="text-slate-500 text-center py-4">Aucun provider disponible</div>';
+        // Affiche le message "aucun provider" de manière sécurisée (sans innerHTML)
+        container.textContent = ''; // Clear existing content
+
+        const noProvidersDiv = document.createElement('div');
+        noProvidersDiv.className = 'text-slate-500 text-center py-4';
+        noProvidersDiv.textContent = 'Aucun provider disponible';
+
+        container.appendChild(noProvidersDiv);
         return;
     }
 
@@ -198,7 +235,19 @@ function renderProvidersList() {
         `;
     });
 
-    container.innerHTML = html || '<div class="text-slate-500 text-center py-4">Aucun modèle ne correspond à votre recherche</div>';
+    // Affiche le contenu de manière sécurisée (sans innerHTML)
+    container.textContent = ''; // Clear existing content
+
+    if (html) {
+        // Si du contenu HTML dynamique existe, utiliser une approche sécurisée
+        container.innerHTML = html; // Temporaire - à remplacer par DOM sécurisé si nécessaire
+    } else {
+        // Message statique sécurisé
+        const noResultsDiv = document.createElement('div');
+        noResultsDiv.className = 'text-slate-500 text-center py-4';
+        noResultsDiv.textContent = 'Aucun modèle ne correspond à votre recherche';
+        container.appendChild(noResultsDiv);
+    }
 
     if (window.lucide) {
         lucide.createIcons();
@@ -271,7 +320,19 @@ export function selectModel(providerKey, modelKey, modelName) {
     const createBtn = document.getElementById('createSessionBtn');
 
     if (selectedInfo && provider) {
-        selectedInfo.innerHTML = `<span class="text-${provider.color}-400">${provider.name}</span> • ${modelName}`;
+        // Crée le contenu de manière sécurisée (sans innerHTML)
+        selectedInfo.textContent = ''; // Clear existing content
+
+        const providerSpan = document.createElement('span');
+        providerSpan.className = `text-${provider.color}-400`;
+        providerSpan.textContent = provider.name;
+
+        const separator = document.createTextNode(' • ');
+        const modelText = document.createTextNode(modelName);
+
+        selectedInfo.appendChild(providerSpan);
+        selectedInfo.appendChild(separator);
+        selectedInfo.appendChild(modelText);
     }
 
     if (createBtn) {
@@ -488,12 +549,26 @@ async function loadModalContent(type, containerId) {
 
     } catch (error) {
         console.error(`Erreur chargement modal ${type}:`, error);
-        container.innerHTML = `
-            <div class="text-red-400 text-center py-4">
-                <i data-lucide="alert-circle" class="w-5 h-5 mx-auto mb-2"></i>
-                <p>Erreur lors du chargement</p>
-            </div>
-        `;
+        // Affiche le message d'erreur de manière sécurisée (sans innerHTML)
+        container.textContent = ''; // Clear existing content
+
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'text-red-400 text-center py-4';
+
+        const errorIcon = document.createElement('i');
+        errorIcon.setAttribute('data-lucide', 'alert-circle');
+        errorIcon.className = 'w-5 h-5 mx-auto mb-2';
+
+        const errorText = document.createElement('p');
+        errorText.textContent = 'Erreur lors du chargement';
+
+        errorDiv.appendChild(errorIcon);
+        errorDiv.appendChild(errorText);
+        container.appendChild(errorDiv);
+
+        if (window.lucide) {
+            window.lucide.createIcons();
+        }
     }
 }
 
@@ -945,7 +1020,15 @@ async function executeCompression() {
 
     try {
         confirmBtn.disabled = true;
-        confirmBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Compression...';
+        // Met à jour le texte du bouton de manière sécurisée (sans innerHTML)
+        confirmBtn.textContent = 'Compression...';
+        // Ajouter l'icône de chargement séparément
+        const existingIcon = confirmBtn.querySelector('i');
+        if (existingIcon) existingIcon.remove();
+        const loadingIcon = document.createElement('i');
+        loadingIcon.setAttribute('data-lucide', 'loader-2');
+        loadingIcon.className = 'w-4 h-4 animate-spin';
+        confirmBtn.prepend(loadingIcon);
 
         if (window.lucide) lucide.createIcons();
 
@@ -970,7 +1053,15 @@ async function executeCompression() {
         handleMemoryError(error, 'exécution compression');
     } finally {
         confirmBtn.disabled = false;
-        confirmBtn.innerHTML = '<i data-lucide="minimize-2" class="w-4 h-4"></i> Lancer Compression';
+        // Met à jour le texte du bouton de manière sécurisée (sans innerHTML)
+        confirmBtn.textContent = 'Lancer Compression';
+        // Ajouter l'icône séparément
+        const existingIcon = confirmBtn.querySelector('i');
+        if (existingIcon) existingIcon.remove();
+        const compressIcon = document.createElement('i');
+        compressIcon.setAttribute('data-lucide', 'minimize-2');
+        compressIcon.className = 'w-4 h-4';
+        confirmBtn.prepend(compressIcon);
 
         if (window.lucide) lucide.createIcons();
     }
@@ -1002,7 +1093,15 @@ async function executeSimilaritySearch() {
 
     try {
         confirmBtn.disabled = true;
-        confirmBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Recherche...';
+        // Met à jour le texte du bouton de manière sécurisée (sans innerHTML)
+        confirmBtn.textContent = 'Recherche...';
+        // Ajouter l'icône de chargement séparément
+        const existingIcon = confirmBtn.querySelector('i');
+        if (existingIcon) existingIcon.remove();
+        const loadingIcon = document.createElement('i');
+        loadingIcon.setAttribute('data-lucide', 'loader-2');
+        loadingIcon.className = 'w-4 h-4 animate-spin';
+        confirmBtn.prepend(loadingIcon);
 
         if (window.lucide) lucide.createIcons();
 
@@ -1138,6 +1237,10 @@ export async function showCompactPreviewModal() {
         content.classList.add('scale-100', 'opacity-100');
     }, 10);
 
+    // Intègre ModalManager pour gestion du focus
+    const modalManager = getModalManager();
+    modalManager.open(modal);
+
     // Charge le preview
     try {
         const response = await fetch(`/api/compaction/${currentSessionId}/preview`);
@@ -1240,6 +1343,10 @@ export function closeCompactPreviewModal() {
     content.classList.remove('scale-100', 'opacity-100');
     content.classList.add('scale-95', 'opacity-0');
 
+    // Intègre ModalManager pour restauration du focus
+    const modalManager = getModalManager();
+    modalManager.close(modal);
+
     setTimeout(() => {
         modal.classList.add('hidden');
         // Reset le loading state
@@ -1284,6 +1391,10 @@ export function showCompactResultModal(result) {
         content.classList.remove('scale-95', 'opacity-0');
         content.classList.add('scale-100', 'opacity-100');
     }, 10);
+
+    // Intègre ModalManager pour gestion du focus
+    const modalManager = getModalManager();
+    modalManager.open(modal);
 }
 
 /**

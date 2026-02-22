@@ -1,7 +1,7 @@
 # API Layer - Routes et Endpoints
 
 ## TL;DR
-Couche interface utilisateur FastAPI orchestrant 73 routes REST/WebSocket avec gestion erreurs streaming, extraction tokens partielle, et retry automatique.
+Couche interface utilisateur FastAPI orchestrant 53 routes REST/WebSocket avec gestion erreurs streaming, extraction tokens partielle, et retry automatique.
 
 ## Problème
 L'API Kimi Proxy expose une surface complexe de 73 endpoints Python (8883 LOC) sans documentation centralisée, créant une courbe d'apprentissage abrupte pour les développeurs et des difficultés de maintenance.
@@ -62,6 +62,12 @@ API Layer (FastAPI) ← Services (WebSocket) ← Features (MCP) ← Proxy (HTTPX
 - `POST /api/compaction/{session_id}` - Compactage manuel session
 - `GET /api/compaction/{session_id}/stats` - Stats compactage session
 - `GET /api/compaction/stats` - Stats globales compactage
+- `GET /api/compaction/{session_id}/history` - Historique compactage session
+- `POST /api/compaction/{session_id}/reserved-tokens` - Définir tokens réservés
+- `POST /api/compaction/{session_id}/simulate` - Simuler compactage
+- `POST /api/compaction/{session_id}/auto-toggle` - Activer/désactiver auto-compactage
+- `GET /api/compaction/{session_id}/auto-status` - Statut auto-compactage
+- `GET /api/compaction/ui-config` - Configuration UI compactage
 - `POST /api/compress/{session_id}` - Compression manuelle session
 - `GET /api/compress/{session_id}/stats` - Stats compression session
 - `GET /api/compress/stats` - Stats globales compression
@@ -142,7 +148,7 @@ except httpx.ConnectError:
 4. Mise à jour cette documentation
 
 ## Métriques Actuelles
-- **53 endpoints API** répartis sur 11 fichiers route
+- **53 routes API détectées** réparties sur 11 fichiers route
 - **15 fichiers Python** dans l'API layer (2318 LOC total)
 - **Complexité moyenne** : C (17.42)
 - **Points chauds** : 2 fonctions E/F nécessitant attention
@@ -155,5 +161,5 @@ except httpx.ConnectError:
 - [ ] Documentation interactive avec exemples
 
 ---
-*Dernière mise à jour : 2026-02-20*  
+*Dernière mise à jour : 2026-02-22*  
 *Conforme à documentation/SKILL.md - Sections : TL;DR ✔, Problem-First ✔, Comparaison ✔, Trade-offs ✔, Golden Rule ✔*

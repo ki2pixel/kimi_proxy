@@ -370,7 +370,7 @@ Les anciens scripts fonctionnent toujours :
 
 **Note sur les scripts Phase 3 & 4**: `./scripts/start.sh` et `./scripts/stop.sh` intègrent maintenant automatiquement la gestion des serveurs MCP externes:
 - **Phase 3**: Qdrant MCP (port 6333) + Context Compression MCP (port 8001)
-- **Phase 4**: Task Master MCP (port 8002) + Sequential Thinking MCP (port 8003) + Fast Filesystem MCP (port 8004) + JSON Query MCP (port 8005)
+- **Phase 4**: Shrimp Task Manager MCP (port 8002) + Sequential Thinking MCP (port 8003) + Fast Filesystem MCP (port 8004) + JSON Query MCP (port 8005)
 
 **Pourquoi?** Je voulais pas que mes utilisateurs changent leurs habitudes, tout en apportant les nouvelles fonctionnalités automatiquement.
 

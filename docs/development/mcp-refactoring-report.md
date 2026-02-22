@@ -76,7 +76,7 @@ Toutes les API publiques du client original sont préservées:
 ✅ `check_qdrant_status()` - Statut Qdrant
 ✅ `search_similar()` - Recherche sémantique
 ✅ `compress_content()` - Compression
-✅ `call_task_master_tool()` - 14 outils Task Master
+✅ `call_task_master_tool()` - 14 outils Shrimp Task Manager
 ✅ `call_sequential_thinking()` - Raisonnement
 ✅ `call_fast_filesystem_tool()` - 25 outils fichiers
 ✅ `call_json_query_tool()` - Requêtes JSON
@@ -90,7 +90,7 @@ Toutes les API publiques du client original sont préservées:
 | **Client Facade** | 16 | 90% |
 | **Qdrant** | 21 | 85% |
 | **Compression** | 17 | 80% |
-| **Task Master** | 28 | 92% |
+| **Shrimp Task Manager** | 28 | 92% |
 | **Sequential** | 14 | 88% |
 | **Filesystem** | 24 | 85% |
 | **JSON Query** | 22 | 83% |
@@ -161,7 +161,7 @@ pytest tests/mcp/test_mcp_e2e_real_servers.py -v -s
 - [x] Calcul de ratio correct
 - [x] Simulation performance
 
-### ✅ Task Master MCP (14 outils)
+### ✅ Shrimp Task Manager MCP (14 outils)
 - [x] `get_tasks()` avec/sans filtre
 - [x] `get_next_task()` avec priorité
 - [x] `get_stats()` par statut

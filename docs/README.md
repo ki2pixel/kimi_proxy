@@ -158,7 +158,7 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 - **Sanitizer Phase 1** : Masking automatique contenus verbeux
 - **MCP Phase 2** : Intégration mémoire standardisée
 - **Compression Phase 3** : Bouton d'urgence compression
-- **MCP Phase 4** : 4 serveurs MCP (Task Master, Sequential Thinking, Fast Filesystem, JSON Query) - **Exécution locale dans Continue.dev**
+- **MCP Phase 4** : 4 serveurs MCP (Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query) - **Exécution locale dans Continue.dev**
 - **Monitoring temps réel** : WebSockets, Log Watcher, dashboard
 - **Persistance** : SQLite avec historique complet
 

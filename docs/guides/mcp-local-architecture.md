@@ -1,7 +1,7 @@
 # Architecture MCP Locale avec Continue.app
 
 ## TL;DR
-Les serveurs MCP Phase 4 (Task Master, Sequential Thinking, Fast Filesystem, JSON Query) fonctionnent maintenant **localement** via Continue.app. Le proxy ne fait plus de validation spécifique MCP.
+Les serveurs MCP Phase 4 (Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query) fonctionnent maintenant **localement** via Continue.app. Le proxy ne fait plus de validation spécifique MCP.
 
 ## Changements architecturaux
 
@@ -30,7 +30,7 @@ Voir `config.yaml` de Continue.app pour la configuration des serveurs MCP locaux
 
 Les fonctionnalités suivantes ont été déplacées du proxy vers l'extension Continue :
 
-- **Task Master** : Gestion des tâches et planification de projets
+- **Shrimp Task Manager** : Gestion des tâches et planification de projets
 - **Sequential Thinking** : Raisonnement séquentiel pour la résolution de problèmes
 - **Fast Filesystem** : Opérations fichiers haute performance
 - **JSON Query** : Requêtes avancées sur les fichiers JSON

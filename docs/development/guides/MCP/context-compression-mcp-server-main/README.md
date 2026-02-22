@@ -507,7 +507,7 @@ When invalid types are provided for the tags parameter, you'll receive a detaile
    ```python
    # ✅ Recommended patterns
    store_context(data="example", tags=["api-v1", "documentation", "user-guide"])
-   store_context(data="example", tags=["category:api", "version:1", "type:docs"])
+   store_context(data="example", tags=["category:api", "version:1", "type:plan"])
    ```
 
 #### Problem: Search Not Finding Tagged Contexts
@@ -523,7 +523,7 @@ When invalid types are provided for the tags parameter, you'll receive a detaile
    # If you stored with tags=["api", "documentation"]
    search_contexts("api")           # Should find it
    search_contexts("documentation") # Should find it
-   search_contexts("api docs")      # May find it depending on title/content
+   search_contexts("api plan")      # May find it depending on title/content
    ```
 
 2. **Use `list_contexts` to verify tags**
@@ -564,11 +564,11 @@ When invalid types are provided for the tags parameter, you'll receive a detaile
 4. **Use tags for categorization and filtering**
    ```python
    # Store related contexts with consistent tags
-   store_context(data="User API docs", tags=["api", "users", "v2"])
-   store_context(data="Order API docs", tags=["api", "orders", "v2"])
-   store_context(data="Payment API docs", tags=["api", "payments", "v2"])
+   store_context(data="User API plan", tags=["api", "users", "v2"])
+   store_context(data="Order API plan", tags=["api", "orders", "v2"])
+   store_context(data="Payment API plan", tags=["api", "payments", "v2"])
    
-   # Later search for all v2 API docs
+   # Later search for all v2 API plan
    search_contexts("api v2")
    ```
 

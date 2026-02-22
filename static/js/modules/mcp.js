@@ -3,7 +3,7 @@
  * 
  * Fonctionnalités:
  * - Phase 3: Serveurs mémoire externe (Qdrant, Context Compression)
- * - Phase 4: Outils avancés (Task Master:14, Sequential Thinking:1, Fast Filesystem:25, JSON Query:3)
+ * - Phase 4: Outils avancés (Shrimp Task Manager:14, Sequential Thinking:1, Fast Filesystem:25, JSON Query:3)
  * - Recherche sémantique, compression, mémoires fréquentes
  * 
  * Pourquoi Phase 3+4: Visibilité complète du système MCP (6 serveurs, 43 outils)
@@ -19,7 +19,7 @@ import { apiRequest } from './api.js';
 let mcpState = {
     servers: [],           // Tous les serveurs (Phase 3 + Phase 4)
     phase3Servers: [],     // Phase 3: Qdrant, Context Compression
-    phase4Servers: [],     // Phase 4: Task Master, Sequential Thinking, Fast Filesystem, JSON Query
+    phase4Servers: [],     // Phase 4: Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query
     allConnected: false,
     connectedCount: 0,
     totalCount: 0,
@@ -237,12 +237,23 @@ function renderMCPStatusPanel() {
     const { servers, phase3Servers, phase4Servers, allConnected, connectedCount, totalCount } = mcpState;
     
     if (!servers.length) {
-        container.innerHTML = `
-            <div class="text-slate-500 text-center py-4">
-                <i data-lucide="server-off" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
-                <p class="text-sm">Serveurs MCP non configurés</p>
-            </div>
-        `;
+        // Affiche le message "serveurs non configurés" de manière sécurisée (sans innerHTML)
+        container.textContent = ''; // Clear existing content
+
+        const noServersDiv = document.createElement('div');
+        noServersDiv.className = 'text-slate-500 text-center py-4';
+
+        const serverIcon = document.createElement('i');
+        serverIcon.setAttribute('data-lucide', 'server-off');
+        serverIcon.className = 'w-8 h-8 mx-auto mb-2 opacity-50';
+        noServersDiv.appendChild(serverIcon);
+
+        const messagePara = document.createElement('p');
+        messagePara.className = 'text-sm';
+        messagePara.textContent = 'Serveurs MCP non configurés';
+        noServersDiv.appendChild(messagePara);
+
+        container.appendChild(noServersDiv);
         lucide.createIcons();
         return;
     }
@@ -262,37 +273,87 @@ function renderMCPStatusPanel() {
         ? `<span class="text-emerald-400 flex items-center gap-1"><i data-lucide="check-circle" class="w-4 h-4"></i> ${connectedCount}/${totalCount}</span>`
         : `<span class="text-amber-400 flex items-center gap-1"><i data-lucide="alert-triangle" class="w-4 h-4"></i> ${connectedCount}/${totalCount}</span>`;
     
-    container.innerHTML = `
-        <div class="space-y-4">
-            <div class="flex items-center justify-between">
-                <h4 class="text-sm font-medium text-slate-300">Serveurs MCP</h4>
-                ${overallStatus}
-            </div>
-            
-            <!-- Phase 3: Mémoire externe -->
-            <div class="space-y-2">
-                <div class="flex items-center gap-2">
-                    <span class="text-xs font-medium text-violet-400">Phase 3</span>
-                    <span class="text-[10px] text-slate-500">Mémoire externe</span>
-                </div>
-                <div class="space-y-2">
-                    ${phase3Html}
-                </div>
-            </div>
-            
-            <!-- Phase 4: Outils avancés -->
-            <div class="space-y-2">
-                <div class="flex items-center gap-2">
-                    <span class="text-xs font-medium text-amber-400">Phase 4</span>
-                    <span class="text-[10px] text-slate-500">Outils avancés</span>
-                </div>
-                <div class="space-y-2">
-                    ${phase4Html}
-                </div>
-            </div>
-        </div>
-    `;
-    
+    // Crée la structure des serveurs MCP de manière sécurisée (sans innerHTML)
+    container.textContent = ''; // Clear existing content
+
+    const mainContainer = document.createElement('div');
+    mainContainer.className = 'space-y-4';
+
+    // Header avec titre et statut
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'flex items-center justify-between';
+
+    const titleH4 = document.createElement('h4');
+    titleH4.className = 'text-sm font-medium text-slate-300';
+    titleH4.textContent = 'Serveurs MCP';
+    headerDiv.appendChild(titleH4);
+
+    // Statut global (HTML contrôlé)
+    if (overallStatus) {
+        const statusContainer = document.createElement('span');
+        statusContainer.innerHTML = overallStatus; // Contexte contrôlé - statut généré
+        headerDiv.appendChild(statusContainer);
+    }
+
+    mainContainer.appendChild(headerDiv);
+
+    // Phase 3: Mémoire externe
+    const phase3Div = document.createElement('div');
+    phase3Div.className = 'space-y-2';
+
+    const phase3Header = document.createElement('div');
+    phase3Header.className = 'flex items-center gap-2';
+
+    const phase3Label = document.createElement('span');
+    phase3Label.className = 'text-xs font-medium text-violet-400';
+    phase3Label.textContent = 'Phase 3';
+    phase3Header.appendChild(phase3Label);
+
+    const phase3Desc = document.createElement('span');
+    phase3Desc.className = 'text-[10px] text-slate-500';
+    phase3Desc.textContent = 'Mémoire externe';
+    phase3Header.appendChild(phase3Desc);
+
+    phase3Div.appendChild(phase3Header);
+
+    const phase3Content = document.createElement('div');
+    phase3Content.className = 'space-y-2';
+    if (phase3Html) {
+        phase3Content.innerHTML = phase3Html; // Contexte contrôlé - HTML généré
+    }
+    phase3Div.appendChild(phase3Content);
+
+    mainContainer.appendChild(phase3Div);
+
+    // Phase 4: Outils avancés
+    const phase4Div = document.createElement('div');
+    phase4Div.className = 'space-y-2';
+
+    const phase4Header = document.createElement('div');
+    phase4Header.className = 'flex items-center gap-2';
+
+    const phase4Label = document.createElement('span');
+    phase4Label.className = 'text-xs font-medium text-amber-400';
+    phase4Label.textContent = 'Phase 4';
+    phase4Header.appendChild(phase4Label);
+
+    const phase4Desc = document.createElement('span');
+    phase4Desc.className = 'text-[10px] text-slate-500';
+    phase4Desc.textContent = 'Outils avancés';
+    phase4Header.appendChild(phase4Desc);
+
+    phase4Div.appendChild(phase4Header);
+
+    const phase4Content = document.createElement('div');
+    phase4Content.className = 'space-y-2';
+    if (phase4Html) {
+        phase4Content.innerHTML = phase4Html; // Contexte contrôlé - HTML généré
+    }
+    phase4Div.appendChild(phase4Content);
+
+    mainContainer.appendChild(phase4Div);
+    container.appendChild(mainContainer);
+
     lucide.createIcons();
 }
 
@@ -306,12 +367,23 @@ function renderFrequentMemoriesPanel() {
     const memories = mcpState.frequentMemories;
     
     if (!memories.length) {
-        container.innerHTML = `
-            <div class="text-slate-500 text-center py-4">
-                <i data-lucide="brain" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
-                <p class="text-sm">Aucune mémoire fréquente</p>
-            </div>
-        `;
+        // Affiche le message "aucune mémoire fréquente" de manière sécurisée (sans innerHTML)
+        container.textContent = ''; // Clear existing content
+
+        const noMemoriesDiv = document.createElement('div');
+        noMemoriesDiv.className = 'text-slate-500 text-center py-4';
+
+        const brainIcon = document.createElement('i');
+        brainIcon.setAttribute('data-lucide', 'brain');
+        brainIcon.className = 'w-8 h-8 mx-auto mb-2 opacity-50';
+        noMemoriesDiv.appendChild(brainIcon);
+
+        const messagePara = document.createElement('p');
+        messagePara.className = 'text-sm';
+        messagePara.textContent = 'Aucune mémoire fréquente';
+        noMemoriesDiv.appendChild(messagePara);
+
+        container.appendChild(noMemoriesDiv);
         lucide.createIcons();
         return;
     }
@@ -357,31 +429,84 @@ function renderAdvancedStats() {
     
     const { advanced_stats, features } = mcpState.memoryStats;
     
-    container.innerHTML = `
-        <div class="grid grid-cols-2 gap-3">
-            <div class="p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
-                <p class="text-xs text-slate-500 mb-1">Mémoires Totales</p>
-                <p class="text-2xl font-bold text-violet-400">${advanced_stats?.total_memories || 0}</p>
-            </div>
-            <div class="p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
-                <p class="text-xs text-slate-500 mb-1">Tokens Stockés</p>
-                <p class="text-2xl font-bold text-blue-400">${(advanced_stats?.total_tokens || 0).toLocaleString()}</p>
-            </div>
-            <div class="p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
-                <p class="text-xs text-slate-500 mb-1">Fréquentes</p>
-                <p class="text-2xl font-bold text-emerald-400">${advanced_stats?.frequent_memories || 0}</p>
-            </div>
-            <div class="p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
-                <p class="text-xs text-slate-500 mb-1">Accès Moyen</p>
-                <p class="text-2xl font-bold text-amber-400">${(advanced_stats?.average_access_count || 0).toFixed(1)}</p>
-            </div>
-        </div>
-        
-        <div class="mt-4 flex flex-wrap gap-2">
-            ${features?.semantic_search ? '<span class="text-xs px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Qdrant ✓</span>' : '<span class="text-xs px-2 py-1 rounded bg-slate-700 text-slate-400">Qdrant ✗</span>'}
-            ${features?.advanced_compression ? '<span class="text-xs px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Compression ✓</span>' : '<span class="text-xs px-2 py-1 rounded bg-slate-700 text-slate-400">Compression ✗</span>'}
-        </div>
-    `;
+    // Affiche les statistiques avancées de manière sécurisée (sans innerHTML)
+    container.textContent = ''; // Clear existing content
+
+    const gridContainer = document.createElement('div');
+    gridContainer.className = 'grid grid-cols-2 gap-3';
+
+    // Métriques individuelles
+    const metrics = [
+        {
+            label: 'Mémoires Totales',
+            value: advanced_stats?.total_memories || 0,
+            color: 'text-violet-400'
+        },
+        {
+            label: 'Tokens Stockés',
+            value: (advanced_stats?.total_tokens || 0).toLocaleString(),
+            color: 'text-blue-400'
+        },
+        {
+            label: 'Fréquentes',
+            value: advanced_stats?.frequent_memories || 0,
+            color: 'text-emerald-400'
+        },
+        {
+            label: 'Accès Moyen',
+            value: (advanced_stats?.average_access_count || 0).toFixed(1),
+            color: 'text-amber-400'
+        }
+    ];
+
+    metrics.forEach(metric => {
+        const metricDiv = document.createElement('div');
+        metricDiv.className = 'p-3 rounded-lg bg-slate-800/50 border border-slate-700/50';
+
+        const labelP = document.createElement('p');
+        labelP.className = 'text-xs text-slate-500 mb-1';
+        labelP.textContent = metric.label;
+        metricDiv.appendChild(labelP);
+
+        const valueP = document.createElement('p');
+        valueP.className = `text-2xl font-bold ${metric.color}`;
+        valueP.textContent = metric.value;
+        metricDiv.appendChild(valueP);
+
+        gridContainer.appendChild(metricDiv);
+    });
+
+    container.appendChild(gridContainer);
+
+    // Fonctionnalités
+    const featuresDiv = document.createElement('div');
+    featuresDiv.className = 'mt-4 flex flex-wrap gap-2';
+
+    const featureStatuses = [
+        {
+            feature: 'semantic_search',
+            name: 'Qdrant',
+            available: features?.semantic_search
+        },
+        {
+            feature: 'advanced_compression',
+            name: 'Compression',
+            available: features?.advanced_compression
+        }
+    ];
+
+    featureStatuses.forEach(feature => {
+        const featureSpan = document.createElement('span');
+        featureSpan.className = `text-xs px-2 py-1 rounded ${
+            feature.available
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                : 'bg-slate-700 text-slate-400'
+        }`;
+        featureSpan.textContent = `${feature.name} ${feature.available ? '✓' : '✗'}`;
+        featuresDiv.appendChild(featureSpan);
+    });
+
+    container.appendChild(featuresDiv);
 }
 
 // ============================================================================

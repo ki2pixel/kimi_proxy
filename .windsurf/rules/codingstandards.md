@@ -306,6 +306,18 @@ Any time you create or modify documentation (README, docs/, Markdown guides), yo
 ### Use kimi-proxy-testing-strategies Skill (@.windsurf/skills/kimi-proxy-testing-strategies/SKILL.md)
 - Unit tests, integration, E2E, performance testing with pytest-asyncio
 
+### Use shrimp-task-manager Skill (@.windsurf/skills/shrimp-task-manager/SKILL.md)
+- Task management with Shrimp Task Manager
+
+### Use sequentialthinking-logic Skill (@.windsurf/skills/sequentialthinking-logic/SKILL.md)
+- Sequential Thinking Logic for complex architecture and extension logic
+
+### Use fast-filesystem Skill (@.windsurf/skills/fast-filesystem-ops/SKILL.md)
+- Fast file system operations for efficient file management
+
+### Use json-query-expert Skill (@.windsurf/skills/json-query-expert/SKILL.md)
+- JSON Query Expert for efficient data extraction and manipulation
+
 ## Database Schema Extensions (Phase 3 MCP)
 
 ### New Tables Added

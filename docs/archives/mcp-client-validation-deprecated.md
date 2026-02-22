@@ -127,10 +127,10 @@ validated = {
 ### Exemple 2: Validation Chemin Absolu
 ```python
 # Appel avec chemin relatif
-params = {"input": "docs/prd.txt"}
+params = {"input": "plan/prd.txt"}
 
 # Résultat erreur
-{"error": "Le paramètre 'input' doit être un chemin absolu, reçu: docs/prd.txt"}
+{"error": "Le paramètre 'input' doit être un chemin absolu, reçu: plan/prd.txt"}
 ```
 
 ### Exemple 3: Validation Paramètres Obligatoires

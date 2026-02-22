@@ -14,7 +14,7 @@ L'application nécessite une interface unifiée pour interagir avec les serveurs
 - **Emplacement**: Serveurs intégrés au proxy Kimi
 
 ### Phase 4 - Serveurs dans Continue.dev
-- **Task Master MCP**: Gestion de tâches (14 outils)
+- **Shrimp Task Manager MCP**: Gestion de tâches (14 outils)
 - **Sequential Thinking MCP**: Raisonnement séquentiel (1 outil)
 - **Fast Filesystem MCP**: Opérations fichiers (25 outils)
 - **JSON Query MCP**: Requêtes JSON (3 outils)
@@ -30,7 +30,7 @@ Gestion centralisée de l'état des serveurs MCP actifs.
 let mcpState = {
     servers: [],           // Tous serveurs (Phase 3 + 4)
     phase3Servers: [],     // Qdrant, Context Compression
-    phase4Servers: [],     // Task Master, Sequential Thinking, Fast Filesystem, JSON Query
+    phase4Servers: [],     // Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query
     allConnected: false,
     connectedCount: 0,
     totalCount: 0,

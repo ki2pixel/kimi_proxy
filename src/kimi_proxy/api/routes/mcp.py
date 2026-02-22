@@ -269,7 +269,7 @@ async def api_get_frequent_memories(
             {
                 "id": "mem_005",
                 "title": "MCP Phase 4 Integration",
-                "content": "Intégration des 4 serveurs MCP Phase 4: Task Master, Sequential Thinking, Fast Filesystem, JSON Query",
+                "content": "Intégration des 4 serveurs MCP Phase 4: Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query",
                 "content_preview": "Intégration des 4 serveurs MCP Phase 4...",
                 "type": "integration",
                 "tokens": 312,

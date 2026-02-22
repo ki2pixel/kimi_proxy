@@ -22,7 +22,7 @@ class MCPClientConfig:
     compression_api_key: Optional[str] = None
     compression_timeout_ms: float = 5000.0
     
-    # Task Master MCP (Phase 4)
+    # Shrimp Task Manager MCP (Phase 4)
     task_master_url: Optional[str] = "http://localhost:8002"
     task_master_api_key: Optional[str] = None
     task_master_timeout_ms: float = 30000.0  # 30s
@@ -75,7 +75,7 @@ class MCPClientConfig:
             compression_api_key=mcp.get("compression", {}).get("api_key"),
             compression_timeout_ms=mcp.get("compression", {}).get("compression_timeout_ms", 5000.0),
             
-            # Task Master
+            # Shrimp Task Manager
             task_master_url=mcp.get("task_master", {}).get("url", "http://localhost:8002"),
             task_master_api_key=mcp.get("task_master", {}).get("api_key"),
             task_master_timeout_ms=mcp.get("task_master", {}).get("timeout_ms", 30000.0),

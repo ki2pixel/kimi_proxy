@@ -5,6 +5,8 @@
  * visuelle et faciliter les mises à jour globales du style.
  */
 
+// Chart.js chargé globalement via CDN - tout est déjà enregistré
+
 import { getColorForPercentage } from './utils.js';
 
 // ============================================================================

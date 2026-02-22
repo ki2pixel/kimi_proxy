@@ -65,9 +65,14 @@ export const eventBus = {
  */
 export function escapeHtml(text) {
     if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    // Échappement manuel des caractères HTML dangereux (sans innerHTML)
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;')
+        .replace(/\//g, '&#x2F;');
 }
 
 /**
@@ -81,9 +86,19 @@ export function showNotification(message, type = 'success') {
     div.className = `fixed bottom-4 right-4 px-6 py-3 rounded-xl text-white font-medium z-50 animate-in slide-in-from-bottom-4 ${
         type === 'success' ? 'bg-green-600' : 'bg-red-600'
     }`;
+
+    // Ajout des attributs d'accessibilité WCAG pour les messages d'erreur
+    if (type === 'error') {
+        div.setAttribute('role', 'alert');
+        div.setAttribute('aria-live', 'assertive');
+        div.setAttribute('aria-label', 'Message d\'erreur');
+    } else {
+        div.setAttribute('aria-live', 'polite');
+    }
+
     div.textContent = message;
     document.body.appendChild(div);
-    
+
     setTimeout(() => {
         div.remove();
     }, 3000);

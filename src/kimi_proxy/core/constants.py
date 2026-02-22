@@ -66,8 +66,7 @@ MCP_PATTERNS = {
     # =========================================================================
     # NOUVEAUX SERVEURS MCP - Intégration Phase 4
     # =========================================================================
-    # 1. task-master-ai (14 outils)
-    "mcp_task_master": r"(get_tasks|next_task|get_task|set_task_status|update_subtask|parse_prd|expand_task|initialize_project|analyze_project_complexity|expand_all|add_subtask|remove_task|add_task|complexity_report)",
+    # 1. task-master-ai (14 outils) - SUPPRIMÉ
     # 2. sequential-thinking (1 outil)
     "mcp_sequential_thinking": r"(sequentialthinking_tools|sequential_thinking)",
     # 3. fast-filesystem (25 outils)
@@ -127,19 +126,9 @@ MCP_PHASE3_CONFIG = {
 }
 
 # ============================================================================
-# MCP PHASE 4 - Nouveaux Serveurs MCP (task-master, sequential-thinking, filesystem, json-query)
+# MCP PHASE 4 - Nouveaux Serveurs MCP (sequential-thinking, fast-filesystem, json-query)
 # ============================================================================
 MCP_PHASE4_CONFIG = {
-    "task_master": {
-        "enabled": True,
-        "url": "http://localhost:8002",  # Port par défaut
-        "timeout_ms": 30000,
-        "tools": [
-            "get_tasks", "next_task", "get_task", "set_task_status", "update_subtask",
-            "parse_prd", "expand_task", "initialize_project", "analyze_project_complexity",
-            "expand_all", "add_subtask", "remove_task", "add_task", "complexity_report"
-        ]
-    },
     "sequential_thinking": {
         "enabled": True,
         "url": "http://localhost:8003",  # Port par défaut

@@ -52,7 +52,7 @@ Pensez à votre conversation comme à un restaurant. Le sanitizer, c'est le serv
 
 **La solution** : Intégration de 4 serveurs MCP externes pour étendre les capacités du proxy :
 
-**Task Master MCP** (14 outils) : Gestion de tâches complète avec priorisation, dépendances et analyse de complexité. Intègre `get_tasks`, `parse_prd`, `expand_task`, `analyze_project_complexity` et plus.
+**Shrimp Task Manager MCP** (14 outils) : Gestion de tâches complète avec priorisation, dépendances et analyse de complexité. Intègre `get_tasks`, `parse_prd`, `expand_task`, `analyze_project_complexity` et plus.
 
 **Sequential Thinking MCP** (1 outil) : Raisonnement séquentiel structuré pour résoudre des problèmes complexes étape par étape, avec support de branches et révisions.
 

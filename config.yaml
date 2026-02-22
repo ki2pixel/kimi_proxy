@@ -21,9 +21,12 @@ models:
       - autocomplete
     capabilities:
       - tool_use
+      - thinking
+      - video_in
+      - image_in
     defaultCompletionOptions:
-      temperature: 0.2
-      maxTokens: 16384
+      temperature: 0.6
+      maxTokens: 32768
       contextLength: 262144
 
   - name: 🔥 NVIDIA - Kimi K2 Thinking (256K)
@@ -39,9 +42,12 @@ models:
       - autocomplete
     capabilities:
       - tool_use
+      - thinking
+      - video_in
+      - image_in
     defaultCompletionOptions:
-      temperature: 0.2
-      maxTokens: 16384
+      temperature: 1.0
+      maxTokens: 32768
       contextLength: 262144
 
   # === NVIDIA - Mistral Large 3 ===
@@ -282,6 +288,49 @@ models:
       maxTokens: 8192
       contextLength: 1048576
 
+  # === NanoGPT - Moonshot AI ===
+  - name: 🌙 NanoGPT - Moonshot AI Kimi K2.5 (256K)
+    provider: openai
+    model: nano-gpt/kimi-k2.5
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 262144
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+      - thinking
+      - video_in
+      - image_in
+    defaultCompletionOptions:
+      temperature: 0.6
+      maxTokens: 32768
+      contextLength: 262144
+
+  - name: 🌙 NanoGPT - Moonshot AI Kimi K2.5 Thinking (256K)
+    provider: openai
+    model: nano-gpt/kimi-k2.5-thinking
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 262144
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+      - thinking
+      - video_in
+      - image_in
+    defaultCompletionOptions:
+      temperature: 1.0
+      maxTokens: 32768
+      contextLength: 262144
+
 # ============================================
 # MCP SERVERS - SÉLECTIFS
 # Seuls les serveurs pour context providers Continue gardés
@@ -302,13 +351,9 @@ mcpServers:
       PATH: "/usr/bin:/bin:/usr/local/bin"
 
   # MCP Phase 4 - Processus locaux (solution finale)
-  - name: task-master-ai
-    command: npx
-    args: ["-y", "task-master-ai"]
-    env:
-      MISTRAL_API_KEY: "EA1LN9ddFsblnq4xIaPHnjJpFjYwQWIM"
-      TASK_MASTER_TOOLS: "standard"
-      PATH: "/usr/bin:/bin:/usr/local/bin"
+  - name: shrimp-task-manager
+    command: /home/kidpixel/.local/bin/shrimp-task-manager
+    args: [ ]
 
   - name: sequential-thinking
     command: npx
@@ -326,9 +371,7 @@ mcpServers:
 
   - name: json-query
     command: node
-    args: ["/home/kidpixel/Téléchargements/json-query-mcp-main/dist/index.js"]
-    env:
-      PATH: "/usr/bin:/bin:/usr/local/bin"
+    args: [ "/home/kidpixel/kimi-proxy/mcp/json-query-mcp-main/dist/index.js" ]
 
   # Services externes Continue (nécessaires)
   - name: render-signal-mcp
@@ -355,11 +398,12 @@ mcpServers:
       - "--url"
       - "redis://red-d0l2c17fte5s73955i40:KCL5iVxykagTchnJxhccAyCp9S8dWFls@red-d0l2c17fte5s73955i40:6379"
 
-  - name: photomaton-postgres
+  - name: switchbot-postgres
     command: uvx
-    args: ["--python", "3.12", "postgres-mcp", "--access-mode=unrestricted"]
+    args: [ "--python", "3.12", "postgres-mcp", "--access-mode=unrestricted" ]
     env:
-      DATABASE_URI: "postgresql://neondb_owner:npg_GwWL5Fltq2kO@ep-shiny-star-ad5t7thb-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+      DATABASE_URI: "postgresql://postgres.tpjbanbcvfwyhoqsuyxf:%40vH2f85CAXjm96tz@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require"
+    connectionTimeout: 60000
 
   - name: switchbot-postgres
     command: uvx

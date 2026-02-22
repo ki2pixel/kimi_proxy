@@ -651,7 +651,7 @@ result = component.execute()
 - Contains realistic documentation structure
                 """ * 2
                 title = f"Documentation {i}"
-                tags = ["docs", "feature", f"doc{i}"]
+                tags = ["plan", "feature", f"doc{i}"]
             
             elif i % 4 == 2:  # Data context
                 data = f"""

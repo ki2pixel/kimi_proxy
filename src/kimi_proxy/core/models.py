@@ -492,7 +492,7 @@ class StatusSnapshot:
 
 @dataclass
 class TaskMasterTask:
-    """Tâche Task Master."""
+    """Tâche Shrimp Task Manager."""
     id: str = ""
     title: str = ""
     description: str = ""
@@ -520,7 +520,7 @@ class TaskMasterTask:
 
 @dataclass
 class TaskMasterStats:
-    """Statistiques Task Master."""
+    """Statistiques Shrimp Task Manager."""
     total_tasks: int = 0
     pending: int = 0
     in_progress: int = 0

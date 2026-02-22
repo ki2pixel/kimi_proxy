@@ -141,39 +141,6 @@ start_servers() {
     fi
     
     # -------------------------------------------------------------------------
-    # 3. Serveur Task Master MCP
-    # -------------------------------------------------------------------------
-    echo ""
-    log_info "Démarrage Task Master MCP..."
-    
-    # Vérifier si déjà en écoute
-    if check_port $TASK_MASTER_PORT; then
-        log_success "Task Master MCP déjà en écoute sur le port $TASK_MASTER_PORT"
-    else
-        # Créer le serveur HTTP de task master s'il n'existe pas
-        create_task_master_server
-        
-        # Démarrer le serveur de task master
-        log_info "Lancement du serveur de task master sur le port $TASK_MASTER_PORT..."
-        
-        # Démarrer en arrière-plan avec nohup
-        WORKSPACE_PATH="$(pwd)" nohup python3 /tmp/mcp_task_master_server.py > /tmp/mcp_task_master.log 2>&1 &
-        TASK_MASTER_PID=$!
-        
-        # Attendre que le serveur démarre
-        sleep 2
-        
-        if check_port $TASK_MASTER_PORT; then
-            log_success "Task Master MCP démarré (PID: $TASK_MASTER_PID)"
-            echo $TASK_MASTER_PID > /tmp/mcp_task_master.pid
-        else
-            log_error "Échec du démarrage du serveur de task master"
-            echo "   Logs: /tmp/mcp_task_master.log"
-            exit 1
-        fi
-    fi
-    
-    # -------------------------------------------------------------------------
     # 4. Serveur Sequential Thinking MCP
     # -------------------------------------------------------------------------
     echo ""
@@ -477,207 +444,6 @@ if __name__ == "__main__":
     run_server()
 EOF
     chmod +x /tmp/mcp_compression_server.py
-}
-
-# =============================================================================
-# Création du serveur de task master MCP (HTTP)
-# =============================================================================
-
-create_task_master_server() {
-    cat > /tmp/mcp_task_master_server.py << 'EOF'
-#!/usr/bin/env python3
-"""
-Serveur MCP Task Master HTTP
-Gère la gestion de tâches et analyse de projets
-"""
-
-import json
-import os
-from datetime import datetime
-from typing import Dict, Any, List
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
-
-# Configuration
-HOST = "0.0.0.0"
-PORT = 8002
-
-# Configuration workspace (reçu depuis l'environnement)
-WORKSPACE_PATH = os.getenv("WORKSPACE_PATH", "/home/kidpixel/kimi-proxy")
-
-class TaskMasterHandler(BaseHTTPRequestHandler):
-    """Handler pour les requêtes JSON-RPC 2.0"""
-    
-    def log_message(self, format, *args):
-        """Supprime les logs par défaut"""
-        pass
-    
-    def _send_json_response(self, data: Dict[str, Any], status_code: int = 200):
-        """Envoie une réponse JSON"""
-        self.send_response(status_code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
-    
-    def _is_path_allowed(self, path: str) -> bool:
-        """Vérifie si le chemin est dans le workspace autorisé"""
-        if not path:
-            return False
-        
-        # Résoudre le chemin absolu
-        abs_path = os.path.abspath(path)
-        workspace_abs = os.path.abspath(WORKSPACE_PATH)
-        
-        # Vérifier que le chemin commence par le workspace
-        return abs_path.startswith(workspace_abs)
-    
-    def _restrict_to_workspace(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Restreint les paramètres aux chemins workspace autorisés"""
-        # Pour les paramètres de fichier, vérifier les permissions
-        file_params = ["path", "file_path", "directory"]
-        for param in file_params:
-            if param in params:
-                path = params[param]
-                if not self._is_path_allowed(path):
-                    raise PermissionError(f"Accès refusé: chemin '{path}' hors du workspace autorisé '{WORKSPACE_PATH}'")
-        
-        return params
-    
-    def do_OPTIONS(self):
-        """Gère les requêtes CORS preflight"""
-        self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.end_headers()
-    
-    def do_GET(self):
-        """Gère les requêtes GET (health check)"""
-        if self.path == "/health":
-            self._send_json_response({
-                "status": "healthy",
-                "server": "task-master-mcp",
-                "version": "1.0.0",
-                "capabilities": ["task_management", "project_analysis", "complexity_analysis"],
-                "tools_count": 14
-            })
-        else:
-            self._send_json_response({"error": "Not found"}, 404)
-    
-    def do_POST(self):
-        """Gère les requêtes POST (JSON-RPC)"""
-        if self.path != "/rpc":
-            self._send_json_response({"error": "Not found"}, 404)
-            return
-        
-        try:
-            content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length).decode('utf-8')
-            request = json.loads(body)
-            
-            method = request.get("method")
-            params = request.get("params", {})
-            req_id = request.get("id")
-            
-            # Vérifier les permissions pour les méthodes qui accèdent aux fichiers
-            if method in ["parse_prd", "expand_task", "analyze_project_complexity"]:
-                params = self._restrict_to_workspace(params)
-            
-            if method == "health":
-                result = self._handle_health()
-            elif method == "get_tasks":
-                result = self._handle_get_tasks(params)
-            elif method == "parse_prd":
-                result = self._handle_parse_prd(params)
-            elif method == "expand_task":
-                result = self._handle_expand_task(params)
-            elif method == "analyze_project_complexity":
-                result = self._handle_analyze_complexity(params)
-            else:
-                result = {"error": f"Méthode inconnue: {method}"}
-            
-            response = {
-                "jsonrpc": "2.0",
-                "result": result,
-                "id": req_id
-            }
-            self._send_json_response(response)
-            
-        except PermissionError as e:
-            self._send_json_response({
-                "jsonrpc": "2.0",
-                "error": {"code": -32000, "message": str(e)},
-                "id": None
-            }, 403)
-        except Exception as e:
-            self._send_json_response({
-                "jsonrpc": "2.0",
-                "error": {"code": -32603, "message": str(e)},
-                "id": None
-            }, 500)
-    
-    def _handle_health(self) -> Dict[str, Any]:
-        return {
-            "status": "healthy",
-            "capabilities": ["task_management", "project_analysis"],
-            "tools": ["get_tasks", "parse_prd", "expand_task", "analyze_project_complexity"],
-            "timestamp": datetime.now().isoformat()
-        }
-    
-    def _handle_get_tasks(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        # Simulation de récupération de tâches
-        return {
-            "tasks": [
-                {"id": "task1", "title": "Analyser les exigences", "status": "pending", "priority": "high"},
-                {"id": "task2", "title": "Concevoir l'architecture", "status": "in_progress", "priority": "high"},
-                {"id": "task3", "title": "Implémenter les fonctionnalités", "status": "pending", "priority": "medium"}
-            ],
-            "total": 3,
-            "completed": 0
-        }
-    
-    def _handle_parse_prd(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        content = params.get("content", "")
-        # Simulation d'analyse PRD
-        return {
-            "sections": ["Introduction", "Fonctionnalités", "Contraintes"],
-            "requirements": ["Authentification", "Interface utilisateur", "Base de données"],
-            "complexity_score": 7.5
-        }
-    
-    def _handle_expand_task(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        task_id = params.get("task_id", "")
-        # Simulation d'expansion de tâche
-        return {
-            "task_id": task_id,
-            "subtasks": [
-                {"title": "Sous-tâche 1", "estimated_hours": 4},
-                {"title": "Sous-tâche 2", "estimated_hours": 6}
-            ],
-            "total_hours": 10
-        }
-    
-    def _handle_analyze_complexity(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        project_description = params.get("description", "")
-        # Simulation d'analyse de complexité
-        return {
-            "complexity_score": 8.2,
-            "estimated_hours": 120,
-            "risk_level": "medium",
-            "recommendations": ["Décomposer en modules", "Utiliser des tests unitaires"]
-        }
-
-def run_server():
-    """Démarre le serveur HTTP"""
-    server = HTTPServer((HOST, PORT), TaskMasterHandler)
-    print(f"🚀 Serveur MCP Task Master démarré sur http://{HOST}:{PORT}")
-    server.serve_forever()
-
-if __name__ == "__main__":
-    run_server()
-EOF
-    chmod +x /tmp/mcp_task_master_server.py
 }
 
 # =============================================================================
@@ -1265,16 +1031,6 @@ stop_servers() {
         rm -f /tmp/mcp_compression.pid
     fi
     
-    # Arrêter le serveur de task master
-    if [ -f /tmp/mcp_task_master.pid ]; then
-        pid=$(cat /tmp/mcp_task_master.pid)
-        if kill -0 $pid 2>/dev/null; then
-            kill -9 $pid 2>/dev/null || true
-            log_success "Task Master MCP arrêté (PID: $pid)"
-        fi
-        rm -f /tmp/mcp_task_master.pid
-    fi
-    
     # Arrêter le serveur de sequential thinking
     if [ -f /tmp/mcp_sequential_thinking.pid ]; then
         pid=$(cat /tmp/mcp_sequential_thinking.pid)
@@ -1307,7 +1063,6 @@ stop_servers() {
     
     # Tuer par port si nécessaire
     kill_port $COMPRESSION_PORT 2>/dev/null || true
-    kill_port $TASK_MASTER_PORT 2>/dev/null || true
     kill_port $SEQUENTIAL_THINKING_PORT 2>/dev/null || true
     kill_port $FAST_FILESYSTEM_PORT 2>/dev/null || true
     kill_port $JSON_QUERY_PORT 2>/dev/null || true
@@ -1352,14 +1107,6 @@ status_servers() {
         log_success "✅ Connecté (port $COMPRESSION_PORT)"
     else
         log_warning "❌ Déconnecté (port $COMPRESSION_PORT non écouté)"
-    fi
-    
-    # Task Master
-    echo -n "Task Master MCP: "
-    if check_port $TASK_MASTER_PORT; then
-        log_success "✅ Connecté (port $TASK_MASTER_PORT)"
-    else
-        log_warning "❌ Déconnecté (port $TASK_MASTER_PORT non écouté)"
     fi
     
     # Sequential Thinking

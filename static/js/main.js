@@ -58,6 +58,7 @@ import {
     initAutoSession,
     exposeAutoSessionGlobals
 } from './modules/auto-session.js';
+import { initAllDropdowns } from './modules/accessibility/dropdown-manager.js';
 
 // ============================================================================
 // INITIALISATION PRINCIPALE
@@ -93,6 +94,7 @@ async function initApp() {
         initUIListeners();
         initModalListeners();
         initCompactionListeners();
+        initAllDropdowns(); // Initialise tous les dropdowns avec navigation clavier
         
         // 6. Charge les données initiales
         await loadInitialAppData();
@@ -526,25 +528,46 @@ async function loadSessions() {
         // Header avec sélection multiple
         const headerDiv = document.createElement('div');
         headerDiv.className = 'flex items-center justify-between p-3 border-b border-slate-700/50 mb-2';
-        headerDiv.innerHTML = `
-            <div class="flex items-center gap-3">
-                <input type="checkbox" id="selectAllSessions" class="w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-blue-500">
-                <label for="selectAllSessions" class="text-xs text-slate-400 cursor-pointer">Tout sélectionner</label>
-            </div>
-            <button id="bulkDeleteBtn" 
-                    class="hidden px-3 py-1 text-xs bg-red-600 hover:bg-red-500 text-white rounded transition-colors flex items-center gap-1">
-                <i data-lucide="trash-2" class="w-3 h-3"></i>
-                Supprimer sélection
-            </button>
-        `;
+        // Crée l'en-tête de manière sécurisée (sans innerHTML)
+        const headerContent = document.createElement('div');
+        headerContent.className = 'flex items-center gap-3';
+
+        const selectAllCheckbox = document.createElement('input');
+        selectAllCheckbox.type = 'checkbox';
+        selectAllCheckbox.id = 'selectAllSessions';
+        selectAllCheckbox.className = 'w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-blue-500';
+        headerContent.appendChild(selectAllCheckbox);
+
+        const selectAllLabel = document.createElement('label');
+        selectAllLabel.setAttribute('for', 'selectAllSessions');
+        selectAllLabel.className = 'text-xs text-slate-400 cursor-pointer';
+        selectAllLabel.textContent = 'Tout sélectionner';
+        headerContent.appendChild(selectAllLabel);
+
+        headerDiv.appendChild(headerContent);
+
+        const bulkDeleteBtn = document.createElement('button');
+        bulkDeleteBtn.id = 'bulkDeleteBtn';
+        bulkDeleteBtn.className = 'hidden px-3 py-1 text-xs bg-red-600 hover:bg-red-500 text-white rounded transition-colors flex items-center gap-1';
+
+        const deleteIcon = document.createElement('i');
+        deleteIcon.setAttribute('data-lucide', 'trash-2');
+        deleteIcon.className = 'w-3 h-3';
+        deleteIcon.setAttribute('aria-label', 'Supprimer la session');
+        bulkDeleteBtn.appendChild(deleteIcon);
+
+        const deleteText = document.createTextNode(' Supprimer sélection');
+        bulkDeleteBtn.appendChild(deleteText);
+
+        headerDiv.appendChild(bulkDeleteBtn);
         sessionList.appendChild(headerDiv);
         
         // Add event listener programmatically
-        const selectAllCheckbox = headerDiv.querySelector('#selectAllSessions');
-        selectAllCheckbox.addEventListener('change', toggleSelectAll);
+        const selectAllCheckboxElement = headerDiv.querySelector('#selectAllSessions');
+        selectAllCheckboxElement.addEventListener('change', toggleSelectAll);
         
-        const bulkDeleteBtn = headerDiv.querySelector('#bulkDeleteBtn');
-        bulkDeleteBtn.addEventListener('click', deleteSelectedSessions);
+        const bulkDeleteButton = headerDiv.querySelector('#bulkDeleteBtn');
+        bulkDeleteButton.addEventListener('click', deleteSelectedSessions);
         
         sessions.forEach(session => {
             const sessionItem = document.createElement('div');
@@ -556,37 +579,81 @@ async function loadSessions() {
             
             sessionItem.onclick = () => switchSession(session.id);
             
-            sessionItem.innerHTML = `
-                <div class="flex items-center gap-3">
-                    ${!session.is_active ? 
-                        `<input type="checkbox" class="session-checkbox w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-blue-500" value="${session.id}">` : 
-                        '<div class="w-4"></div>'
-                    }
-                    <div class="w-8 h-8 rounded-lg flex items-center justify-center ${
-                        session.is_active ? 'bg-blue-500/20' : 'bg-slate-700/50'
-                    }">
-                        <i data-lucide="${session.is_active ? 'folder-open' : 'folder'}" class="w-4 h-4 ${
-                            session.is_active ? 'text-blue-400' : 'text-slate-400'
-                        }"></i>
-                    </div>
-                    <div>
-                        <p class="text-white font-medium text-sm">#${session.id} ${session.name}</p>
-                        <p class="text-slate-400 text-xs">${session.provider} • ${session.model || 'N/A'}</p>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    ${session.is_active ? 
-                        '<span class="text-xs text-blue-400 font-medium">ACTIVE</span>' : 
-                        `<button class="delete-session-btn text-slate-500 hover:text-red-400 transition-colors p-1 rounded hover:bg-red-500/10" 
-                                title="Supprimer la session">
-                            <i data-lucide="trash-2" class="w-3 h-3"></i>
-                        </button>`
-                    }
-                    <div class="text-xs text-slate-500">
-                        ${new Date(session.created_at).toLocaleDateString('fr-FR')}
-                    </div>
-                </div>
-            `;
+            // Crée l'élément de session de manière sécurisée (sans innerHTML pour éviter XSS)
+            const sessionLeftSection = document.createElement('div');
+            sessionLeftSection.className = 'flex items-center gap-3';
+
+            // Checkbox ou espace pour sessions inactives
+            if (!session.is_active) {
+                const sessionCheckbox = document.createElement('input');
+                sessionCheckbox.type = 'checkbox';
+                sessionCheckbox.className = 'session-checkbox w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-blue-500';
+                sessionCheckbox.value = session.id;
+                sessionLeftSection.appendChild(sessionCheckbox);
+            } else {
+                const sessionSpacer = document.createElement('div');
+                sessionSpacer.className = 'w-4';
+                sessionLeftSection.appendChild(sessionSpacer);
+            }
+
+            // Icône du dossier
+            const sessionIconWrapper = document.createElement('div');
+            sessionIconWrapper.className = `w-8 h-8 rounded-lg flex items-center justify-center ${
+                session.is_active ? 'bg-blue-500/20' : 'bg-slate-700/50'
+            }`;
+
+            const sessionIcon = document.createElement('i');
+            sessionIcon.setAttribute('data-lucide', session.is_active ? 'folder-open' : 'folder');
+            sessionIcon.className = `w-4 h-4 ${
+                session.is_active ? 'text-blue-400' : 'text-slate-400'
+            }`;
+            sessionIconWrapper.appendChild(sessionIcon);
+            sessionLeftSection.appendChild(sessionIconWrapper);
+
+            // Informations de session
+            const sessionInfoSection = document.createElement('div');
+
+            const sessionTitleEl = document.createElement('p');
+            sessionTitleEl.className = 'text-white font-medium text-sm';
+            sessionTitleEl.textContent = `#${session.id} ${session.name || 'Sans nom'}`;
+            sessionInfoSection.appendChild(sessionTitleEl);
+
+            const sessionDetailsEl = document.createElement('p');
+            sessionDetailsEl.className = 'text-slate-400 text-xs';
+            sessionDetailsEl.textContent = `${session.provider || 'N/A'} • ${session.model || 'N/A'}`;
+            sessionInfoSection.appendChild(sessionDetailsEl);
+
+            sessionLeftSection.appendChild(sessionInfoSection);
+            sessionItem.appendChild(sessionLeftSection);
+
+            // Conteneur principal droite
+            const sessionRightSection = document.createElement('div');
+            sessionRightSection.className = 'flex items-center gap-2';
+
+            if (session.is_active) {
+                const sessionStatusBadge = document.createElement('span');
+                sessionStatusBadge.className = 'text-xs text-blue-400 font-medium';
+                sessionStatusBadge.textContent = 'ACTIVE';
+                sessionRightSection.appendChild(sessionStatusBadge);
+            } else {
+                const sessionDeleteButton = document.createElement('button');
+                sessionDeleteButton.className = 'delete-session-btn text-slate-500 hover:text-red-400 transition-colors p-1 rounded hover:bg-red-500/10';
+                sessionDeleteButton.title = 'Supprimer la session';
+
+                const sessionDeleteIcon = document.createElement('i');
+                sessionDeleteIcon.setAttribute('data-lucide', 'trash-2');
+                sessionDeleteIcon.className = 'w-3 h-3';
+                sessionDeleteButton.appendChild(sessionDeleteIcon);
+
+                sessionRightSection.appendChild(sessionDeleteButton);
+            }
+
+            const sessionDateDisplay = document.createElement('div');
+            sessionDateDisplay.className = 'text-xs text-slate-500';
+            sessionDateDisplay.textContent = new Date(session.created_at).toLocaleDateString('fr-FR');
+            sessionRightSection.appendChild(sessionDateDisplay);
+
+            sessionItem.appendChild(sessionRightSection);
             
             sessionList.appendChild(sessionItem);
             
@@ -615,8 +682,11 @@ async function loadSessions() {
         
     } catch (error) {
         console.error('Erreur chargement sessions:', error);
-        const sessionList = document.getElementById('sessionList');
-        sessionList.innerHTML = '<div class="text-red-400 text-center py-4 text-sm">Erreur chargement sessions</div>';
+        // Affiche un message d'erreur sécurisé (sans innerHTML)
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'text-red-400 text-center py-4 text-sm';
+        errorDiv.textContent = 'Erreur chargement sessions';
+        sessionList.appendChild(errorDiv);
     }
 }
 
@@ -747,7 +817,8 @@ function updateBulkDeleteButton() {
     
     if (checkboxes.length > 0) {
         bulkDeleteBtn.classList.remove('hidden');
-        bulkDeleteBtn.innerHTML = `<i data-lucide="trash-2" class="w-3 h-3"></i> Supprimer (${checkboxes.length})`;
+        // Met à jour le texte du bouton de manière sécurisée (sans innerHTML)
+        bulkDeleteBtn.textContent = `Supprimer (${checkboxes.length})`;
     } else {
         bulkDeleteBtn.classList.add('hidden');
     }

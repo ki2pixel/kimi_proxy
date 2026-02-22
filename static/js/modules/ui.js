@@ -24,6 +24,7 @@ import {
     getCurrentSessionId
 } from './sessions.js';
 import { showMemoryModal } from './modals.js';
+import { getLiveAnnouncer } from './accessibility/live-announcer.js';
 
 // ============================================================================
 // UIMANAGER CLASS - Gestion centralisée des boutons UI
@@ -356,10 +357,15 @@ export function updateSessionDisplay(data) {
     const providerEl = getElement('session-provider');
     if (providerEl) {
         const color = getProviderColor(providerKey);
-        providerEl.innerHTML = `
-            <span class="w-2 h-2 rounded-full bg-${color}-500"></span>
-            ${providerName}
-        `;
+        // Affiche le provider de manière sécurisée (sans innerHTML)
+        providerEl.textContent = ''; // Clear existing content
+
+        const colorSpan = document.createElement('span');
+        colorSpan.className = `w-2 h-2 rounded-full bg-${color}-500`;
+        providerEl.appendChild(colorSpan);
+
+        const providerText = document.createTextNode(` ${providerName}`);
+        providerEl.appendChild(providerText);
     }
     
     // Modèle
@@ -431,8 +437,19 @@ export function updateAccuracyComparison() {
     if (lastRealEl) lastRealEl.textContent = formatTokens(accuracy.real);
     
     if (accuracyTextEl) {
-        accuracyTextEl.innerHTML = 
-            `Précision: <span class="${accuracy.accuracyColor} font-bold">${accuracy.formattedAccuracy}%</span> (diff: ${accuracy.diffText})`;
+        // Affiche la précision de manière sécurisée (sans innerHTML)
+        accuracyTextEl.textContent = ''; // Clear existing content
+
+        const textNode = document.createTextNode('Précision: ');
+        accuracyTextEl.appendChild(textNode);
+
+        const accuracySpan = document.createElement('span');
+        accuracySpan.className = `${accuracy.accuracyColor} font-bold`;
+        accuracySpan.textContent = `${accuracy.formattedAccuracy}%`;
+        accuracyTextEl.appendChild(accuracySpan);
+
+        const diffText = document.createTextNode(` (diff: ${accuracy.diffText})`);
+        accuracyTextEl.appendChild(diffText);
     }
 }
 
@@ -454,7 +471,14 @@ export function renderLogs(scroll = false) {
     container.innerHTML = '';
     
     if (metrics.length === 0) {
-        container.innerHTML = '<div class="text-slate-500 text-center py-8">En attente de données...</div>';
+        // Affiche le message d'attente de manière sécurisée (sans innerHTML)
+        container.textContent = ''; // Clear existing content
+
+        const waitingDiv = document.createElement('div');
+        waitingDiv.className = 'text-slate-500 text-center py-8';
+        waitingDiv.textContent = 'En attente de données...';
+
+        container.appendChild(waitingDiv);
         return;
     }
     
@@ -573,19 +597,66 @@ function createLogEntryElement(metric) {
         breakdownDetail = `<span class="text-slate-600 text-[10px]">[${parts.join(' | ')}]</span>`;
     }
     
-    entry.innerHTML = `
-        <i data-lucide="${iconName}" class="w-4 h-4 ${iconColor} mt-0.5 flex-shrink-0"></i>
-        <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 text-xs text-slate-500 mb-1 flex-wrap">
-                <span class="font-mono">${time}</span>
-                ${tokensDisplay}
-                ${componentsDetail}
-                ${breakdownDetail}
-                <span class="${badgeInfo.class}" title="${badgeInfo.title}">${badgeInfo.text}</span>
-            </div>
-            <p class="text-slate-300 truncate">${escapeHtml(preview)}</p>
-        </div>
-    `;
+    // Crée la structure DOM de manière sécurisée (sans innerHTML)
+    entry.textContent = ''; // Clear existing content
+
+    // Icône principale
+    const icon = document.createElement('i');
+    icon.setAttribute('data-lucide', iconName);
+    icon.className = `w-4 h-4 ${iconColor} mt-0.5 flex-shrink-0`;
+    entry.appendChild(icon);
+
+    // Conteneur principal
+    const mainContainer = document.createElement('div');
+    mainContainer.className = 'flex-1 min-w-0';
+
+    // Ligne d'informations
+    const infoLine = document.createElement('div');
+    infoLine.className = 'flex items-center gap-2 text-xs text-slate-500 mb-1 flex-wrap';
+
+    // Time
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'font-mono';
+    timeSpan.textContent = time;
+    infoLine.appendChild(timeSpan);
+
+    // Tokens display (insérer comme HTML sécurisé si nécessaire)
+    if (tokensDisplay) {
+        const tokensContainer = document.createElement('span');
+        tokensContainer.innerHTML = tokensDisplay; // Contexte contrôlé - valeurs numériques
+        infoLine.appendChild(tokensContainer);
+    }
+
+    // Components detail
+    if (componentsDetail) {
+        const componentsContainer = document.createElement('span');
+        componentsContainer.innerHTML = componentsDetail; // Contexte contrôlé
+        infoLine.appendChild(componentsContainer);
+    }
+
+    // Breakdown detail
+    if (breakdownDetail) {
+        const breakdownContainer = document.createElement('span');
+        breakdownContainer.innerHTML = breakdownDetail; // Contexte contrôlé
+        infoLine.appendChild(breakdownContainer);
+    }
+
+    // Badge
+    const badgeSpan = document.createElement('span');
+    badgeSpan.className = badgeInfo.class;
+    badgeSpan.title = badgeInfo.title;
+    badgeSpan.textContent = badgeInfo.text;
+    infoLine.appendChild(badgeSpan);
+
+    mainContainer.appendChild(infoLine);
+
+    // Preview text (échappé)
+    const previewPara = document.createElement('p');
+    previewPara.className = 'text-slate-300 truncate';
+    previewPara.textContent = escapeHtml(preview);
+    mainContainer.appendChild(previewPara);
+
+    entry.appendChild(mainContainer);
     
     return entry;
 }
@@ -665,7 +736,14 @@ function scrollToBottom() {
 export function clearLogs() {
     const container = getElement('logs-container');
     if (container) {
-        container.innerHTML = '<div class="text-slate-500 text-center py-8">En attente de données...</div>';
+        // Affiche le message d'attente de manière sécurisée (sans innerHTML)
+        container.textContent = ''; // Clear existing content
+
+        const waitingDiv = document.createElement('div');
+        waitingDiv.className = 'text-slate-500 text-center py-8';
+        waitingDiv.textContent = 'En attente de données...';
+
+        container.appendChild(waitingDiv);
     }
 }
 
@@ -711,10 +789,15 @@ export function updateSourceIndicator(source, tokens, percentage) {
     const label = sourceLabels[source] || source;
     
     if (badge) {
-        badge.innerHTML = `
-            <span class="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
-            ${label}
-        `;
+        // Met à jour le badge de manière sécurisée (sans innerHTML)
+        badge.textContent = ''; // Clear existing content
+
+        const pulseSpan = document.createElement('span');
+        pulseSpan.className = 'w-1.5 h-1.5 rounded-full bg-current animate-pulse';
+        badge.appendChild(pulseSpan);
+
+        const labelText = document.createTextNode(` ${label}`);
+        badge.appendChild(labelText);
     }
     
     // Abréviation pour la jauge
@@ -837,6 +920,9 @@ export function initUIListeners() {
     // WebSocket
     eventBus.on('websocket:status', ({ connected }) => {
         updateConnectionStatus(connected);
+        // Annonce aria-live pour les changements de statut WebSocket
+        const announcer = getLiveAnnouncer();
+        announcer.announceConnectionStatus(connected);
     });
     
     // Sessions
@@ -930,6 +1016,9 @@ export function initUIListeners() {
     // Alertes
     eventBus.on('alert:received', (alert) => {
         updateAlert(alert);
+        // Annonce aria-live pour les alertes
+        const announcer = getLiveAnnouncer();
+        announcer.announceAlert(alert);
     });
     
     // Affichage général
