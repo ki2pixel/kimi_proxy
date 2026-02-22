@@ -118,6 +118,12 @@ def get_max_context_for_session(session: dict, models: dict, default: int = 2621
     if model_key and model_key in models:
         return models[model_key].get("max_context_size", default)
     
+    # Recherche par correspondance de modèle interne (ex: moonshotai/kimi-k2-thinking)
+    if model_key:
+        for mk, model in models.items():
+            if model.get("model") == model_key:
+                return model.get("max_context_size", default)
+    
     # Sinon, trouve le contexte le plus petit parmi les modèles du provider
     min_context = None
     for mk, model in models.items():

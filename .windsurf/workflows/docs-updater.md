@@ -16,10 +16,10 @@ description: Docs Updater, Standard Tools, Cloc Radon, Quality Context
 Lancer les commandes suivantes pour ignorer les dossiers de données (ex: "sessions.db", "__pycache__", "node_modules") et cibler le cœur applicatif selon l'architecture 5 couches.
 
 1.  **Cartographie (Filtre Bruit)** :
-    - `bash "tree -L 3 -I '__pycache__|venv|node_modules|.git|*.db|*.backup|logs|debug|assets|*_output|test*|mcp|shrimp_data'"`
+    - `bash "tree -L 3 -I '__pycache__|venv|node_modules|.git|*.db|*.backup|logs|debug|assets|*_output|test*|mcp|shrimp_data|.shrimp_task_manager'"`
     - *But* : Visualiser l'architecture 5 couches (`src/kimi_proxy/{api,services,features,proxy,core}`).
 2.  **Volumétrie (Code Source)** :
-    - `bash "cloc src/kimi_proxy --md --exclude-dir=__pycache__,tests,mcp,shrimp_data"`
+    - `bash "cloc src/kimi_proxy --md --exclude-dir=__pycache__,tests,mcp,shrimp_data,.shrimp_task_manager"`
     - *But* : Quantifier le code réel par couche (API/Services/Features/Proxy/Core).
 4.  **Sessions Développement (Nouvelles Fonctionnalités)** :
     - `find_by_name docs/development/sessions/ -name "*.md" | head -10`

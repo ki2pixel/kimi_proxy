@@ -45,7 +45,6 @@ export async function initAutoSession() {
         eventBus.on('auto_session:toggled', handleAutoSessionToggled);
         
         isInitialized = true;
-        console.log('✅ Auto Session initialisé:', isAutoSessionEnabled);
         
     } catch (error) {
         console.error('❌ Erreur initialisation auto-session:', error);

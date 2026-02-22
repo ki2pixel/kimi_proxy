@@ -14,7 +14,8 @@ import {
     setLastLogData,
     setMemoryMetrics,
     updateMetricWithRealTokens,
-    reloadSessionData
+    reloadSessionData,
+    getSessionManager
 } from './sessions.js';
 
 // ============================================================================
@@ -213,6 +214,10 @@ export class WebSocketManager {
             
             case 'session_deleted':
                 this.handleSessionDeletedMessage(data);
+                break;
+            
+            case 'sessions_bulk_deleted':
+                this.handleSessionsBulkDeletedMessage(data);
                 break;
             
             case 'memory_similarity_result_response':
@@ -479,6 +484,18 @@ export class WebSocketManager {
 
     handleAutoSessionToggled(data) {
         eventBus.emit('auto_session:toggled', { enabled: data.enabled });
+    }
+
+    handleSessionsBulkDeletedMessage(data) {
+        console.log(`🗑️ [WebSocket] Sessions supprimées en bulk détectées: ${data.session_ids.join(', ')}`);
+        
+        // Recharge la liste des sessions pour mettre à jour le dropdown
+        // Note: On ne peut pas importer loadSessions directement ici car c'est défini dans main.js
+        // On émet un événement que main.js peut écouter
+        eventBus.emit('sessions:bulk_deleted', data);
+        
+        // Notification
+        showNotification(`${data.deleted_count} session(s) supprimée(s) en bulk`, 'success');
     }
 
     handleSessionDeletedMessage(data) {

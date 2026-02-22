@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 from ...core.database import (
     create_session,
@@ -102,6 +103,120 @@ async def api_get_active_session():
     }
 
 
+# ============================================================================
+# AUTO SESSION - Gestion du mode auto-création de sessions
+# ============================================================================
+
+@router.get("/auto-status")
+async def api_get_auto_session_status():
+    """Récupère le statut de l'auto-session pour la session active."""
+    from fastapi.responses import JSONResponse
+    
+    # Retourner une valeur par défaut pour éviter les erreurs lors de l'initialisation
+    # L'auto-session fonctionne indépendamment de cette route
+    session = get_active_session()
+    if not session:
+        return JSONResponse({"enabled": True, "session_id": None})
+    
+    try:
+        from ...core.auto_session import get_auto_session_status
+        enabled = get_auto_session_status(session["id"])
+        return JSONResponse({"enabled": enabled, "session_id": session["id"]})
+    except Exception as e:
+        # En cas d'erreur, retourner une valeur par défaut sécurisée
+        print(f"⚠️ Erreur récupération statut auto-session: {e}")
+        return JSONResponse({"enabled": True, "session_id": None})
+
+
+@router.post("/toggle-auto")
+async def api_toggle_auto_session(request: Request):
+    """Active ou désactive l'auto-session pour la session active."""
+    from ...core.auto_session import set_auto_session_status, get_auto_session_status
+    
+    data = await request.json()
+    enabled = data.get("enabled", True)
+    
+    session = get_active_session()
+    if not session:
+        return {"error": "Aucune session active"}
+    
+    set_auto_session_status(session["id"], enabled)
+    
+    # Broadcast via WebSocket
+    manager = get_connection_manager()
+    await manager.broadcast({
+        "type": "auto_session_toggled",
+        "session_id": session["id"],
+        "enabled": enabled
+    })
+    
+    return {
+        "enabled": get_auto_session_status(session["id"]),
+        "session_id": session["id"]
+    }
+
+
+@router.get("/{session_id}")
+async def api_get_session(session_id: int):
+    """Récupère une session spécifique avec ses statistiques."""
+    session = get_active_session()
+    if session and session["id"] == session_id:
+        # Pour la session active, retourne les données complètes
+        config = get_config()
+        providers = config.get("providers", {})
+        models = config.get("models", {})
+        
+        stats = get_session_stats(session_id)
+        
+        provider_key = session.get("provider", "managed:kimi-code")
+        provider_info = providers.get(provider_key, {})
+        max_context = get_max_context_for_session(session, models)
+        
+        # Récupère les stats mémoire MCP
+        memory_stats = get_session_memory_stats(session_id)
+        
+        # Ajoute max_context à la session pour le frontend
+        session_with_context = dict(session)
+        session_with_context["max_context"] = max_context
+        
+        return {
+            "session": session_with_context,
+            "provider": {
+                "key": provider_key,
+                "name": get_provider_display_name(provider_key),
+                "info": provider_info,
+                "color": get_provider_color(provider_key),
+                "icon": get_provider_icon(provider_key)
+            },
+            "memory": memory_stats,
+            **stats
+        }
+    
+    # Pour les sessions inactives, retourne juste les données de base
+    session_data = get_session_by_id(session_id)
+    if not session_data:
+        return {"error": f"Session {session_id} introuvable"}
+    
+    config = get_config()
+    models = config.get("models", {})
+    max_context = get_max_context_for_session(session_data, models)
+    
+    session_with_context = dict(session_data)
+    session_with_context["max_context"] = max_context
+    
+    return {
+        "session": session_with_context,
+        "provider": {
+            "key": session_data.get("provider", "managed:kimi-code"),
+            "name": get_provider_display_name(session_data.get("provider", "managed:kimi-code")),
+            "color": get_provider_color(session_data.get("provider", "managed:kimi-code")),
+            "icon": get_provider_icon(session_data.get("provider", "managed:kimi-code"))
+        },
+        "memory": get_session_memory_stats(session_id),
+        **get_session_stats(session_id)
+    }
+
+
 @router.post("/{session_id}/activate")
 async def api_activate_session(session_id: int):
     """Active une session spécifique."""
@@ -144,14 +259,22 @@ async def api_activate_session(session_id: int):
 @router.get("/auto-status")
 async def api_get_auto_session_status():
     """Récupère le statut de l'auto-session pour la session active."""
-    from ...core.auto_session import get_auto_session_status
+    from fastapi.responses import JSONResponse
     
+    # Retourner une valeur par défaut pour éviter les erreurs lors de l'initialisation
+    # L'auto-session fonctionne indépendamment de cette route
     session = get_active_session()
     if not session:
-        return {"enabled": True, "session_id": None}
+        return JSONResponse({"enabled": True, "session_id": None})
     
-    enabled = get_auto_session_status(session["id"])
-    return {"enabled": enabled, "session_id": session["id"]}
+    try:
+        from ...core.auto_session import get_auto_session_status
+        enabled = get_auto_session_status(session["id"])
+        return JSONResponse({"enabled": enabled, "session_id": session["id"]})
+    except Exception as e:
+        # En cas d'erreur, retourner une valeur par défaut sécurisée
+        print(f"⚠️ Erreur récupération statut auto-session: {e}")
+        return JSONResponse({"enabled": True, "session_id": None})
 
 
 @router.post("/toggle-auto")
@@ -182,30 +305,39 @@ async def api_toggle_auto_session(request: Request):
     }
 
 
-@router.delete("/{session_id}")
-async def api_delete_session(session_id: int):
-    """Supprime une session spécifique et toutes ses données associées."""
-    # Vérifie que la session n'est pas active
+@router.delete("")
+async def api_delete_sessions_bulk(request: Request):
+    """Supprime plusieurs sessions en bulk."""
+    data = await request.json()
+    session_ids = data.get("session_ids", [])
+    
+    if not session_ids:
+        return {"error": "Aucun ID de session fourni"}
+    
+    # Vérifie qu'aucune session active n'est dans la liste
     active_session = get_active_session()
-    if active_session and active_session["id"] == session_id:
+    if active_session and active_session["id"] in session_ids:
         return {"error": "Impossible de supprimer une session active"}
-
-    # Supprime la session
-    if not delete_session(session_id):
-        return {"error": f"Session {session_id} introuvable ou erreur lors de la suppression"}
-
-    # Exécute VACUUM automatiquement après suppression
+    
+    # Supprime les sessions en bulk
+    result = delete_sessions_bulk(session_ids)
+    
+    if not result["success"]:
+        return {"error": f"Échec suppression sessions: {result['failed_ids']}"}
+    
+    # Exécute VACUUM automatiquement après suppression en bulk
     vacuum_result = vacuum_database()
-    print(f"🧹 VACUUM automatique après suppression session {session_id}: {vacuum_result.get('message', 'Erreur')}")
-
+    print(f"🧹 VACUUM automatique après suppression en bulk: {vacuum_result.get('message', 'Erreur')}")
+    
     # Broadcast via WebSocket
     manager = get_connection_manager()
     await manager.broadcast({
-        "type": "session_deleted",
-        "session_id": session_id
+        "type": "sessions_bulk_deleted",
+        "session_ids": session_ids,
+        "deleted_count": result["deleted_count"]
     })
-
-    return {"message": f"Session {session_id} supprimée avec succès"}
+    
+    return result
 
 
 @router.post("/vacuum")

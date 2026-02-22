@@ -445,15 +445,21 @@ async def api_promote_frequent_patterns(session_id: int):
 @router.get("/memory/all-servers")
 async def api_get_all_mcp_server_statuses():
     """
-    Retourne le statut de tous les serveurs MCP.
+    Retourne le statut de tous les serveurs MCP (Phase 3 + Phase 4).
     """
     client = get_mcp_client()
 
-    # Phase 3 uniquement (Qdrant, Context Compression)
+    # Tous les serveurs (Phase 3 + Phase 4)
     statuses = await client.get_all_server_statuses()
 
+    # Sépare Phase 3 et Phase 4
+    phase3_servers = [s for s in statuses if s.name in ['qdrant', 'context-compression']]
+    phase4_servers = [s for s in statuses if s.name in ['shrimp-task-manager', 'sequential-thinking', 'fast-filesystem', 'json-query']]
+
     return {
-        "servers": [s.to_dict() for s in statuses],
+        "all": [s.to_dict() for s in statuses],
+        "phase3": [s.to_dict() for s in phase3_servers],
+        "phase4": [s.to_dict() for s in phase4_servers],
         "all_connected": all(s.connected for s in statuses),
         "connected_count": sum(1 for s in statuses if s.connected),
         "total_count": len(statuses),

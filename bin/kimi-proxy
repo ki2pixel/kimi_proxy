@@ -156,6 +156,16 @@ cmd_start() {
         log_success "Serveur démarré (PID: $server_pid)"
         log_info "Dashboard: http://localhost:$port"
         log_info "Logs: tail -f $PROJECT_DIR/server.log"
+        
+        # Démarre les serveurs MCP Phase 3 automatiquement
+        log_info "Démarrage des serveurs MCP Phase 3..."
+        if [ -f "$PROJECT_DIR/scripts/start-mcp-servers.sh" ]; then
+            "$PROJECT_DIR/scripts/start-mcp-servers.sh" start > /dev/null 2>&1 &
+            sleep 2
+            log_success "Serveurs MCP démarrés"
+        else
+            log_warning "Script start-mcp-servers.sh non trouvé"
+        fi
     else
         log_error "Échec du démarrage du serveur"
         rm -f "$PID_FILE"

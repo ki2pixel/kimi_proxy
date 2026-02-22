@@ -421,13 +421,13 @@ function setupMemoryModalHandlers() {
  * @param {UIManager} uiManager - Instance du UIManager
  */
 function setupSessionChangeHandlers(chartManager, webSocketManager, uiManager) {
-    eventBus.on('sessionChanged', (event) => {
-        const { newSession } = event.detail;
+    eventBus.on('sessionChanged', (data) => {
+        const { newSession } = data;
         
         console.log(`🔄 [Main] Changement de session détecté: ${newSession.id}`);
         
         // 1. Met à jour le contexte de session pour ChartManager
-        chartManager.handleSessionChange(event);
+        chartManager.handleSessionChange({ detail: data });
         
         // 2. Met à jour l'ID de session active pour WebSocketManager
         webSocketManager.setActiveSessionId(newSession.id);

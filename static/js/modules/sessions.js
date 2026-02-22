@@ -52,8 +52,8 @@ export class SessionManager {
             this.activeSession = newSession;
             this.sessionHistory.push(newSession);
 
-            // Met à jour la configuration proxy
-            await this.updateProxyConfig(newSession);
+            // La configuration proxy est gérée automatiquement par le routing
+            // Plus besoin d'appel explicite à updateProxyConfig()
 
             // Émet l'événement de changement de session avec toutes les données nécessaires
             eventBus.emit('sessionChanged', {
@@ -94,13 +94,15 @@ export class SessionManager {
      * Met à jour la configuration proxy pour la session active
      * @param {Object} session - Données de session
      * @returns {Promise<void>}
+     * @deprecated La configuration est gérée automatiquement par le routing
      */
     async updateProxyConfig(session) {
+        console.warn('⚠️ [SessionManager] updateProxyConfig() est déprécié - le routing gère la configuration automatiquement');
         try {
             // Extraction du provider depuis le modèle
             const provider = this.extractProvider(session.model);
 
-            // Configuration de routage
+            // Configuration de routage (pour compatibilité)
             const routingConfig = {
                 model: session.model,
                 provider: provider,
@@ -112,21 +114,7 @@ export class SessionManager {
             // Met à jour le cache local
             this.sessionProxyMap.set(session.id, routingConfig);
 
-            // Met à jour via API
-            const response = await fetch('/api/proxy/config', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(routingConfig)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(`Échec config proxy: ${errorData.detail || response.statusText}`);
-            }
-
-            console.log(`✅ [SessionManager] Config proxy mise à jour pour ${provider}`);
+            console.log(`✅ [SessionManager] Config proxy mise à jour localement pour ${provider}`);
         } catch (error) {
             console.error('❌ [SessionManager] Erreur config proxy:', error);
             throw error;

@@ -1,0 +1,45 @@
+# BRIEF TECHNIQUE - Correction Erreur HTTP 422 sur /api/sessions/auto-status
+
+## PROBLÈME IDENTIFIÉ
+Erreur HTTP 422 (Unprocessable Entity) lors de l'appel à /api/sessions/auto-status depuis initAutoSession() dans auto-session.js:36
+
+## LOGS CONSOLE
+```
+api.js:349  GET http://0.0.0.0:8000/api/sessions/auto-status 422 (Unprocessable Entity)
+api.js:353 Erreur chargement statut auto-session: Error: HTTP 422
+```
+
+## ANALYSE PRÉLIMINAIRE
+- L'endpoint /api/sessions/auto-status existe dans sessions.py:206-224
+- La fonction getAutoSessionStatus() dans api.js:347-357 fait un appel GET simple
+- L'endpoint backend ne prend aucun paramètre dans l'URL
+- L'erreur 422 suggère un problème de validation des paramètres
+
+## HYPOTHÈSES
+1. **Paramètres manquants** : FastAPI attend peut-être des query parameters ou headers
+2. **Import manquant** : La fonction get_auto_session_status pourrait ne pas être importée correctement
+3. **Session ID requis** : L'endpoint pourrait nécessiter un session_id en paramètre
+4. **CORS/Headers** : Problème avec les en-têtes de la requête
+
+## INVESTIGATION REQUISE
+1. Vérifier la définition exacte de l'endpoint et ses paramètres attendus
+2. Tester l'endpoint manuellement avec curl
+3. Comparer avec les autres endpoints sessions qui fonctionnent
+4. Vérifier les imports dans sessions.py
+
+## EXIGENCES DE CORRECTION
+- L'erreur 422 doit être éliminée
+- L'initialisation auto-session doit fonctionner sans erreur
+- La fonctionnalité doit rester intacte
+- Tests manuels pour validation
+
+## RISQUES IDENTIFIÉS
+- Modification pourrait casser d'autres fonctionnalités auto-session
+- Changement d'interface API pourrait affecter d'autres clients
+- Régression possible dans la gestion des sessions
+
+## CRITÈRES DE SUCCÈS
+- Plus d'erreur 422 dans les logs console
+- initAutoSession() s'exécute sans erreur
+- Le toggle auto-session fonctionne correctement
+- Les autres endpoints sessions restent fonctionnels
