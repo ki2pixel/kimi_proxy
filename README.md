@@ -306,9 +306,9 @@ rm sessions.db && ./bin/kimi-proxy start
 
 ### Architecture 5 Couches
 - **61 fichiers Python** dans l'architecture complète
-- **7387 lignes de code** Python (core + features + services + api)
-- **46 répertoires** structurés par responsabilité
-- **122 fichiers projet** totaux (documentation + configuration + scripts)
+- **7410 lignes de code** Python (core + features + services + api)
+- **47 répertoires** structurés par responsabilité
+- **124 fichiers projet** totaux (documentation + configuration + scripts)
 
 ### API Layer
 - **60 routes REST/WebSocket** réparties sur 13 fichiers
