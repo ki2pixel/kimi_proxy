@@ -59,6 +59,7 @@ import {
     exposeAutoSessionGlobals
 } from './modules/auto-session.js';
 import { initAllDropdowns } from './modules/accessibility/dropdown-manager.js';
+import { initClineSection } from './modules/cline.js';
 
 // ============================================================================
 // INITIALISATION PRINCIPALE
@@ -107,6 +108,9 @@ async function initApp() {
         
         // 9. Initialise le module MCP Phase 3
         initMCP();
+
+        // 9b. Initialise la section Cline (local)
+        await initClineSection();
         
         // 10. Configure les handlers EventBus pour les modales mémoire
         setupMemoryModalHandlers();

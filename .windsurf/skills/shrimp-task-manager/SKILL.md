@@ -91,7 +91,7 @@ Shrimp Task Manager génère automatiquement des priorités basées sur :
 Utilise `fast_read_file` pour charger le contexte avant analyse :
 ```bash
 # Charger le contexte actif
-fast_read_file path="/absolute/path/to/activeContext.md"
+fast_read_file path="/home/kidpixel/kimi-proxy/memory-bank/activeContext.md"
 
 # Lancer l'analyse
 analyze_task(summary="Contexte chargé", initialConcept="Solution", previousAnalysis="")

@@ -495,6 +495,57 @@
                         </button>
                     </div>
                 </div>
+
+                <!-- Cline (local) - Import ledger taskHistory.json (Solution 1) -->
+                <div class="metric-card rounded-2xl p-6 border-slate-700/50" aria-label="Cline (local)">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i data-lucide="file-text" class="w-5 h-5 text-slate-300"></i>
+                            Cline (local)
+                        </h2>
+                        <span class="px-2 py-1 rounded-lg bg-slate-700/40 text-slate-300 text-xs font-medium border border-slate-600/30">
+                            Ledger local
+                        </span>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-3 mb-4">
+                        <div class="text-xs text-slate-400">
+                            Dernier import :
+                            <span id="cline-latest-import" class="text-slate-200 font-mono">-</span>
+                        </div>
+                        <button id="cline-import-btn"
+                                class="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800/70 hover:bg-slate-700/70 border border-slate-700 transition-colors text-sm"
+                                type="button"
+                                aria-label="Importer le ledger Cline maintenant">
+                            <i data-lucide="refresh-cw" class="w-4 h-4 text-blue-400"></i>
+                            <span id="cline-import-btn-label">Importer maintenant</span>
+                        </button>
+                    </div>
+
+                    <div class="text-xs text-slate-500 mb-3">
+                        Source : <span class="font-mono text-slate-400">taskHistory.json</span> (allowlist strict)
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-left text-slate-400 border-b border-slate-700/60">
+                                    <th class="py-2 pr-2 font-medium">Task</th>
+                                    <th class="py-2 px-2 font-medium">Date</th>
+                                    <th class="py-2 px-2 font-medium">Modèle</th>
+                                    <th class="py-2 px-2 font-medium text-right">In</th>
+                                    <th class="py-2 px-2 font-medium text-right">Out</th>
+                                    <th class="py-2 pl-2 font-medium text-right">Coût</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cline-usage-tbody" class="divide-y divide-slate-800/60">
+                                <tr>
+                                    <td class="py-3 text-slate-500" colspan="6">En attente d'import...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
                 
                 <!-- MCP Phase 3 - Serveurs Externes -->
                 <div class="metric-card rounded-2xl p-6 border-violet-500/20">

@@ -440,6 +440,21 @@ Frontend (UI) → Backend (proxy.py) → Auto Session Detection
 
 ## Tâches en Cours
 
+Aucune
+
+### [2026-02-24 12:55:00] - Intégration Cline (local) — UI Dashboard (COMPLETÉ)
+**Statut** : ✅ COMPLETÉ
+**Description** : Ajout section “Cline (local)” dans le dashboard avec bouton d’import et table des dernières tâches importées (task_id/ts/model_id/tokens/cost).
+
+**Fichiers** :
+- `static/index.html` : nouvelle card + table + bouton import
+- `static/js/modules/cline.js` : client API + rendu DOM sécurisé (sans innerHTML)
+- `static/js/main.js` : initialisation `initClineSection()` au démarrage
+
+**Validation** :
+- ✅ Smoke tests via TestClient : `/api/cline/status`, `/api/cline/usage`, `/api/cline/import` (200)
+- ✅ Asset `/static/js/modules/cline.js` servi (200)
+
 ### [2026-02-20 01:14:00] - WebSocket Memory Operations Infrastructure (COMPLETÉ)
 **Statut** : ✅ COMPLETÉ  
 **Description** : Résolution complète du timeout WebSocket lors des opérations mémoire (recherche de similarité). Infrastructure WebSocket maintenant opérationnelle pour les futures intégrations MCP réelles.  

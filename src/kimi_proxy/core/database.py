@@ -4,10 +4,27 @@ Gestion de la base de données SQLite avec migrations.
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator, Optional, List, Dict, Any
+from typing import Generator, Optional, List, Dict, Any, TypedDict
 
 from .constants import DATABASE_FILE
 from .exceptions import DatabaseError
+
+
+class ClineTaskUsageInsert(TypedDict):
+    """Payload minimal (privacy-by-design) importé depuis le ledger local Cline."""
+
+    task_id: str
+    ts: int
+    model_id: Optional[str]
+    tokens_in: int
+    tokens_out: int
+    total_cost: float
+
+
+class ClineTaskUsageRow(ClineTaskUsageInsert):
+    """Ligne DB (inclut le timestamp d’import)."""
+
+    imported_at: str
 
 
 @contextmanager
@@ -85,6 +102,20 @@ def init_database():
             chat_tokens INTEGER DEFAULT 0,
             memory_ratio REAL DEFAULT 0,
             FOREIGN KEY (session_id) REFERENCES sessions(id)
+        )
+    """)
+
+    # Table cline_task_usage (Solution 1 - ledger local)
+    # Stocke UNIQUEMENT des métriques numériques par tâche, sans payload sensible.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cline_task_usage (
+            task_id TEXT PRIMARY KEY,
+            ts INTEGER NOT NULL,
+            model_id TEXT,
+            tokens_in INTEGER NOT NULL,
+            tokens_out INTEGER NOT NULL,
+            total_cost REAL NOT NULL,
+            imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
@@ -179,6 +210,14 @@ def init_database():
         )
     """)
     
+    # Indexes Cline Task Usage
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_cline_task_usage_ts ON cline_task_usage(ts)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_cline_task_usage_model_id ON cline_task_usage(model_id)
+    """)
+
     # Index pour performance
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_memory_type ON mcp_memory_entries(memory_type)
@@ -1052,6 +1091,114 @@ def delete_sessions_bulk(session_ids: List[int]) -> Dict[str, Any]:
             results['failed_ids'].append(session_id)
     
     return results
+
+
+# ============================================================================
+# Opérations pour Cline Task Usage (Solution 1 - ledger local)
+# ============================================================================
+
+
+def upsert_cline_task_usage_bulk(rows: List[ClineTaskUsageInsert]) -> int:
+    """
+    Upsert en bulk les entrées d’usage Cline.
+
+    Notes:
+    - Utilise INSERT OR REPLACE (pattern déjà utilisé dans features/sanitizer/storage.py)
+    - L’écriture est synchrone (sqlite3), à exécuter via asyncio.to_thread côté code async.
+
+    Returns:
+        Nombre d’entrées traitées (len(rows))
+    """
+    if not rows:
+        return 0
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.executemany(
+                """
+                INSERT OR REPLACE INTO cline_task_usage
+                    (task_id, ts, model_id, tokens_in, tokens_out, total_cost)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        row["task_id"],
+                        row["ts"],
+                        row.get("model_id"),
+                        row["tokens_in"],
+                        row["tokens_out"],
+                        row["total_cost"],
+                    )
+                    for row in rows
+                ],
+            )
+            conn.commit()
+            return len(rows)
+        except sqlite3.Error as e:
+            conn.rollback()
+            raise DatabaseError(
+                "Erreur lors de l'upsert bulk cline_task_usage",
+                operation="upsert_cline_task_usage_bulk",
+            ) from e
+
+
+def list_cline_task_usage(limit: int = 100, offset: int = 0) -> List[ClineTaskUsageRow]:
+    """Liste les entrées d’usage Cline (ordre décroissant ts)."""
+    if limit <= 0:
+        return []
+
+    # Garde-fou pour éviter des payloads trop larges
+    limit = min(limit, 1000)
+    offset = max(offset, 0)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT task_id, ts, model_id, tokens_in, tokens_out, total_cost, imported_at
+                FROM cline_task_usage
+                ORDER BY ts DESC
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            )
+            rows = cursor.fetchall()
+        except sqlite3.Error as e:
+            raise DatabaseError(
+                "Erreur lecture cline_task_usage",
+                operation="list_cline_task_usage",
+            ) from e
+
+    return [
+        {
+            "task_id": row[0],
+            "ts": int(row[1]),
+            "model_id": row[2],
+            "tokens_in": int(row[3]),
+            "tokens_out": int(row[4]),
+            "total_cost": float(row[5]),
+            "imported_at": row[6],
+        }
+        for row in rows
+    ]
+
+
+def get_latest_cline_task_usage_ts() -> Optional[int]:
+    """Retourne le ts max des entrées importées, ou None si aucune."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT MAX(ts) FROM cline_task_usage")
+            value = cursor.fetchone()[0]
+        except sqlite3.Error as e:
+            raise DatabaseError(
+                "Erreur lecture ts max cline_task_usage",
+                operation="get_latest_cline_task_usage_ts",
+            ) from e
+
+    return int(value) if value is not None else None
 
 
 def vacuum_database() -> Dict[str, Any]:

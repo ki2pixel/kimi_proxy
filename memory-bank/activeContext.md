@@ -2,6 +2,7 @@
 Aucune
 
 ## Session Terminée
+- [2026-02-24 12:55:00] - **Intégration Cline (local) — Dashboard TERMINÉ** : Ajout d’une section "Cline (local)" (bouton import + table) et d’un module ES6 `static/js/modules/cline.js` (DOM sûr) branché dans `static/js/main.js`. Smoke tests OK sur `/api/cline/status`, `/api/cline/usage`, `/api/cline/import`.
 - [2026-02-22 18:10:00] - **Correction Finale Erreur Chart.js TERMINÉ** : Erreurs "Cannot use import statement outside a module" et "Chart is not defined" résolues en utilisant la version UMD de Chart.js (chart.umd.min.js) qui définit Chart globalement. Dashboard maintenant pleinement fonctionnel.
 - [2026-02-22 16:40:00] - **Clarification Sections MCP UI Phase 4 TERMINÉ** : Mise à jour titre table Phase 4 de "Outils Avancés" à "Serveurs MCP Locaux", ajout note explicative pour indicateurs ✓/x (statut connexion temps réel).
 - [2026-02-22 16:38:00] - **Review Documentation MCP UI Phase 4 TERMINÉ** : Évaluation de docs/ui/MCP_UI_PHASE4_INTEGRATION.md, ajout clarification architecture (serveurs MCP locaux intégrés via proxy), documentation maintenue utile avec mise à jour mineure.
