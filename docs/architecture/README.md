@@ -19,6 +19,13 @@ Après des mois de frustration, j'ai tout démantelé et reconstruit étage par 
 - Mes patterns préférés (Factory, Context Managers, DI)
 - La migration qui m'a pris une semaine
 
+### Cline (local) (import lecture seule)
+
+Si tu utilises Cline en local, Kimi Proxy peut importer des métriques d’usage depuis un unique ledger allowlisté, puis les exposer via l’API et le dashboard.
+
+- Doc feature : `docs/features/cline.md`
+- Emplacement dans l’architecture 5 couches : voir la section “Feature exemple : Cline (local)” dans `modular-architecture-v2.md`
+
 ### [Système Proxy](./proxy-system.md)
 - Comment le routage multi-provider fonctionne
 - La gestion des clés API et sécurité

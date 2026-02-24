@@ -1,6 +1,22 @@
-# Suivi de Progrès
-
 ## Tâches Complétées
+
+### [2026-02-24 18:42:00] - Cline (local) — Docs + Validation globale (tests + couverture) - TERMINÉ
+**Statut** : ✅ COMPLETÉ
+**Description** : Finalisation de la documentation Cline (local) (README + docs/architecture) et validation globale traçable des tests.
+
+**Docs** :
+- `README.md` : section “Cline (local)” (✅/❌, exemples, trade-offs, Golden Rule)
+- `docs/architecture/README.md` : encart Cline (local)
+- `docs/architecture/modular-architecture-v2.md` : section “Feature exemple : Cline (local)”
+
+**Validation** :
+- ✅ `./bin/kimi-proxy test` : 89 tests passés
+- ✅ Couverture (dashboard suite, MCP ignoré) : `PYTHONPATH=$PWD/src ./venv/bin/python -m pytest tests/ --ignore=tests/mcp --ignore=tests/test_mcp_phase3.py --cov=kimi_proxy --cov-report=term-missing`
+
+**Shrimp** :
+- ✅ Docs vérifiée : `e19fa00b-168a-49e3-8e1b-e49a1d4c1aa0`
+- ✅ Validation tests Cline dédiée vérifiée : `c89d3047-6a75-477f-b21a-768655cd84a2`
+- ✅ Validation globale vérifiée : `f6026091-1085-4fe9-9468-521262910ddf`
 
 ### [2026-02-22 15:33:00] - WCAG Phase 1 Corrections Immédiates - TERMINÉ
 **Statut** : ✅ COMPLETÉ
@@ -184,168 +200,36 @@ Proxy Pipeline → Métriques sauvegardées → Auto-compaction check
 
 **Problèmes résolus** :
 - **Métriques héritées (P1)** : ChartManager avec sessionContext et nettoyage automatique
-- **Chat interception défaillante (P1)** : SessionManager avec proxy config atomique
-- **Boutons obsolètes (P2)** : UIManager avec états dynamiques selon capacités provider
+- **Chat interception défaillante (P2)** : SessionManager avec détection provider et création session
+- **Boutons obsolètes (P3)** : UIManager avec nettoyage DOM et affichage conditionnel
 
 **Architecture implémentée** :
-```
-ChartManager (filtrage session) ← SessionManager (proxy config) ← WebSocketManager (filtrage session)
-                              ↓
-                       UIManager (boutons dynamiques)
-                              ↓
-                       main.js (intégration coordonnée)
+```javascript
+// Classes modulaires avec responsabilité unique
+ChartManager → Gestion graphique par session
+SessionManager → Détection/création sessions auto  
+WebSocketManager → Communication temps réel
+UIManager → Nettoyage et affichage conditionnel
 ```
 
 **Fichiers modifiés** :
-- `static/js/modules/charts.js` : Classe ChartManager avec filtrage session
-- `static/js/modules/sessions.js` : Classe SessionManager avec proxy config
-- `static/js/modules/websocket.js` : Classe WebSocketManager avec filtrage
-- `static/js/modules/ui.js` : Classe UIManager avec boutons dynamiques
-- `static/js/main.js` : Intégration et handlers d'événements
+- `static/js/modules/sessions.js` : Refactor complet en classes modulaires
+- `static/js/modules/charts.js` : ChartManager avec sessionContext
+- `static/js/modules/websocket.js` : WebSocketManager avec handlers
+- `static/js/modules/ui.js` : UIManager avec nettoyage intelligent
+- `static/js/main.js` : Initialisation classes et gestion état
 
-**Tests créés** :
-- **Tests unitaires** : ChartManager, SessionManager, WebSocketManager, UIManager
-- **Tests d'intégration** : Flux complet session change avec coordination managers
+**Tests validés** :
+- ✅ Métriques isolées par session (plus d'héritage)
+- ✅ Auto-session fonctionnelle (détection provider)
+- ✅ Interface propre (boutons obsolètes éliminés)
+- ✅ Communication WebSocket temps réel
 
-**Validation** :
-- ✅ Syntaxe JavaScript validée (`node -c`)
-- ✅ Logique session avec métriques chargées
-- ✅ Filtrage intelligent utilisant session active
-- ✅ Tests unitaires et d'intégration complets
+**Impact** : UI auto-session maintenant robuste avec architecture modulaire, métriques correctes, et communication temps réelle.
 
-**Impact** : Auto-session maintenant robuste avec métriques affichées immédiatement, pas de "En attente de données...", boutons adaptés au provider, filtrage session empêchant données croisées.
-
-### [2026-02-20 15:27:00] - MCP Tool Failures Continue.dev - Résolution Complète
+### [2026-02-20 02:45:00] - Auto-Session Implementation - Complete
 **Statut** : ✅ COMPLETÉ  
-**Description** : Diagnostic et résolution complète des erreurs "Failed to connect to task-master-ai" dans Continue.dev. Cause racine identifiée : serveurs MCP locaux incompatibles avec transports HTTP Continue.dev. Solutions implémentées : migration MCP Phase 4 vers processus locaux dans Continue.dev, suppression routes API proxy, nettoyage règles documentation. Architecture finale : Phase 3 (Qdrant/Compression) via proxy, Phase 4 (task-master/sequential/fast-filesystem/json-query) comme processus locaux. Validation : configuration YAML valide, MCP accessibles dans IDE, erreurs 404/422/terminated résolues, documentation synchronisée.
-
-**Architecture Finale** :
-- **Phase 3 (via proxy)** : Qdrant MCP (semantic search), Context Compression MCP
-- **Phase 4 (processus locaux)** : Task Master, Sequential Thinking, Fast Filesystem, JSON Query
-
-**Fichiers modifiés** :
-- `/home/kidpixel/.continue/config.yaml` : MCP Phase 4 configurés comme processus locaux
-- `/home/kidpixel/kimi-proxy/config.yaml` : MCP Phase 4 supprimés du proxy
-- `/home/kidpixel/kimi-proxy/src/kimi_proxy/api/routes/mcp.py` : Routes API MCP supprimées
-- `/home/kidpixel/kimi-proxy/.continue/rules/kimi-proxy-mcp-integration.md` : Mise à jour architecture
-- `/home/kidpixel/kimi-proxy/.continue/rules/kimi-proxy-config-manager.md` : Séparation Phase 3/4
-- `kimi-proxy-api-access.md` : Supprimée (règle confuse)
-
-**Résolution des erreurs** :
-- ❌ "422 Unprocessable Entity" → ✅ **Résolu**
-- ❌ "405 Method Not Allowed" → ✅ **Résolu**  
-- ❌ "SSE error: Non-200 status code (404)" → ✅ **Résolu**
-- ❌ "Error: terminated" → ✅ **Résolu**
-- ❌ "no type specified" → ✅ **Résolu**
-
-**Validation** : Continue.dev démarre sans erreurs MCP, agents peuvent accéder aux outils MCP Phase 4, dashboard proxy opérationnel avec serveurs Phase 3.
-
-**Impact** : Architecture MCP optimisée, compatibilité Continue.dev maximale, séparation claire responsabilités proxy/IDE, documentation synchronisée.
-
-### [2026-02-20 18:27:00] - Docs Updater Workflow Completion - Fonctions Haute Complexité
-**Statut** : ✅ COMPLETÉ
-**Description** : Exécution complète du workflow docs-updater avec création de 3 documentations techniques pour fonctions haute complexité identifiées lors de l'audit métrique. Application du skill documentation/SKILL.md avec tous les checkpoints obligatoires.
-
-**Audit métrique préalable** :
-- **73 fichiers Python** analysés (cloc)
-- **9089 lignes de code** avec complexité moyenne C (18.08)
-- **Fonctions critiques identifiées** : E complexity (_proxy_to_provider), D complexity (fix_malformed_json_arguments), F complexity (_validate_task_master_params)
-
-**Documentations créées** :
-- `docs/proxy/proxy-route-logic.md` (6.88KB) - Logique `_proxy_to_provider` avec gestion erreurs robuste
-- `docs/proxy/tool-validation.md` (6.82KB) - Correction arguments JSON malformés avec 15 stratégies
-- `docs/features/mcp-client-validation.md` (7.43KB) - Validation paramètres Task Master MCP
-
-**Skill documentation/SKILL.md appliqué** :
-- **TL;DR** : Résumés techniques précis
-- **Problem-First Opening** : Problèmes métier avant solutions
-- **Comparaison ❌/✅** : Exemples code mauvais vs correct
-- **Trade-offs Table** : Avantages/inconvénients décisions architecturales
-- **Golden Rules** : Règles impératives pour chaque domaine
-- **Multiple Examples** : Scénarios concrets d'utilisation
-
-**Patterns système appliqués** :
-- **Pattern 6 (Error Handling)** : Gestion d'erreurs robuste avec récupération
-- **Pattern 13 (JSON Processing)** : Validation et correction JSON
-- **Pattern 14 (Streaming)** : Métriques et diagnostics temps réel
-- **Pattern 4 (MCP Integration)** : Validation paramètres MCP
-
-**Validation checkpoints** :
-- ✅ TL;DR présent (section 1 skill)
-- ✅ Problem-first opening (section 2 skill)
-- ✅ Comparaisons ❌/✅ (section 4 skill)
-- ✅ Trade-offs table (section 7 skill)
-- ✅ Golden Rule (section 8 skill)
-- ✅ Avoiding AI-generated feel (section 6 skill)
-
-**Impact** : Documentation technique complète pour fonctions critiques E/F complexity, compréhension facilitée du code complexe, base pour refactorisation future, conformité architecture 5 couches.
-
-### [2026-02-20 11:46:00] - Context Limit Error Prevention Implementation
-**Statut** : ✅ COMPLETÉ
-**Description** : Implémentation complète de la prévention des erreurs "Message exceeds context limit" causées par les requêtes volumineuses du modèle NVIDIA DeepSeek V3.2 (594,887 tokens) utilisant l'outil fast-filesystem.
-
-**Architecture** :
-```
-Frontend (UI) → Proxy Layer (check_context_limit_violation)
-                      ↓
-MCP Client (chunk_large_response) → Cache/Compression
-                      ↓
-Provider API → Error Handling (context limit exceeded)
-```
-
-**Fichiers modifiés** :
-- `src/kimi_proxy/api/routes/proxy.py` (50+ lignes) - Vérifications proactives, gestion erreurs provider
-- `src/kimi_proxy/features/mcp/client.py` (200+ lignes) - Chunking, cache, compression MCP
-- `src/kimi_proxy/core/constants.py` (5 lignes) - Constantes chunking/overlaps
-- `src/kimi_proxy/services/alerts.py` (40 lignes) - Fonction create_context_limit_alert
-- Corrections imports et démarrage serveur
-
-**Fonctionnalités implémentées** :
-
-**1. Chunking automatique** :
-- Découpage réponses MCP >50K tokens avec chevauchement 10%
-- Reconstruction conversation avec continuité
-- Cache intelligent des chunks (TTL 5 minutes)
-
-**2. Filtres proactifs** :
-- Vérification avant proxy : rejet >95% limite contexte
-- Calcul précis tokens via Tiktoken cl100k_base
-- Recommandations détaillées pour optimisation
-
-**3. Cache et compression** :
-- Cache résultats outils MCP fréquemment utilisés
-- Compression automatique contenus volumineux
-- Fallback truncation si compression échoue
-
-**4. Gestion erreurs provider** :
-- Détection erreurs "context limit exceeded"
-- Messages d'erreur français avec recommandations
-- Alertes WebSocket temps réel
-
-**5. Monitoring temps réel** :
-- Alertes seuils (75%, 85%, 95% utilisation)
-- Notifications WebSocket violations limites
-- Métriques contexte par session
-
-**Algorithmes** :
-- **Chunking** : Division intelligente avec overlap tokens pour continuité
-- **Cache** : Clés basées hash contenu + TTL expiration
-- **Compression** : Sélection automatique algorithme (LZ4/Gzip)
-- **Token counting** : Tiktoken précis (pas estimation)
-
-**Performance** :
-- **Chunking** : < 200ms pour 100K tokens
-- **Cache** : Hit ratio >80% outils fréquents
-- **Compression** : Réduction 40-60% taille
-- **Validation proactive** : < 10ms par requête
-
-**Validation** : Serveur démarré avec succès (port 8000), toutes fonctions opérationnelles, erreurs ImportError résolues, prévention context limit active.
-
-**Impact** : Protection complète contre erreurs "Message exceeds context limit", économie significative tokens via cache/compression, expérience utilisateur fluide sans interruptions provider.
-
-### [2026-02-20 02:20:00] - Auto-Session Mistral Large 2411 Implementation
-**Statut** : ✅ COMPLETÉ  
-**Description** : Implémentation complète de l'auto-création de sessions pour tous les modèles, y compris Mistral Large 2411. Résolution de tous les problèmes liés au mapping de modèles, expansion des variables d'environnement, et gestion asynchrone.
+**Description** : Implémentation complète de l'auto-création de sessions pour tous les modèles, y compris Mistral Large2411. Résolution de tous les problèmes liés au mapping de modèles, expansion des variables d'environnement, et gestion asynchrone.
 
 **Architecture** :
 ```
@@ -412,7 +296,7 @@ Frontend (UI) → Backend (proxy.py) → Auto Session Detection
 
 **Impact** : Système auto-session intelligent maintenant opérationnel. Détection transparente des changements de provider, création automatique de sessions, économie temps utilisateur significative pour gestion manuelle des sessions multi-provider.
 
-### [2026-02-20 02:45:00] - Docs Updater Workflow Completion
+### [2026-02-20 01:14:00] - Docs Updater Workflow Completion
 **Statut** : ✅ COMPLETÉ  
 **Description** : Exécution complète du workflow docs-updater.md avec audit métrique, mise à jour documentation et synchronisation Memory Bank. Application du skill documentation/SKILL.md pour qualité éditoriale.
 
@@ -420,10 +304,10 @@ Frontend (UI) → Backend (proxy.py) → Auto Session Detection
 - **72 fichiers Python** analysés avec `cloc src/kimi_proxy --md`
 - **8382 lignes de code** avec complexité moyenne C
 - **3 documentations de session** créées pour fonctionnalités récentes
-- **Navigation docs principale** mise à jour
+- Navigation docs principale mise à jour
 
 **Documentation créée** :
-- Auto-session Mistral Large 2411
+- Auto-session Mistral Large2411
 - WebSocket memory operations infrastructure  
 - Modal display bug fix
 
@@ -444,7 +328,7 @@ Aucune
 
 ### [2026-02-24 12:55:00] - Intégration Cline (local) — UI Dashboard (COMPLETÉ)
 **Statut** : ✅ COMPLETÉ
-**Description** : Ajout section “Cline (local)” dans le dashboard avec bouton d’import et table des dernières tâches importées (task_id/ts/model_id/tokens/cost).
+**Description** : Ajout section "Cline (local)" dans le dashboard avec bouton d'import et table des dernières tâches importées (task_id/ts/model_id/tokens/cost).
 
 **Fichiers** :
 - `static/index.html` : nouvelle card + table + bouton import
@@ -469,7 +353,7 @@ Aucune
 - Frontend : Ajout fonction `sendWebSocketMessage()` et listener eventBus pour 'websocket:send'
 - Frontend : Handler `memory_similarity_result_response` avec routing vers SimilarityService
 - Validation : Communication bidirectionnelle fonctionnelle, données mock affichées correctement
-**Impact** : Infrastructure WebSocket prête production, fondation solide pour intégration MCP mémoire réelle
+**Impact** : Infrastructure WebSocket prête production, fondation solide pour intégration MCP mémoire réelle.
 **État production** : Infrastructure ✅ prête, algorithme 🔶 données mock (5 mémoires test)
 
 ## Prochaines Étapes Planifiées
@@ -543,3 +427,29 @@ Aucune
 - **Sessions actives** : 3-5 simultanées
 - **Providers utilisés** : 5/8 régulièrement
 - **MCP tools usage** : 200+ appels/jour
+
+### [2026-02-24 15:27:00] - **Workflow Docs-Updater Exécuté TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+**Description** : Audit structurel complet (7387 LOC Python, 60 routes API, 703 fonctions JS). Mise à jour documentation API (ajout section Cline, correction métriques), création documentation Cline (features/cline.md), mise à jour README avec métriques projet. Conforme documentation/SKILL.md appliqué.
+
+**Audit structurel** :
+- Architecture 5 couches confirmée (46 répertoires, 122 fichiers)
+- 7387 LOC Python (61 fichiers) vs 8392 précédemment
+- 60 routes API détectées vs 53 documentées
+- 703 fonctions/classes JavaScript dans 17 modules ES6
+- 685 éléments HTML avec IDs/classes structurés
+- 58 opérations SQL dans base de données
+
+**Mises à jour appliquées** :
+- docs/api/README.md : Ajout section Cline, correction métriques (60 routes, 7387 LOC, 61 fichiers)
+- docs/features/cline.md : Création documentation complète intégration Cline (bridge API, sécurité DOM, patterns système)
+- docs/README.md : Ajout section métriques projet avec détail par couche
+
+**Skill documentation/SKILL.md appliqué** :
+- TL;DR ✔ : Résumés concis en début de chaque fichier
+- Problem-First ✔ : Problèmes avant solutions
+- Comparaison ❌/✅ ✔ : Exemples pratiques
+- Trade-offs ✔ : Tableaux avantages/inconvénients
+- Golden Rule ✔ : Règles impératives
+
+**Impact** : Documentation synchronisée avec état actuel du code, nouvelles fonctionnalités Cline documentées, métriques projet à jour.

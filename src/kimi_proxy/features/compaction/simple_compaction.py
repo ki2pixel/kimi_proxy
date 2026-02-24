@@ -143,7 +143,8 @@ class SimpleCompaction:
     def compact(
         self,
         messages: List[Dict[str, Any]],
-        session_id: int = 0
+        session_id: int = 0,
+        current_tokens: Optional[int] = None,
     ) -> CompactionResult:
         """
         Compacte une liste de messages.
@@ -159,10 +160,10 @@ class SimpleCompaction:
         
         try:
             # Vérifie si la compaction est nécessaire
-            should_compact, reason = self.should_compact(messages)
+            should_compact, reason = self.should_compact(messages, current_tokens=current_tokens)
             
             if not should_compact:
-                original_tokens = count_tokens_tiktoken(messages)
+                original_tokens = current_tokens if current_tokens is not None else count_tokens_tiktoken(messages)
                 return CompactionResult(
                     compacted=False,
                     session_id=session_id,
@@ -175,7 +176,7 @@ class SimpleCompaction:
                 )
             
             # Calcule les tokens avant
-            original_tokens = count_tokens_tiktoken(messages)
+            original_tokens = current_tokens if current_tokens is not None else count_tokens_tiktoken(messages)
             
             # Sépare les messages
             system_messages = []

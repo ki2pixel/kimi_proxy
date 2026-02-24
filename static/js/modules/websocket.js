@@ -223,6 +223,10 @@ export class WebSocketManager {
             case 'memory_similarity_result_response':
                 this.handleMemorySimilarityResult(data);
                 break;
+
+            case 'cline_usage_updated':
+                this.handleClineUsageUpdated(data);
+                break;
             
             default:
                 console.log('Message WebSocket non géré:', data.type);
@@ -513,6 +517,17 @@ export class WebSocketManager {
     handleMemorySimilarityResult(data) {
         // Route vers le similarity service
         eventBus.emit('memory:similarity_result', data);
+    }
+
+    handleClineUsageUpdated(data) {
+        // Découplage: la logique DOM appartient au module cline.js.
+        // Ici on se contente d'émettre un événement.
+        eventBus.emit('cline:usage_updated', data);
+
+        // Notification optionnelle: seulement si on a importé quelque chose
+        if (data && typeof data.imported_count === 'number' && data.imported_count > 0) {
+            showNotification(`Cline (local) mis à jour: ${data.imported_count} importé(s)`, 'success');
+        }
     }
 
     /**

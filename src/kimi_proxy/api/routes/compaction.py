@@ -419,9 +419,22 @@ async def api_get_compaction_preview(session_id: int):
     # Simule la compaction
     config = CompactionConfig()
     compactor = SimpleCompaction(config)
-    
-    # Vérifie si la compaction est possible
-    should_compact, reason = compactor.should_compact(messages)
+
+    # Vérifie si la compaction est possible.
+    # Important: en preview, on base la décision sur l'historique des métriques.
+    # Les messages reconstruits depuis metrics ne reflètent pas la longueur réelle
+    # (content_preview est tronqué), donc `count_tokens_tiktoken(messages)` peut
+    # renvoyer un faux "insufficient_tokens" même si la session est lourde.
+    # On passe donc un current_tokens explicite via le cumul DB.
+    try:
+        from ...core.database import get_session_cumulative_tokens
+
+        cumulative = get_session_cumulative_tokens(session_id)
+        current_tokens = int(cumulative.get("total_tokens", 0))
+    except Exception:
+        current_tokens = None
+
+    should_compact, reason = compactor.should_compact(messages, current_tokens=current_tokens)
     
     if not should_compact:
         return {

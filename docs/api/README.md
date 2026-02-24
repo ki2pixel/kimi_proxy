@@ -1,10 +1,10 @@
 # API Layer - Routes et Endpoints
 
 ## TL;DR
-Couche interface utilisateur FastAPI orchestrant 53 routes REST/WebSocket avec gestion erreurs streaming, extraction tokens partielle, et retry automatique.
+Couche interface utilisateur FastAPI orchestrant 60 routes REST/WebSocket avec gestion erreurs streaming, extraction tokens partielle, retry automatique, et nouvelle intégration Cline.
 
 ## Problème
-L'API Kimi Proxy expose une surface complexe de 73 endpoints Python (8883 LOC) sans documentation centralisée, créant une courbe d'apprentissage abrupte pour les développeurs et des difficultés de maintenance.
+L'API Kimi Proxy expose une surface complexe de 60 endpoints Python (7387 LOC) sans documentation centralisée, créant une courbe d'apprentissage abrupte pour les développeurs et des difficultés de maintenance.
 
 ## Architecture 5 Couches
 L'API Layer est la couche supérieure de l'architecture Kimi Proxy, dépendant des Services, Features, Proxy et Core layers.
@@ -71,6 +71,11 @@ API Layer (FastAPI) ← Services (WebSocket) ← Features (MCP) ← Proxy (HTTPX
 - `POST /api/compress/{session_id}` - Compression manuelle session
 - `GET /api/compress/{session_id}/stats` - Stats compression session
 - `GET /api/compress/stats` - Stats globales compression
+
+### Cline Integration (Nouveau)
+- `GET /api/cline/status` - Statut de l'intégration Cline
+- `GET /api/cline/usage` - Métriques d'utilisation Cline
+- `POST /api/cline/import` - Import de données Cline existantes
 
 ### Proxy Endpoint
 - `POST /chat/completions` - Proxy transparent vers APIs LLM
@@ -148,8 +153,8 @@ except httpx.ConnectError:
 4. Mise à jour cette documentation
 
 ## Métriques Actuelles
-- **53 routes API détectées** réparties sur 11 fichiers route
-- **15 fichiers Python** dans l'API layer (2318 LOC total)
+- **60 routes API détectées** réparties sur 13 fichiers route
+- **61 fichiers Python** dans l'API layer (7387 LOC total)
 - **Complexité moyenne** : C (17.42)
 - **Points chauds** : 2 fonctions E/F nécessitant attention
 - **Coverage** : Tests en cours d'implémentation
@@ -161,5 +166,5 @@ except httpx.ConnectError:
 - [ ] Documentation interactive avec exemples
 
 ---
-*Dernière mise à jour : 2026-02-22*  
+*Dernière mise à jour : 2026-02-24*  
 *Conforme à documentation/SKILL.md - Sections : TL;DR ✔, Problem-First ✔, Comparaison ✔, Trade-offs ✔, Golden Rule ✔*

@@ -253,8 +253,15 @@ cmd_test() {
     
     cd "$PROJECT_DIR"
     
+    # Note: Les tests MCP (tests/mcp/* + tests/test_mcp_phase3.py) dépendent d'une
+    # architecture MCP optionnelle et/ou de serveurs externes. Ils sont exécutés
+    # via les scripts dédiés dans tests/ (run_mcp_tests*.sh / run_mcp_tests.py).
+    # Par défaut, on exécute donc la suite "dashboard" (unit/integration/e2e) et
+    # on ignore les tests MCP pour garder `kimi-proxy test` fiable.
     if [ -f "$PROJECT_DIR/tests/e2e/test_regression.py" ]; then
-        PYTHONPATH="$PROJECT_DIR/src:$PYTHONPATH" python -m pytest tests/ -v
+        PYTHONPATH="$PROJECT_DIR/src:$PYTHONPATH" python -m pytest tests/ -v \
+            --ignore=tests/mcp \
+            --ignore=tests/test_mcp_phase3.py
     else
         log_warning "Tests non trouvés, lancement des tests basiques..."
         bash "$PROJECT_DIR/test_dashboard.sh"

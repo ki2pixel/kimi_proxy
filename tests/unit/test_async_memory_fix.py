@@ -32,9 +32,28 @@ async def test_detect_and_store_memories_uses_await():
     
     try:
         # Messages de test
+        # Note: AutomaticMemoryDetector détecte les blocs de code significatifs
+        # (voir CODE_BLOCK_MIN_LINES). On fournit donc un bloc >= 10 lignes.
         test_messages = [
             {"role": "user", "content": "Voici un code Python important:"},
-            {"role": "assistant", "content": "```python\ndef hello_world():\n    print('Hello World')\n    return True\n\n# Cette fonction est essentielle\nhello_world()\n```"}
+            {
+                "role": "assistant",
+                "content": """```python
+def hello_world() -> bool:
+    message = 'Hello World'
+    print(message)
+    ok = True
+    if not ok:
+        raise RuntimeError('unexpected')
+    return ok
+
+def main() -> None:
+    result = hello_world()
+    print('result=', result)
+
+main()
+```""",
+            },
         ]
         
         # Appel de la fonction - ne doit pas générer de RuntimeWarning
@@ -83,8 +102,26 @@ async def test_no_runtime_warning_generated():
         
         try:
             # Messages de test avec code important
+            # Fournit aussi un bloc >= 10 lignes (cohérent avec les seuils de détection)
             test_messages = [
-                {"role": "assistant", "content": "```python\n# Configuration critique\nimport os\nAPI_KEY = os.environ.get('API_KEY')\nif not API_KEY:\n    raise ValueError('API_KEY requise')\n\n# Fonction principale\ndef process_data(data):\n    return data.upper()\n```"}
+                {
+                    "role": "assistant",
+                    "content": """```python
+# Configuration critique
+import os
+
+def get_api_key() -> str:
+    value = os.environ.get('API_KEY')
+    if not value:
+        raise ValueError('API_KEY requise')
+    return value
+
+def process_data(data: str) -> str:
+    return data.upper()
+
+print(process_data('ok'))
+```""",
+                }
             ]
             
             # Exécute la fonction

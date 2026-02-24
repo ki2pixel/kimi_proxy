@@ -39,4 +39,5 @@ api_router.include_router(cline.router, prefix="", tags=["cline"])
 # === API STANDARDS ===
 # ✅ Routes standardisées sous /api
 api_router.include_router(models.router, prefix="/api/models", tags=["models"])
+api_router.include_router(models.openai_router, prefix="", tags=["models-openai"])
 api_router.include_router(proxy.router, prefix="", tags=["proxy"])

@@ -1201,6 +1201,22 @@ def get_latest_cline_task_usage_ts() -> Optional[int]:
     return int(value) if value is not None else None
 
 
+def get_cline_task_usage_count() -> int:
+    """Retourne le nombre d'entrées dans cline_task_usage."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT COUNT(*) FROM cline_task_usage")
+            value = cursor.fetchone()[0]
+        except sqlite3.Error as e:
+            raise DatabaseError(
+                "Erreur lecture count cline_task_usage",
+                operation="get_cline_task_usage_count",
+            ) from e
+
+    return int(value) if value is not None else 0
+
+
 def vacuum_database() -> Dict[str, Any]:
     """
     Exécute VACUUM sur la base de données pour récupérer l'espace disque.

@@ -113,6 +113,51 @@ Le résultat? Une vue unifiée et précise de votre consommation, même si vous 
 - **Source des tokens** : Couleur selon l'origine
 - **Export instantané** : CSV ou JSON pour analyse
 
+## Cline (local) : importer des métriques d’usage (lecture seule)
+
+Tu utilises Cline en local; tu vois passer des tokens et des coûts, mais tu n’as pas ces chiffres dans le dashboard Kimi Proxy.
+
+Cette intégration fait un truc volontairement simple : importer des métriques d’usage déjà présentes sur ta machine, sans importer de contenu sensible.
+
+Documentation complète : `docs/features/cline.md`.
+
+### ✅ Ce que ça fait
+
+- Lit un seul fichier allowlisté (chemin exact) : `/home/kidpixel/.cline/data/state/taskHistory.json`.
+- Extrait uniquement des métriques numériques par tâche; puis upsert dans SQLite.
+- Expose les métriques via API : `POST /api/cline/import`, `GET /api/cline/usage`, `GET /api/cline/status`.
+
+### ❌ Ce que ça ne fait pas
+
+- Ne récupère pas de prompts, réponses, logs, ni historique conversationnel.
+- N’autorise pas d’importer un chemin arbitraire.
+
+### ❌/✅ Exemples
+
+#### ❌ Un import “path arbitraire” (interdit)
+
+```json
+{ "path": "/home/kidpixel/.ssh/id_rsa" }
+```
+
+#### ✅ Import sans path (autorisé)
+
+```json
+{ "path": null }
+```
+
+### Trade-offs
+
+| Choix | Avantage | Inconvénient |
+| --- | --- | --- |
+| Allowlist strict + refus symlink | Surface d’attaque minimale | Pas de path custom |
+| Stockage “metrics only” | Privacy-by-design | Impossible de “rejouer” une conversation |
+| Polling + WebSocket (optionnel) | UI plus vivante | Import périodique nécessaire |
+
+### Golden Rule
+
+Quand tu bridges un outil local vers une API : métadonnées minimales, chemin allowlisté, lecture seule.
+
 ## Comment ça marche : L'architecture modulaire
 
 J'ai commencé avec un fichier monolithique de 3,073 lignes. C'était comme avoir toute une maison dans une seule pièce - impossible à entretenir. Maintenant, c'est organisé par étages :
@@ -256,6 +301,30 @@ Continue doit écrire dans `~/.continue/logs/core.log`. Vérifiez `/health` pour
 ./scripts/backup.sh  # Backup d'abord!
 rm sessions.db && ./bin/kimi-proxy start
 ```
+
+## Métriques Projet
+
+### Architecture 5 Couches
+- **61 fichiers Python** dans l'architecture complète
+- **7387 lignes de code** Python (core + features + services + api)
+- **46 répertoires** structurés par responsabilité
+- **122 fichiers projet** totaux (documentation + configuration + scripts)
+
+### API Layer
+- **60 routes REST/WebSocket** réparties sur 13 fichiers
+- **Complexité moyenne** : C (17.42)
+- **Endpoints critiques** : 2 fonctions haute complexité (proxy_chat, _proxy_to_provider)
+
+### Frontend Dashboard
+- **17 modules ES6** dans `static/js/modules/`
+- **703 fonctions/classes** JavaScript identifiées
+- **685 éléments HTML** avec IDs/classes structurés
+- **0 vulnérabilités XSS** (sécurité DOM appliquée)
+
+### Base de Données
+- **58 opérations SQL** dans core/database.py et models.py
+- **Complexité schéma** : 7 tables principales + 4 tables MCP
+- **Performance** : VACUUM automatique et optimisation intégrée
 
 ## Pourquoi je partage ça
 

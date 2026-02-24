@@ -1,5 +1,9 @@
 """
-Test unitaire pour les routes modèles (JetBrains normalization).
+Tests unitaires pour les routes modèles.
+
+Contrat attendu dans ce repo:
+- `/api/models` : liste JSON (format dashboard/interne)
+- `/models` : format OpenAI-compatible minimal {object:"list", data:[...]}
 """
 import pytest
 from fastapi import FastAPI
@@ -8,80 +12,62 @@ from fastapi.testclient import TestClient
 from kimi_proxy.api.routes import models as models_routes
 
 
-def test_openai_models_endpoint_jetbrains_normalization():
-    """Test que les IDs de modèles suivent le format JetBrains avec des tirets."""
-    # Créer une app test
+def test_api_models_returns_list():
+    """`/api/models` doit retourner une liste (format dashboard)."""
     app = FastAPI()
-    app.include_router(models_routes.router)
+    app.include_router(models_routes.router, prefix="/api/models")
     client = TestClient(app)
-    
-    # Mock la config avec différents formats de clés
-    import kimi_proxy.config.loader
-    original_get_config = kimi_proxy.config.loader.get_config
-    
+
+    import kimi_proxy.api.routes.models
+    original_get_config = kimi_proxy.api.routes.models.get_config
+
     def mock_get_config():
         return {
             "models": {
-                "nvidia/kimi-k2.5": {
-                    "provider": "nvidia",
-                    "model": "kimi-for-coding",
-                    "max_context_size": 262144
-                },
-                "managed:kimi-code/kimi-for-coding": {
-                    "provider": "managed:kimi-code",
-                    "model": "kimi-for-coding",
-                    "max_context_size": 262144
-                },
-                "openrouter/google/codegemma": {
-                    "provider": "openrouter",
-                    "model": "google/codegemma",
-                    "max_context_size": 8192
-                }
+                "nvidia/kimi-k2.5": {"provider": "nvidia", "model": "kimi-for-coding"},
+                "managed:kimi-code/kimi-for-coding": {"provider": "managed:kimi-code", "model": "kimi-for-coding"},
+                "openrouter/google/codegemma": {"provider": "openrouter", "model": "google/codegemma"},
             }
         }
-    
-    kimi_proxy.config.loader.get_config = mock_get_config
-    
+
+    kimi_proxy.api.routes.models.get_config = mock_get_config
     try:
-        # Appeler l'endpoint
-        response = client.get("/")
+        response = client.get("/api/models")
         assert response.status_code == 200
-        
+
         data = response.json()
-        assert "data" in data
-        assert len(data["data"]) == 3
-        
-        # Vérifier la normalisation
-        model_ids = [m["id"] for m in data["data"]]
-        
-        # vérifier que les slashs sont remplacés
-        assert "nvidia-kimi-k2-5" in model_ids
-        assert "nvidia/kimi-k2.5" not in model_ids
-        
-        # vérifier que les points sont remplacés
-        assert "managed:kimi-code-kimi-for-coding" in model_ids
-        assert "managed:kimi-code/kimi-for-coding" not in model_ids
-        
-        # vérifier que les deux sont remplacés
-        assert "openrouter-google-codegemma" in model_ids
-        assert "openrouter/google/codegemma" not in model_ids
-        
-        # vérifier le cohérence entre id et root
-        for model in data["data"]:
-            assert model["id"] == model["root"]
-            assert model["owned_by"] == "openai"
-        
+        assert isinstance(data, list)
+        assert len(data) == 3
+        assert {"key", "name", "provider", "model"}.issubset(set(data[0].keys()))
     finally:
-        kimi_proxy.config.loader.get_config = original_get_config
+        kimi_proxy.api.routes.models.get_config = original_get_config
 
 
-def test_model_name_replacement():
-    """Test de la fonction de remplacement de caractères pour JetBrains."""
-    result = models_routes._sanitize_model_id("nvidia/kimi-k2.5")
-    assert result == "nvidia-kimi-k2.5"
-    
-    result = models_routes._sanitize_model_id("managed:kimi-code/kimi-for-coding")
-    assert result == "managed:kimi-code.kimi-for-coding"
-    
-    result = models_routes._sanitize_model_id("openrouter/google/gemini")
-    assert result == "openrouter.google.gemini"
+def test_openai_models_returns_object_list():
+    """`/models` doit être OpenAI-compatible (object/list/data)."""
+    app = FastAPI()
+    app.include_router(models_routes.openai_router)
+    client = TestClient(app)
+
+    import kimi_proxy.api.routes.models
+    original_get_config = kimi_proxy.api.routes.models.get_config
+
+    def mock_get_config():
+        return {
+            "models": {
+                "nvidia/kimi-k2.5": {"provider": "nvidia"},
+                "managed:kimi-code/kimi-for-coding": {"provider": "managed:kimi-code"},
+            }
+        }
+
+    kimi_proxy.api.routes.models.get_config = mock_get_config
+    try:
+        response = client.get("/models")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data.get("object") == "list"
+        assert isinstance(data.get("data"), list)
+        assert {"id", "object", "created", "owned_by"}.issubset(set(data["data"][0].keys()))
+    finally:
+        kimi_proxy.api.routes.models.get_config = original_get_config

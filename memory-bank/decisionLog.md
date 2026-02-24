@@ -1,4 +1,19 @@
-## Décisions d'Architecture
+## Décisions Techniques Récentes
+
+### [2026-02-24 15:27:00] - Workflow Docs-Updater - Mise à jour documentation complète
+**Contexte** : Audit structurel révèle discrepancies entre documentation et code actuel (53 vs 60 routes API, métriques obsolètes, Cline non documenté)
+**Décision** : Exécuter workflow docs-updater avec application stricte du skill documentation/SKILL.md
+**Alternatives considérées** :
+- Mise à jour manuelle partielle (risque : incohérences)
+- Génération automatique (risque : perte qualité éditoriale)
+- **Choix** : Workflow guidé avec validation humaine
+**Implémentation** :
+- docs/api/README.md : Ajout section Cline, correction métriques (60 routes, 7387 LOC)
+- docs/features/cline.md : Création documentation complète intégration
+- docs/README.md : Ajout section métriques projet détaillées
+- memory-bank/progress.md : Synchronisation avec timestamp
+**Résultat** : Documentation synchronisée, nouvelles fonctionnalités documentées, métriques à jour
+**Leçons apprises** : Le skill documentation/SKILL.md assure cohérence et qualité éditoriale, l'audit métrique régulier est essentiel
 
 #### [2026-02-21 17:30:00] - Auto-Compaction Functionality Validation Complete
 **Problème** : Nécessité de valider le fonctionnement de l'auto-compaction du contexte avant déploiement en production. Risques de perte de données, blocages thread, corruption base.  
@@ -22,8 +37,7 @@
 - Construction contexte réel via chat completions (rejeté : serveur instable, API problématique)  
 - Test unitaire isolé (complété : logique métier validée)  
 - Test d'intégration partiel (rejeté : nécessite historique messages complet)  
-**Résultat** : Fonctionnalité d'auto-compaction validée et opérationnelle, prête pour usage production avec monitoring actif.
-
+**Résultat** : Fonctionnalité d'auto-compaction validée et opérationnelle, prête pour usage production avec monitoring actif dépassement seuils.
 
 ### [2026-02-18 22:30:00] - Memory Bank Protocol Adoption
 **Problème** : Gestion de contexte dispersée, pas de standardisation pour les décisions et suivi de projet.  
@@ -43,7 +57,7 @@
 - Développement natif des fonctionnalités (rejeté : trop de temps, réinventer la roue)
 - Intégration uniquement Qdrant/Compression (rejeté : limité à mémoire sémantique)
 - Attendre MCP officiel (rejeté : besoin immédiat)  
-**Résultat** : Écosystème complet 43 outils, productivité dév multipliée, sécurité maintenue.
+**Résultat** : Écosystème complet 43 outils, productivité multipliée, sécurité maintenue.
 
 ### [2026-02-10 15:00:00] - Architecture 5 Layers
 **Problème** : Code monolithique de 3000+ lignes, maintenance difficile, dépendances circulaires.  

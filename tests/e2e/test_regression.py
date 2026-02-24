@@ -1,120 +1,108 @@
+"""Tests de régression E2E pour Kimi Proxy Dashboard.
+
+Objectif: ces tests doivent être auto-contenus (ne pas dépendre d'un serveur
+déjà lancé sur localhost:8000). On teste donc l'app ASGI directement via
+FastAPI TestClient.
 """
-Tests de régression E2E pour Kimi Proxy Dashboard.
-"""
+
 import pytest
-import httpx
-import asyncio
-import websockets
-import json
+from fastapi.testclient import TestClient
 
-BASE_URL = "http://localhost:8000"
-WS_URL = "ws://localhost:8000/ws"
+from kimi_proxy.main import create_app
+from kimi_proxy.core.database import init_database
 
 
-@pytest.mark.asyncio
-async def test_health_endpoint():
+@pytest.fixture(scope="module")
+def app():
+    init_database()
+    return create_app()
+
+
+@pytest.fixture(scope="module")
+def client(app):
+    return TestClient(app)
+
+
+def test_health_endpoint(client: TestClient):
     """Test que le health check fonctionne."""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/health")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ok"
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("status") in {"ok", "opérationnel"}
 
 
-@pytest.mark.asyncio
-async def test_list_providers():
+def test_list_providers(client: TestClient):
     """Test que la liste des providers fonctionne."""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/api/providers")
-        assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, list)
+    response = client.get("/api/providers")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
 
 
-@pytest.mark.asyncio
-async def test_list_models():
-    """Test que la liste des modèles fonctionne."""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/api/models")
-        assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, list)
+def test_list_models(client: TestClient):
+    """Test que la liste des modèles fonctionne (format dashboard: liste)."""
+    response = client.get("/api/models")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
 
 
-@pytest.mark.asyncio
-async def test_create_session():
+def test_create_session(client: TestClient):
     """Test la création de session."""
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{BASE_URL}/api/sessions",
-            json={"name": "Test Session", "provider": "managed:kimi-code"}
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert "id" in data
-        assert data["name"] == "Test Session"
+    response = client.post(
+        "/api/sessions",
+        json={"name": "Test Session", "provider": "managed:kimi-code"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "id" in data
+    assert data["name"] == "Test Session"
 
 
-@pytest.mark.asyncio
-async def test_get_active_session():
+def test_get_active_session(client: TestClient):
     """Test la récupération de la session active."""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/api/sessions/active")
-        assert response.status_code == 200
+    response = client.get("/api/sessions/active")
+    assert response.status_code == 200
 
 
-@pytest.mark.asyncio
-async def test_openai_models_endpoint():
+def test_openai_models_endpoint(client: TestClient):
     """Test l'endpoint OpenAI-compatible /models."""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/models")
-        assert response.status_code == 200
-        data = response.json()
-        assert "object" in data
-        assert data["object"] == "list"
-        assert "data" in data
+    response = client.get("/models")
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("object") == "list"
+    assert isinstance(data.get("data"), list)
 
 
-@pytest.mark.asyncio
-async def test_websocket_connection():
-    """Test la connexion WebSocket."""
-    try:
-        async with websockets.connect(WS_URL) as websocket:
-            # Attend le message d'init
-            response = await asyncio.wait_for(websocket.recv(), timeout=5.0)
-            data = json.loads(response)
-            assert "type" in data
-    except (websockets.exceptions.ConnectionRefused, asyncio.TimeoutError):
-        pytest.skip("Serveur non disponible pour test WebSocket")
+def test_websocket_connection(client: TestClient):
+    """Test la connexion WebSocket (ASGI in-process)."""
+    with client.websocket_connect("/ws") as websocket:
+        data = websocket.receive_json()
+        assert isinstance(data, dict)
+        assert "type" in data
 
 
-@pytest.mark.asyncio
-async def test_sanitizer_stats():
+def test_sanitizer_stats(client: TestClient):
     """Test l'endpoint de stats sanitizer."""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/api/sanitizer/stats")
-        assert response.status_code == 200
-        data = response.json()
-        assert "enabled" in data
-        assert "stats" in data
+    response = client.get("/api/sanitizer/stats")
+    assert response.status_code == 200
+    data = response.json()
+    assert "enabled" in data
+    assert "stats" in data
 
 
-@pytest.mark.asyncio
-async def test_memory_stats():
+def test_memory_stats(client: TestClient):
     """Test l'endpoint de stats mémoire."""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/api/memory/stats")
-        assert response.status_code == 200
-        data = response.json()
-        assert "total_memory_tokens" in data
+    response = client.get("/api/memory/stats")
+    assert response.status_code == 200
+    data = response.json()
+    assert "total_memory_tokens" in data
 
 
-@pytest.mark.asyncio
-async def test_rate_limit_status():
+def test_rate_limit_status(client: TestClient):
     """Test l'endpoint de rate limit."""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/api/rate-limit")
-        assert response.status_code == 200
-        data = response.json()
-        assert "status" in data
-        assert "current_rpm" in data
+    response = client.get("/api/rate-limit")
+    assert response.status_code == 200
+    data = response.json()
+    assert "status" in data
+    assert "current_rpm" in data

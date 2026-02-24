@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, TypedDict
@@ -25,6 +25,7 @@ import aiofiles
 
 from ...core.database import (
     ClineTaskUsageInsert,
+    get_cline_task_usage_count,
     get_latest_cline_task_usage_ts,
     upsert_cline_task_usage_bulk,
 )
@@ -37,6 +38,11 @@ from .exceptions import (
 
 
 ALLOWED_LEDGER_PATH = "/home/kidpixel/.cline/data/state/taskHistory.json"
+
+
+def _default_ledger_path() -> str:
+    # NOTE: utilisé via default_factory pour permettre le patching en tests.
+    return ALLOWED_LEDGER_PATH
 
 
 class ClineImportResult(TypedDict):
@@ -210,7 +216,9 @@ async def _read_json_with_retry(path: Path, attempts: int = 3) -> object:
 class ClineImporter:
     """Importer ledger local Cline (Solution 1)."""
 
-    ledger_path: str = ALLOWED_LEDGER_PATH
+    # Utiliser default_factory évite que la valeur soit figée au moment de
+    # la définition de la classe (important pour tests + patching).
+    ledger_path: str = field(default_factory=_default_ledger_path)
 
     async def import_ledger(self, requested_path: Optional[str] = None) -> ClineImportResult:
         """Importe le ledger Cline (idempotent via upsert)."""
@@ -262,3 +270,7 @@ class ClineImporter:
     async def get_latest_ts(self) -> Optional[int]:
         """Dernier ts en DB (helper, DB sync dans thread)."""
         return await asyncio.to_thread(get_latest_cline_task_usage_ts)
+
+    async def get_usage_count(self) -> int:
+        """Nombre d'entrées en DB (helper, DB sync dans thread)."""
+        return await asyncio.to_thread(get_cline_task_usage_count)

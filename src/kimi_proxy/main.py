@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .core.database import init_database, create_session, get_active_session
 from .config.loader import load_config
 from .services.websocket_manager import create_connection_manager
+from .services.cline_polling import ClinePollingConfig, create_cline_polling_service
 from .features.log_watcher import create_log_watcher
 from .api.router import api_router
 from .api.routes.health import set_log_watcher
@@ -220,9 +221,29 @@ def _startup(app: FastAPI):
             print(f"📊 [LOGS] Tokens: {total_tokens} ({percentage:.1f}%)")
     
     log_watcher = create_log_watcher(broadcast_callback=broadcast_log_metrics)
+
+    # Démarre le polling Cline (ledger local) + broadcast WS (optionnel)
+    cline_polling_raw = config.get("cline", {}).get("polling", {})
+    try:
+        cline_polling_enabled = bool(cline_polling_raw.get("enabled", True))
+        cline_interval_seconds = float(cline_polling_raw.get("interval_seconds", 60.0))
+        cline_backoff_max_seconds = float(cline_polling_raw.get("backoff_max_seconds", 600.0))
+    except (TypeError, ValueError):
+        cline_polling_enabled = True
+        cline_interval_seconds = 60.0
+        cline_backoff_max_seconds = 600.0
+
+    cline_polling_config = ClinePollingConfig(
+        enabled=cline_polling_enabled,
+        interval_seconds=max(cline_interval_seconds, 5.0),
+        # backoff >= interval (sinon on clamp au minimum fonctionnel)
+        backoff_max_seconds=max(cline_backoff_max_seconds, max(cline_interval_seconds, 30.0)),
+    )
+    cline_polling = create_cline_polling_service(manager=manager, config=cline_polling_config)
     
     # Stocke le log watcher dans l'app state
     app.state.log_watcher = log_watcher
+    app.state.cline_polling = cline_polling
     app.state.config = config
     
     # Enregistre pour le health check
@@ -231,6 +252,9 @@ def _startup(app: FastAPI):
     # Démarre le watcher (dans la lifespan async)
     import asyncio
     asyncio.create_task(log_watcher.start())
+
+    # Démarre le polling Cline (tâche asyncio)
+    asyncio.create_task(cline_polling.start())
     
     print(f"🌐 Dashboard disponible sur http://localhost:8000")
 
@@ -242,6 +266,10 @@ async def _shutdown(app: FastAPI):
     # Arrête le Log Watcher
     if hasattr(app.state, 'log_watcher'):
         await app.state.log_watcher.stop()
+
+    # Arrête le polling Cline
+    if hasattr(app.state, 'cline_polling'):
+        await app.state.cline_polling.stop()
     
     print("✅ Serveur arrêté proprement")
 

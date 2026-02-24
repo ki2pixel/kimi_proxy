@@ -153,6 +153,37 @@ Dashboard (Mise à jour temps réel)
 
 **La magie** : Chaque étage fait sa job sans se soucier des autres. Le sanitizer peut être désactivé, le proxy peut changer de provider, le dashboard continue de fonctionner.
 
+## Feature exemple : Cline (local) (import lecture seule)
+
+Tu utilises Cline sur ta machine; Cline conserve déjà des métriques d’usage dans un ledger local.
+
+L’objectif de Kimi Proxy n’est pas de “se brancher” à Cline, ni de lire des conversations. C’est juste d’importer des chiffres (tokens/cost) de manière sûre.
+
+### ✅ Le flux (dans la maison 5 étages)
+
+```
+Ledger local allowlisté (taskHistory.json)
+  -> Features: ClineImporter (parsing strict + refus symlink)
+  -> Core: SQLite (cline_task_usage)
+  -> API: /api/cline/* (import, usage, status)
+  -> Services: polling optionnel + broadcast WebSocket
+  -> UI: section "Cline (local)" du dashboard
+```
+
+### Surface de sécurité
+
+### ❌ Un lecteur de fichiers générique
+
+Accepter un chemin arbitraire fourni par l’utilisateur devient immédiatement une surface d’exfiltration.
+
+### ✅ Allowlist strict + stockage minimal
+
+- Un seul chemin exact est autorisé : `/home/kidpixel/.cline/data/state/taskHistory.json`.
+- Le code refuse symlinks/redirections.
+- Seules des métriques numériques sont stockées; aucun prompt/log/conversation.
+
+Documentation: `docs/features/cline.md`.
+
 ## Les règles de la maison : Imports et dépendances
 
 ### La règle d'or des imports

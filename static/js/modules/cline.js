@@ -10,7 +10,7 @@
  * - DOM sécurisé: aucun rendu HTML direct (prévenir XSS)
  */
 
-import { showNotification } from './utils.js';
+import { showNotification, eventBus } from './utils.js';
 
 /** @typedef {{ task_id: string, ts: number, model_id: (string|null), tokens_in: number, tokens_out: number, total_cost: number, imported_at: string }} ClineUsageRow */
 
@@ -186,6 +186,11 @@ export async function initClineSection() {
             showNotification('Erreur chargement Cline (local)', 'error');
         }
     };
+
+    // Rafraîchit via WebSocket broadcast
+    eventBus.on('cline:usage_updated', async () => {
+        await refresh();
+    });
 
     // Handler bouton import
     btnEl.addEventListener('click', async () => {
