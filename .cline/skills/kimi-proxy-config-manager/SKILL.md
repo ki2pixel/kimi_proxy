@@ -185,7 +185,7 @@ backoff_factor = 2.0
 ### MCP Server Configuration
 
 ```toml
-[mcp.task_master]
+[mcp.shrimp_task_manager]
 enabled = true
 url = "http://localhost:8002"
 timeout_ms = 30000

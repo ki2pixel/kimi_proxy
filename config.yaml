@@ -332,9 +332,15 @@ models:
       contextLength: 262144
 
 # ============================================
-# MCP SERVERS - SÉLECTIFS
-# Seuls les serveurs pour context providers Continue gardés
-# Les MCP tools avancés sont via le proxy Kimi
+# CONTEXT PROVIDERS
+# ============================================
+context:
+  - provider: file
+  - provider: code
+  - provider: diff
+
+# ============================================
+# MCP SERVERS
 # ============================================
 mcpServers:
   # Context providers Continue (nécessaires)
@@ -397,6 +403,13 @@ mcpServers:
       - "redis-mcp-server"
       - "--url"
       - "redis://red-d0l2c17fte5s73955i40:KCL5iVxykagTchnJxhccAyCp9S8dWFls@red-d0l2c17fte5s73955i40:6379"
+
+  - name: photomaton-postgres
+    command: uvx
+    args: [ "--python", "3.12", "postgres-mcp", "--access-mode=unrestricted" ]
+    env:
+      DATABASE_URI: "postgresql://neondb_owner:npg_GwWL5Fltq2kO@ep-shiny-star-ad5t7thb-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+    connectionTimeout: 60000
 
   - name: switchbot-postgres
     command: uvx

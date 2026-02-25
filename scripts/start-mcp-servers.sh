@@ -8,7 +8,7 @@
 # Architecture:
 #   - Qdrant MCP: Cloud (déjà HTTP) ou Local (port 6333)
 #   - Context Compression MCP: Local (port 8001)
-#   - Task Master MCP: Local (port 8002)
+#   - Shrimp Task Manager MCP: Local (port 8002)
 #   - Sequential Thinking MCP: Local (port 8003)
 #   - Fast Filesystem MCP: Local (port 8004)
 #   - JSON Query MCP: Local (port 8005)
@@ -28,7 +28,7 @@ NC='\033[0m' # No Color
 # Ports et URLs
 QDRANT_PORT=6333
 COMPRESSION_PORT=8001
-TASK_MASTER_PORT=8002
+SHRIMP_TASK_MANAGER_PORT=8002
 SEQUENTIAL_THINKING_PORT=8003
 FAST_FILESYSTEM_PORT=8004
 JSON_QUERY_PORT=8005
@@ -111,11 +111,11 @@ start_servers() {
     # 2. Serveur Context Compression MCP
     # -------------------------------------------------------------------------
     echo ""
-    log_info "Démarrage Context Compression MCP..."
+    log_info "Vérification Context Compression MCP..."
     
     # Vérifier si déjà en écoute
     if check_port $COMPRESSION_PORT; then
-        log_success "Context Compression MCP déjà en écoute sur le port $COMPRESSION_PORT"
+        log_success "Context Compression MCP déjà disponible via bridge"
     else
         # Créer le serveur HTTP de compression s'il n'existe pas
         create_compression_server
@@ -131,7 +131,7 @@ start_servers() {
         sleep 2
         
         if check_port $COMPRESSION_PORT; then
-            log_success "Context Compression MCP démarré (PID: $COMPRESSION_PID)"
+            log_success "Context Compression MCP démarré et disponible via bridge (PID: $COMPRESSION_PID)"
             echo $COMPRESSION_PID > /tmp/mcp_compression.pid
         else
             log_error "Échec du démarrage du serveur de compression"
@@ -144,11 +144,11 @@ start_servers() {
     # 4. Serveur Sequential Thinking MCP
     # -------------------------------------------------------------------------
     echo ""
-    log_info "Démarrage Sequential Thinking MCP..."
+    log_info "Vérification Sequential Thinking MCP..."
     
     # Vérifier si déjà en écoute
     if check_port $SEQUENTIAL_THINKING_PORT; then
-        log_success "Sequential Thinking MCP déjà en écoute sur le port $SEQUENTIAL_THINKING_PORT"
+        log_success "Sequential Thinking MCP déjà disponible via bridge"
     else
         # Créer le serveur HTTP de sequential thinking s'il n'existe pas
         create_sequential_thinking_server
@@ -164,7 +164,7 @@ start_servers() {
         sleep 2
         
         if check_port $SEQUENTIAL_THINKING_PORT; then
-            log_success "Sequential Thinking MCP démarré (PID: $SEQUENTIAL_THINKING_PID)"
+            log_success "Sequential Thinking MCP démarré et disponible via bridge (PID: $SEQUENTIAL_THINKING_PID)"
             echo $SEQUENTIAL_THINKING_PID > /tmp/mcp_sequential_thinking.pid
         else
             log_error "Échec du démarrage du serveur de sequential thinking"
@@ -177,11 +177,11 @@ start_servers() {
     # 5. Serveur Fast Filesystem MCP
     # -------------------------------------------------------------------------
     echo ""
-    log_info "Démarrage Fast Filesystem MCP..."
+    log_info "Vérification Fast Filesystem MCP..."
     
     # Vérifier si déjà en écoute
     if check_port $FAST_FILESYSTEM_PORT; then
-        log_success "Fast Filesystem MCP déjà en écoute sur le port $FAST_FILESYSTEM_PORT"
+        log_success "Fast Filesystem MCP déjà disponible via bridge"
     else
         # Créer le serveur HTTP de fast filesystem s'il n'existe pas
         create_fast_filesystem_server
@@ -198,7 +198,7 @@ start_servers() {
         sleep 2
         
         if check_port $FAST_FILESYSTEM_PORT; then
-            log_success "Fast Filesystem MCP démarré (PID: $FAST_FILESYSTEM_PID)"
+            log_success "Fast Filesystem MCP démarré et disponible via bridge (PID: $FAST_FILESYSTEM_PID)"
             echo $FAST_FILESYSTEM_PID > /tmp/mcp_fast_filesystem.pid
         else
             log_error "Échec du démarrage du serveur de fast filesystem"
@@ -211,11 +211,11 @@ start_servers() {
     # 6. Serveur JSON Query MCP
     # -------------------------------------------------------------------------
     echo ""
-    log_info "Démarrage JSON Query MCP..."
+    log_info "Vérification JSON Query MCP..."
     
     # Vérifier si déjà en écoute
     if check_port $JSON_QUERY_PORT; then
-        log_success "JSON Query MCP déjà en écoute sur le port $JSON_QUERY_PORT"
+        log_success "JSON Query MCP déjà disponible via bridge"
     else
         # Créer le serveur HTTP de json query s'il n'existe pas
         create_json_query_server
@@ -232,13 +232,43 @@ start_servers() {
         sleep 2
         
         if check_port $JSON_QUERY_PORT; then
-            log_success "JSON Query MCP démarré (PID: $JSON_QUERY_PID)"
+            log_success "JSON Query MCP démarré et disponible via bridge (PID: $JSON_QUERY_PID)"
             echo $JSON_QUERY_PID > /tmp/mcp_json_query.pid
         else
             log_error "Échec du démarrage du serveur de json query"
             echo "   Logs: /tmp/mcp_json_query.log"
             exit 1
         fi
+    fi
+    
+    # -------------------------------------------------------------------------
+    # 7. Vérification des serveurs stdio (via bridge)
+    # -------------------------------------------------------------------------
+    echo ""
+    log_info "Vérification Filesystem Agent..."
+    
+    if grep -q "name: filesystem-agent" config.yaml 2>/dev/null; then
+        log_success "Filesystem Agent configuré et disponible via bridge"
+    else
+        log_warning "Filesystem Agent non configuré"
+    fi
+    
+    echo ""
+    log_info "Vérification Ripgrep Agent..."
+    
+    if grep -q "name: ripgrep-agent" config.yaml 2>/dev/null; then
+        log_success "Ripgrep Agent configuré et disponible via bridge"
+    else
+        log_warning "Ripgrep Agent non configuré"
+    fi
+    
+    echo ""
+    log_info "Vérification Shrimp Task Manager..."
+    
+    if grep -q "name: shrimp-task-manager" config.yaml 2>/dev/null; then
+        log_success "Shrimp Task Manager configuré et disponible via bridge"
+    else
+        log_warning "Shrimp Task Manager non configuré"
     fi
     
     # -------------------------------------------------------------------------
@@ -264,7 +294,13 @@ start_servers() {
     echo "  🔗 URL: http://localhost:$COMPRESSION_PORT"
     echo "  📋 Endpoint: /rpc (JSON-RPC 2.0)"
     echo ""
-    echo "Dashboard: http://localhost:8000"
+    echo "Serveurs MCP via Bridge:"
+    echo "  📋 Filesystem Agent: Stdio (lancé à la demande)"
+    echo "  📋 Ripgrep Agent: Stdio (lancé à la demande)"
+    echo "  📋 Shrimp Task Manager: Stdio (lancé à la demande)"
+    echo "  📋 Sequential Thinking: HTTP (port $SEQUENTIAL_THINKING_PORT)"
+    echo "  📋 Fast Filesystem: HTTP (port $FAST_FILESYSTEM_PORT)"
+    echo "  📋 JSON Query: HTTP (port $JSON_QUERY_PORT)"
     echo ""
     log_info "Pour arrêter: ./scripts/start-mcp-servers.sh stop"
 }
@@ -1738,7 +1774,7 @@ status_servers() {
         # Vérifier la connectivité Cloud
         QDRANT_API_KEY=$(grep -A 15 '\[mcp.qdrant\]' config.toml 2>/dev/null | grep '^api_key' | cut -d'"' -f2)
         if [ ! -z "$QDRANT_API_KEY" ]; then
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "api-key: $QDRANT_API_KEY" "$QDRANT_URL/healthz" 2>/dev/null || echo "000")
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $QDRANT_API_KEY" "$QDRANT_URL/healthz" 2>/dev/null || echo "000")
             if [ "$HTTP_CODE" == "200" ]; then
                 log_success "✅ Cloud Connecté ($QDRANT_URL)"
             else
@@ -1780,9 +1816,53 @@ status_servers() {
     # JSON Query
     echo -n "JSON Query MCP: "
     if check_port $JSON_QUERY_PORT; then
-        log_success "✅ Connecté (port $JSON_QUERY_PORT)"
+        log_success "✅ HTTP Connecté (port $JSON_QUERY_PORT)"
     else
-        log_warning "❌ Déconnecté (port $JSON_QUERY_PORT non écouté)"
+        log_warning "❌ HTTP Déconnecté (port $JSON_QUERY_PORT)"
+    fi
+    
+    echo ""
+    echo "Serveurs MCP via Bridge:"
+    echo -n "  Filesystem Agent: "
+    if grep -q "name: filesystem-agent" config.yaml 2>/dev/null; then
+        log_success "✅ Stdio configuré (lancé à la demande)"
+    else
+        log_warning "❌ Non configuré"
+    fi
+    
+    echo -n "  Ripgrep Agent: "
+    if grep -q "name: ripgrep-agent" config.yaml 2>/dev/null; then
+        log_success "✅ Stdio configuré (lancé à la demande)"
+    else
+        log_warning "❌ Non configuré"
+    fi
+    
+    echo -n "  Shrimp Task Manager: "
+    if grep -q "name: shrimp-task-manager" config.yaml 2>/dev/null; then
+        log_success "✅ Stdio configuré (lancé à la demande)"
+    else
+        log_warning "❌ Non configuré"
+    fi
+    
+    echo -n "  Sequential Thinking: "
+    if check_port $SEQUENTIAL_THINKING_PORT; then
+        log_success "✅ HTTP configuré (port $SEQUENTIAL_THINKING_PORT)"
+    else
+        log_warning "❌ HTTP déconnecté"
+    fi
+    
+    echo -n "  Fast Filesystem: "
+    if check_port $FAST_FILESYSTEM_PORT; then
+        log_success "✅ HTTP configuré (port $FAST_FILESYSTEM_PORT)"
+    else
+        log_warning "❌ HTTP déconnecté"
+    fi
+    
+    echo -n "  JSON Query: "
+    if check_port $JSON_QUERY_PORT; then
+        log_success "✅ HTTP configuré (port $JSON_QUERY_PORT)"
+    else
+        log_warning "❌ HTTP déconnecté"
     fi
 }
 

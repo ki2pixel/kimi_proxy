@@ -8,7 +8,7 @@ NOUVELLE ARCHITECTURE (2026-02-18):
 
 Structure:
 - base/: Configuration et RPC de base (config.py, rpc.py)
-- servers/: Clients spécialisés par serveur (qdrant, compression, task_master, sequential, filesystem, json_query)
+- servers/: Clients spécialisés par serveur (qdrant, compression, shrimp_task_manager, sequential, filesystem, json_query)
 - client.py: Facade principale avec singleton global
 
 Serveurs supportés (7 serveurs, 43 outils):
@@ -32,8 +32,8 @@ from kimi_proxy.core.models import (
     MCPCompressionResult,
     MCPExternalServerStatus,
     MCPPhase4ServerStatus,
-    TaskMasterTask,
-    TaskMasterStats,
+    ShrimpTaskMasterTask,
+    ShrimpTaskMasterStats,
     SequentialThinkingStep,
     FileSystemResult,
     JsonQueryResult,

@@ -391,9 +391,9 @@ from kimi_proxy.features.mcp.client import get_mcp_client, MCPConnectionError
 
 class TestMCPIntegration:
     @pytest.mark.asyncio
-    async def test_task_master_connection(self, mock_mcp_servers):
+    async def test_shrimp_task_manager_connection(self, mock_mcp_servers):
         """Test Task Master MCP server connection"""
-        client = get_mcp_client("task_master")
+        client = get_mcp_client("shrimp_task_manager")
         
         # Test initialization
         result = await client.call("initialize", {
@@ -409,7 +409,7 @@ class TestMCPIntegration:
         client = get_mcp_client("sequential_thinking")
         
         result = await client.call("sequentialthinking_tools", {
-            "available_mcp_tools": ["task-master"],
+            "available_mcp_tools": ["shrimp-task-manager"],
             "thought": "Test reasoning process",
             "next_thought_needed": False,
             "thought_number": 1,

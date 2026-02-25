@@ -491,7 +491,7 @@ class StatusSnapshot:
 # ============================================================================
 
 @dataclass
-class TaskMasterTask:
+class ShrimpTaskMasterTask:
     """Tâche Shrimp Task Manager."""
     id: str = ""
     title: str = ""
@@ -519,7 +519,7 @@ class TaskMasterTask:
 
 
 @dataclass
-class TaskMasterStats:
+class ShrimpTaskMasterStats:
     """Statistiques Shrimp Task Manager."""
     total_tasks: int = 0
     pending: int = 0
@@ -616,7 +616,7 @@ class MCPToolCall:
     """Appel d'outil MCP intercepté."""
     id: Optional[int] = None
     session_id: int = 0
-    server_type: str = ""  # task_master, sequential_thinking, fast_filesystem, json_query
+    server_type: str = ""  # shrimp_task_manager, sequential_thinking, fast_filesystem, json_query
     tool_name: str = ""
     params: Dict[str, Any] = field(default_factory=dict)
     result: Optional[Dict[str, Any]] = None
@@ -628,7 +628,7 @@ class MCPToolCall:
         """Convertit en dictionnaire."""
         # Déterminer l'URL du serveur basé sur le type
         url_map = {
-            "task_master": "http://localhost:8002",
+            "shrimp_task_manager": "http://localhost:8002",
             "sequential_thinking": "http://localhost:8003", 
             "fast_filesystem": "http://localhost:8004",
             "json_query": "http://localhost:8005"
@@ -653,7 +653,7 @@ class MCPToolCall:
 class MCPPhase4ServerStatus:
     """Statut d'un serveur MCP Phase 4."""
     name: str = ""
-    type: str = ""  # task_master, sequential_thinking, fast_filesystem, json_query
+    type: str = ""  # shrimp_task_manager, sequential_thinking, fast_filesystem, json_query
     url: str = ""
     connected: bool = False
     last_check: Optional[str] = None

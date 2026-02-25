@@ -66,7 +66,8 @@ MCP_PATTERNS = {
     # =========================================================================
     # NOUVEAUX SERVEURS MCP - Intégration Phase 4
     # =========================================================================
-    # 1. task-master-ai (14 outils) - SUPPRIMÉ
+    # 1. shrimp-task-manager (14 outils)
+    "mcp_shrimp_task_manager": r"(mcp8_analyze_task|mcp8_clear_all_tasks|mcp8_delete_task|mcp8_execute_task|mcp8_get_task_detail|mcp8_init_project_rules|mcp8_list_tasks|mcp8_plan_task|mcp8_process_thought|mcp8_query_task|mcp8_reflect_task|mcp8_research_mode|mcp8_split_tasks|mcp8_update_task|mcp8_verify_task)",
     # 2. sequential-thinking (1 outil)
     "mcp_sequential_thinking": r"(sequentialthinking_tools|sequential_thinking)",
     # 3. fast-filesystem (25 outils)

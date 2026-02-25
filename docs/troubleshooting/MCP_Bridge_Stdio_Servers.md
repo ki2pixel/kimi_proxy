@@ -69,6 +69,16 @@ mcpServers:
       PATH: "/usr/bin:/bin:/usr/local/bin"
 ```
 
+## Shim Bidirectional pour Roots/List
+
+Certains serveurs MCP stdio, notamment Shrimp Task Manager, appellent `roots/list` comme requête du serveur vers le client pour découvrir les racines workspace. Puisque le bridge utilise un pipe stdio unidirectionnel, il ne peut pas gérer les requêtes bidirectionnelles.
+
+Le shim intercepte les requêtes server→client `roots/list` et répond automatiquement avec une racine `file://` dérivée du répertoire de travail courant ou de `MCP_WORKSPACE_ROOT`.
+
+Voir le code dans `_run_shrimp_task_manager_stdio_with_roots_shim` dans `scripts/mcp_bridge.py`.
+
+Cela permet à Continue.dev et autres clients de fonctionner sans support bidirectionnel natif.
+
 ## Variables d’environnement supportées
 
 ### Commun

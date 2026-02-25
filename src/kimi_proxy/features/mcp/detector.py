@@ -35,7 +35,7 @@ class MCPDetector:
             'mcp_tool': re.compile(MCP_PATTERNS['mcp_tool'], re.DOTALL | re.IGNORECASE),
             'context_memory': re.compile(MCP_PATTERNS['context_memory'], re.IGNORECASE),
             # Phase 4 - Nouveaux serveurs MCP
-            'mcp_task_master': re.compile(MCP_PATTERNS['mcp_task_master'], re.IGNORECASE),
+            'mcp_shrimp_task_manager': re.compile(MCP_PATTERNS['mcp_shrimp_task_manager'], re.IGNORECASE),
             'mcp_sequential_thinking': re.compile(MCP_PATTERNS['mcp_sequential_thinking'], re.IGNORECASE),
             'mcp_fast_filesystem': re.compile(MCP_PATTERNS['mcp_fast_filesystem'], re.IGNORECASE),
             'mcp_json_query': re.compile(MCP_PATTERNS['mcp_json_query'], re.IGNORECASE),
@@ -101,7 +101,7 @@ class MCPDetector:
             return segments
         
         phase4_patterns = [
-            ('mcp_task_master', 'task_master'),
+            ('mcp_shrimp_task_manager', 'shrimp_task_manager'),
             ('mcp_sequential_thinking', 'sequential_thinking'),
             ('mcp_fast_filesystem', 'fast_filesystem'),
             ('mcp_json_query', 'json_query'),

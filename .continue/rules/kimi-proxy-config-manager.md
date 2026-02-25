@@ -199,7 +199,7 @@ endpoint = "/rpc"  # JSON-RPC 2.0
 
 **Phase 4 servers (local processes in Continue.dev):**
 - Configured in `.continue/config.yaml` as `command`/`args` entries
-- See `.continue/config.yaml` for task-master, sequential-thinking, fast-filesystem, json-query
+- See `.continue/config.yaml` for shrimp-task-manager, sequential-thinking, fast-filesystem, json-query
 - No longer configured in proxy's `config.toml`
 
 ## Configuration Templates

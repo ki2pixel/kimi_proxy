@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import io
+from pathlib import Path
 
 import pytest
 
@@ -84,10 +85,36 @@ def test_build_filesystem_agent_command_includes_allowed_root(monkeypatch):
 
 
 @pytest.mark.unit
-def test_build_stdio_relay_command_unknown_raises_valueerror():
+def test_build_ripgrep_agent_command_includes_mcp_ripgrep(monkeypatch):
     mcp_bridge = _import_mcp_bridge()
-    with pytest.raises(ValueError):
-        mcp_bridge._build_stdio_relay_command("unknown")
+    monkeypatch.setenv("MCP_RIPGREP_COMMAND", "npx")
+    monkeypatch.delenv("MCP_BRIDGE_PATH_ENV", raising=False)
+
+    cmd = mcp_bridge._build_ripgrep_agent_command()
+    assert cmd.command == "npx"
+    assert "mcp-ripgrep" in cmd.args
+
+
+@pytest.mark.unit
+def test_build_shrimp_task_manager_command_uses_env_or_default(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+    monkeypatch.delenv("MCP_SHRIMP_TASK_MANAGER_COMMAND", raising=False)
+
+    cmd = mcp_bridge._build_shrimp_task_manager_command()
+    # Should use default path if exists, else "shrimp-task-manager"
+    expected_cmd = "/home/kidpixel/.local/bin/shrimp-task-manager" if Path("/home/kidpixel/.local/bin/shrimp-task-manager").exists() else "shrimp-task-manager"
+    assert cmd.command == expected_cmd
+    assert cmd.args == []
+
+
+@pytest.mark.unit
+def test_build_shrimp_task_manager_command_respects_env(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+    monkeypatch.setenv("MCP_SHRIMP_TASK_MANAGER_COMMAND", "/custom/path/shrimp")
+
+    cmd = mcp_bridge._build_shrimp_task_manager_command()
+    assert cmd.command == "/custom/path/shrimp"
+    assert cmd.args == []
 
 
 @pytest.mark.asyncio

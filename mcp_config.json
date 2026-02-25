@@ -1,0 +1,95 @@
+{
+  "mcpServers": {
+    "filesystem-agent": {
+      "timeout": 60,
+      "command": "python3",
+      "args": [
+        "/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py",
+        "filesystem-agent"
+      ],
+      "env": {
+        "PATH": "/usr/bin:/bin:/usr/local/bin",
+        "MCP_BRIDGE_PATH_ENV": "/usr/bin:/bin:/usr/local/bin",
+        "MCP_FILESYSTEM_ALLOWED_ROOT": "/home/kidpixel"
+      }
+    },
+    "ripgrep-agent": {
+      "timeout": 60,
+      "command": "python3",
+      "args": [
+        "/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py",
+        "ripgrep-agent"
+      ],
+      "env": {
+        "PATH": "/usr/bin:/bin:/usr/local/bin",
+        "MCP_BRIDGE_PATH_ENV": "/usr/bin:/bin:/usr/local/bin"
+      }
+    },
+    "shrimp-task-manager": {
+      "timeout": 60,
+      "command": "python3",
+      "args": [
+        "/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py",
+        "shrimp-task-manager"
+      ],
+      "env": {
+        "PATH": "/usr/bin:/bin:/usr/local/bin",
+        "MCP_BRIDGE_PATH_ENV": "/usr/bin:/bin:/usr/local/bin",
+        "MCP_SHRIMP_TASK_MANAGER_COMMAND": "/home/kidpixel/.local/bin/shrimp-task-manager",
+        "DATA_DIR": "/home/kidpixel/kimi-proxy/shrimp_data"
+      }
+    },
+    "sequential-thinking": {
+      "serverUrl": "http://localhost:8000/api/mcp-gateway/sequential-thinking/rpc",
+      "headers": {}
+    },
+    "fast-filesystem": {
+      "serverUrl": "http://localhost:8000/api/mcp-gateway/fast-filesystem/rpc",
+      "headers": {}
+    },
+    "json-query": {
+      "serverUrl": "http://localhost:8000/api/mcp-gateway/json-query/rpc",
+      "headers": {}
+    },
+    "redis-signal-mcp-server": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "redis-mcp-server@latest",
+        "redis-mcp-server",
+        "--url",
+        "hidden"
+      ]
+    },
+    "photomaton-postgres": {
+      "command": "uvx",
+      "args": [
+        "--python",
+        "3.12",
+        "postgres-mcp",
+        "--access-mode=unrestricted"
+      ],
+      "env": {
+        "DATABASE_URI": "hidden"
+      }
+    },
+    "switchbot-postgres": {
+      "command": "uvx",
+      "args": [
+        "--python",
+        "3.12",
+        "postgres-mcp",
+        "--access-mode=unrestricted"
+      ],
+      "env": {
+        "DATABASE_URI": "hidden"
+      }
+    },
+    "context7": {
+      "serverUrl": "https://mcp.context7.com/mcp",
+      "headers": {
+        "Authorization": "hidden"
+      }
+    }
+  }
+}

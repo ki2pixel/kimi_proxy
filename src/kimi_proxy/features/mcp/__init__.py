@@ -59,8 +59,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from kimi_proxy.core.models import (
-        TaskMasterTask,
-        TaskMasterStats,
+        ShrimpTaskMasterTask,
+        ShrimpTaskMasterStats,
         SequentialThinkingStep,
         FileSystemResult,
         JsonQueryResult,

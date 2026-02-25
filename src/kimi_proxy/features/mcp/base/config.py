@@ -23,9 +23,9 @@ class MCPClientConfig:
     compression_timeout_ms: float = 5000.0
     
     # Shrimp Task Manager MCP (Phase 4)
-    task_master_url: Optional[str] = "http://localhost:8002"
-    task_master_api_key: Optional[str] = None
-    task_master_timeout_ms: float = 30000.0  # 30s
+    shrimp_task_manager_url: Optional[str] = "http://localhost:8002"
+    shrimp_task_manager_api_key: Optional[str] = None
+    shrimp_task_manager_timeout_ms: float = 30000.0  # 30s
     
     # Sequential Thinking MCP (Phase 4)
     sequential_thinking_url: Optional[str] = "http://localhost:8003"
@@ -76,9 +76,9 @@ class MCPClientConfig:
             compression_timeout_ms=mcp.get("compression", {}).get("compression_timeout_ms", 5000.0),
             
             # Shrimp Task Manager
-            task_master_url=mcp.get("task_master", {}).get("url", "http://localhost:8002"),
-            task_master_api_key=mcp.get("task_master", {}).get("api_key"),
-            task_master_timeout_ms=mcp.get("task_master", {}).get("timeout_ms", 30000.0),
+            shrimp_task_manager_url=mcp.get("shrimp_task_manager", {}).get("url", "http://localhost:8002"),
+            shrimp_task_manager_api_key=mcp.get("shrimp_task_manager", {}).get("api_key"),
+            shrimp_task_manager_timeout_ms=mcp.get("shrimp_task_manager", {}).get("timeout_ms", 30000.0),
             
             # Sequential Thinking
             sequential_thinking_url=mcp.get("sequential_thinking", {}).get("url", "http://localhost:8003"),

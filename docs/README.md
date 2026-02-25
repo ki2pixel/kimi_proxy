@@ -70,6 +70,36 @@ Comment installer et utiliser le système en 5 minutes.
   - Configuration Continue.dev pour PyCharm/VS Code
   - Les vrais problèmes que j'ai rencontrés et leurs solutions
 
+### 🔧 [Dépannage](./troubleshooting/) - Résoudre les Problèmes
+Les solutions aux problèmes courants rencontrés.
+
+- **[Bridge MCP stdio](./troubleshooting/MCP_Bridge_Stdio_Servers.md)** - Configuration serveurs MCP locaux avec filtrage JSON-RPC
+- **[Interop IDE MCP](./troubleshooting/MCP_IDE_Interop.md)** ⭐ **Nouveau** - Configuration MCP dans Windsurf, Cline, Continue.dev avec shim roots/list
+- **[MCP Transport HTTP Guide](./troubleshooting/MCP_TRANSPORT_HTTP_GUIDE.md)** - Guide transport MCP HTTP pour debugging
+- **[MCP Bridge stdio Serveurs](./troubleshooting/MCP_Bridge_Stdio_Servers.md)** - Configuration détaillée bridge stdio
+- **[Task Master Persistence Containment](./troubleshooting/TASK_MASTER_PERSISTENCE_CONTAINMENT.md)** - Containment persistance tâches MCP
+
+### 🏛️ [Core](./core/) - Logique Fondamentale
+Les fondations techniques du système.
+
+- **[Architecture Core](./core/README.md)** - Database SQLite, tokens Tiktoken, structures typées
+
+### 🔌 [API](./api/) - Routes et Endpoints
+L'interface REST/WebSocket du système.
+
+- **[Documentation API](./api/README.md)** - 60 routes documentées avec patterns système
+
+### 📊 [Services](./services/) - Gestion WebSocket et Alertes
+Les services temps réel.
+
+- **[Vue d'ensemble Services](./services/README.md)** - WebSocket manager, rate limiting, alertes
+
+### 🌐 [Proxy](./proxy/) - Routage vers APIs LLM
+Le cœur du proxy multi-provider.
+
+- **[Logique Routage Proxy](./proxy/README.md)** - Routage intelligent vers 8 providers
+- **[Tool Validation](./proxy/tool-validation.md)** - Validation outils proxy
+
 ## Comment naviguer intelligemment
 
 ### Si tu veux comprendre le système
@@ -192,5 +222,5 @@ Voir [Contributing](./development/contributing.md) pour les guidelines de contri
 
 ---
 
-*Dernière mise à jour : 2026-02-21*
-*Version: 2.0.2*
+*Dernière mise à jour : 2026-02-25*
+*Version: 2.0.3*

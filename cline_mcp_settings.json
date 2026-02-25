@@ -1,0 +1,147 @@
+{
+  "mcpServers": {
+    "filesystem-agent": {
+      "timeout": 60,
+      "command": "python3",
+      "args": [
+        "/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py",
+        "filesystem-agent"
+      ],
+      "env": {
+        "PATH": "/usr/bin:/bin:/usr/local/bin",
+        "MCP_BRIDGE_PATH_ENV": "/usr/bin:/bin:/usr/local/bin",
+        "MCP_FILESYSTEM_ALLOWED_ROOT": "/home/kidpixel"
+      },
+      "type": "stdio",
+      "autoApprove": [
+        "write_file",
+        "read_text_file",
+        "list_directory_with_sizes",
+        "list_allowed_directories",
+        "directory_tree"
+      ]
+    },
+    "ripgrep-agent": {
+      "timeout": 60,
+      "command": "python3",
+      "args": [
+        "/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py",
+        "ripgrep-agent"
+      ],
+      "env": {
+        "PATH": "/usr/bin:/bin:/usr/local/bin",
+        "MCP_BRIDGE_PATH_ENV": "/usr/bin:/bin:/usr/local/bin"
+      },
+      "type": "stdio",
+      "autoApprove": [
+        "advanced-search",
+        "search"
+      ]
+    },
+    "shrimp-task-manager": {
+      "timeout": 60,
+      "command": "python3",
+      "args": [
+        "/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py",
+        "shrimp-task-manager"
+      ],
+      "env": {
+        "PATH": "/usr/bin:/bin:/usr/local/bin",
+        "MCP_BRIDGE_PATH_ENV": "/usr/bin:/bin:/usr/local/bin",
+        "MCP_SHRIMP_TASK_MANAGER_COMMAND": "/home/kidpixel/.local/bin/shrimp-task-manager",
+        "DATA_DIR": "/home/kidpixel/kimi-proxy/shrimp_data"
+      },
+      "type": "stdio",
+      "autoApprove": [
+        "list_tasks",
+        "analyze_task",
+        "reflect_task",
+        "split_tasks",
+        "execute_task",
+        "get_task_detail",
+        "verify_task",
+        "update_task",
+        "plan_task"
+      ]
+    },
+    "sequential-thinking": {
+      "timeout": 60,
+      "url": "http://localhost:8000/api/mcp-gateway/sequential-thinking/rpc",
+      "headers": {},
+      "type": "streamableHttp",
+      "autoApprove": [
+        "sequentialthinking_tools"
+      ]
+    },
+    "fast-filesystem": {
+      "timeout": 60,
+      "url": "http://localhost:8000/api/mcp-gateway/fast-filesystem/rpc",
+      "headers": {},
+      "type": "streamableHttp",
+      "autoApprove": [
+        "fast_write_file",
+        "fast_read_file",
+        "fast_read_multiple_files",
+        "fast_get_directory_tree"
+      ]
+    },
+    "json-query": {
+      "timeout": 60,
+      "url": "http://localhost:8000/api/mcp-gateway/json-query/rpc",
+      "headers": {},
+      "type": "streamableHttp",
+      "autoApprove": [
+        "json_query_search_values"
+      ]
+    },
+    "redis-signal-mcp-server": {
+      "timeout": 60,
+      "command": "uvx",
+      "args": [
+        "--from",
+        "redis-mcp-server@latest",
+        "redis-mcp-server",
+        "--url",
+        "redis://hidden"
+      ],
+      "type": "stdio"
+    },
+    "photomaton-postgres": {
+      "timeout": 60,
+      "command": "uvx",
+      "args": [
+        "--python",
+        "3.12",
+        "postgres-mcp",
+        "--access-mode=unrestricted"
+      ],
+      "env": {
+        "DATABASE_URI": "postgresql://hidden"
+      },
+      "type": "stdio"
+    },
+    "switchbot-postgres": {
+      "timeout": 60,
+      "command": "uvx",
+      "args": [
+        "--python",
+        "3.12",
+        "postgres-mcp",
+        "--access-mode=unrestricted"
+      ],
+      "env": {
+        "DATABASE_URI": "postgresql://hidden"
+      },
+      "type": "stdio"
+    },
+    "context7": {
+      "timeout": 60,
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "Authorization": "hidden"
+      },
+      "type": "sse",
+      "disabled": true
+    }
+  }
+}

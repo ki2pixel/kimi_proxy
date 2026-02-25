@@ -74,6 +74,45 @@ def _extract_jsonrpc_id(request_obj: object) -> object | None:
     return None
 
 
+def _is_jsonrpc_request_message(obj: object) -> bool:
+    return isinstance(obj, dict) and obj.get("jsonrpc") == "2.0" and isinstance(obj.get("method"), str)
+
+
+def _build_roots_list_result(*, req_id: object | None, root_path: Path) -> dict[str, object]:
+    # MCP "roots/list" response shape: { roots: [{ uri, name? }] }
+    # We always return a file:// root so servers can derive workspace paths.
+    try:
+        uri = root_path.resolve().as_uri()
+    except Exception:
+        # Best-effort fallback; as_uri() needs absolute path.
+        uri = Path.cwd().resolve().as_uri()
+
+    return {
+        "jsonrpc": "2.0",
+        "id": req_id,
+        "result": {
+            "roots": [
+                {
+                    "uri": uri,
+                    "name": "workspace",
+                }
+            ]
+        },
+    }
+
+
+def _get_workspace_root_for_roots_list() -> Path:
+    # Prefer explicit env, then the same WORKSPACE_PATH convention used elsewhere,
+    # otherwise fall back to the current working directory.
+    env_root = os.getenv("MCP_WORKSPACE_ROOT") or os.getenv("WORKSPACE_PATH")
+    if env_root:
+        try:
+            return Path(env_root).expanduser().resolve(strict=False)
+        except Exception:
+            return Path.cwd().resolve()
+    return Path.cwd().resolve()
+
+
 def _get_gateway_url(server_name: str) -> str:
     base = os.getenv("MCP_GATEWAY_BASE_URL", "http://localhost:8000").rstrip("/")
     return f"{base}/api/mcp-gateway/{server_name}/rpc"
@@ -213,7 +252,156 @@ async def _pipe_child_stdout_jsonrpc_only(
             pass
 
 
+async def _run_shrimp_task_manager_stdio_with_roots_shim() -> int:
+    """Run shrimp-task-manager stdio server with a client-side shim for roots/list.
+
+    Some MCP servers (notably Shrimp Task Manager) call `roots/list` as a request
+    FROM server -> client to discover workspace roots. Some IDE clients support
+    this bidirectionally; a plain stdin/stdout pipe does not.
+
+    This shim:
+    - forwards client->server messages as-is
+    - intercepts server->client `roots/list` requests and replies with a file:// root
+      derived from the current working directory.
+
+    This keeps Continue.dev behavior while allowing other clients to work.
+    """
+
+    relay_cmd = _build_shrimp_task_manager_command()
+    stdin_reader = await _connect_stdin_reader()
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            relay_cmd.command,
+            *relay_cmd.args,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=relay_cmd.env,
+        )
+    except Exception as e:
+        # Mirror behavior from _run_stdio_relay: answer errors for every incoming request.
+        while True:
+            raw = await stdin_reader.readline()
+            if not raw:
+                return 1
+
+            try:
+                req_obj = json.loads(raw.decode("utf-8", errors="replace").strip())
+                req_id = _extract_jsonrpc_id(req_obj)
+            except json.JSONDecodeError:
+                req_id = None
+
+            payload = _jsonrpc_error(
+                code=-32603,
+                message=f"Impossible de démarrer shrimp-task-manager: {e}",
+                req_id=req_id,
+            )
+            sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            sys.stdout.flush()
+
+    assert proc.stdin is not None
+    assert proc.stdout is not None
+    assert proc.stderr is not None
+
+    async def _pump_client_to_server() -> None:
+        await _pipe_reader_to_writer_lines(reader=stdin_reader, writer=proc.stdin)  # type: ignore[arg-type]
+
+    async def _pump_server_to_client_with_shim() -> None:
+        try:
+            while True:
+                line = await proc.stdout.readline()
+                if not line:
+                    return
+
+                stripped_left = line.lstrip()
+                if stripped_left.startswith(b"{"):
+                    try:
+                        msg_obj = json.loads(stripped_left.decode("utf-8", errors="replace"))
+                    except json.JSONDecodeError:
+                        msg_obj = None
+
+                    if _is_jsonrpc_request_message(msg_obj) and msg_obj.get("method") == "roots/list":
+                        req_id = _extract_jsonrpc_id(msg_obj)
+                        roots_payload = _build_roots_list_result(
+                            req_id=req_id,
+                            root_path=_get_workspace_root_for_roots_list(),
+                        )
+                        # Reply to server on its stdin
+                        try:
+                            proc.stdin.write(
+                                (json.dumps(roots_payload, ensure_ascii=False) + "\n").encode("utf-8")
+                            )
+                            await proc.stdin.drain()
+                        except (BrokenPipeError, ConnectionResetError):
+                            return
+                        continue
+
+                    # Default filtering policy: only forward JSON-RPC objects.
+                    if isinstance(msg_obj, dict) and msg_obj.get("jsonrpc") == "2.0":
+                        sys.stdout.buffer.write(line)
+                        sys.stdout.buffer.flush()
+                        continue
+
+                # Anything else is considered logs/banners; redirect to stderr.
+                try:
+                    sys.stderr.buffer.write(b"[mcp_bridge relay stdout] " + line)
+                    sys.stderr.buffer.flush()
+                except Exception:
+                    pass
+        except asyncio.CancelledError:
+            return
+
+    stdin_task = asyncio.create_task(_pump_client_to_server())
+    stdout_task = asyncio.create_task(_pump_server_to_client_with_shim())
+    stderr_task = asyncio.create_task(_pipe_stream_to_buffer_lines(stream=proc.stderr, out=sys.stderr.buffer, flush=True))
+    proc_wait_task = asyncio.create_task(proc.wait())
+
+    done, _pending = await asyncio.wait(
+        {stdin_task, proc_wait_task},
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+
+    if proc_wait_task in done and not stdin_task.done():
+        stdin_task.cancel()
+        try:
+            await stdin_task
+        except asyncio.CancelledError:
+            pass
+
+    if stdin_task in done and not proc_wait_task.done():
+        try:
+            await asyncio.wait_for(proc_wait_task, timeout=2.0)
+        except asyncio.TimeoutError:
+            try:
+                proc.terminate()
+            except ProcessLookupError:
+                pass
+            try:
+                await proc_wait_task
+            except asyncio.CancelledError:
+                pass
+
+    returncode = int(proc.returncode or 0)
+
+    for task in (stdout_task, stderr_task):
+        try:
+            await asyncio.wait_for(task, timeout=1.0)
+        except asyncio.TimeoutError:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    return returncode
+
+
 async def _run_stdio_relay(server_name: str) -> int:
+    # Special-case: shrimp-task-manager uses bidirectional requests (roots/list).
+    if server_name == "shrimp-task-manager":
+        return await _run_shrimp_task_manager_stdio_with_roots_shim()
+
     relay_cmd = _build_stdio_relay_command(server_name)
     stdin_reader = await _connect_stdin_reader()
 

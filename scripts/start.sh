@@ -95,7 +95,6 @@ pip show fastapi >/dev/null 2>&1 || pip install fastapi uvicorn httpx websockets
 # 6. Démarrage des serveurs MCP externes (Phase 3)
 # =============================================================================
 echo ""
-echo "🔌 Démarrage des serveurs MCP externes..."
 if [ -f "$SCRIPT_DIR/start-mcp-servers.sh" ]; then
     "$SCRIPT_DIR/start-mcp-servers.sh" start
     MCP_STATUS=$?

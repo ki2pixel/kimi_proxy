@@ -1,6 +1,6 @@
 ---
 name: kimi-proxy-mcp-integration
-description: Comprehensive MCP (Model Context Protocol) integration for Kimi Proxy Dashboard. Use when working with MCP servers, memory management, semantic search, or external tool integration. Covers Phase 2-4 MCP features including Task Master, Sequential Thinking, Fast Filesystem, and JSON Query servers.
+description: Comprehensive MCP (Model Context Protocol) integration for Kimi Proxy Dashboard. Use when working with MCP servers, memory management, semantic search, or external tool integration. Covers Phase 2-5 MCP features including Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query, and Gateway servers.
 license: Complete terms in LICENSE.txt
 ---
 
@@ -21,10 +21,15 @@ This skill provides comprehensive MCP integration guidance for Kimi Proxy Dashbo
 - Context Compression MCP: Advanced compression
 
 **Phase 4**: Extended MCP ecosystem
-- Task Master MCP (14 tools): Task management
+- Shrimp Task Manager MCP (14 tools): Task management
 - Sequential Thinking MCP (1 tool): Structured reasoning
 - Fast Filesystem MCP (25 tools): File operations
 - JSON Query MCP (3 tools): JSON querying
+
+**Phase 5**: Gateway and extended local servers
+- MCP Gateway: Robust error forwarding (403 refusals upstream, no more 502 false positives)
+- Extended local servers: fast-filesystem, json-query, shrimp_task_manager with stdio bridge
+- MCP Bridge: Relay stdio + JSON-RPC filtering for compatibility
 
 ## MCP Server Management
 
@@ -35,7 +40,7 @@ This skill provides comprehensive MCP integration guidance for Kimi Proxy Dashbo
 ./scripts/start-mcp-servers.sh start
 
 # Start individual servers
-./scripts/start-mcp-servers.sh start-task-master
+./scripts/start-mcp-servers.sh start-shrimp-task-manager
 ./scripts/start-mcp-servers.sh start-sequential-thinking
 ./scripts/start-mcp-servers.sh start-filesystem
 ./scripts/start-mcp-servers.sh start-json-query
@@ -48,7 +53,7 @@ This skill provides comprehensive MCP integration guidance for Kimi Proxy Dashbo
 
 ```toml
 # config.toml MCP configuration
-[mcp.task_master]
+[mcp.shrimp_task_manager]
 enabled = true
 url = "http://localhost:8002"
 timeout_ms = 30000
@@ -83,15 +88,15 @@ curl http://localhost:8000/api/memory/servers/phase4
 watch -n 5 'curl -s http://localhost:8000/api/memory/all-servers | jq ".servers[].status"'
 ```
 
-## Task Master MCP Integration
+## Shrimp Task Manager MCP Integration
 
 ### Task Management Workflow
 
 ```python
-# Initialize Task Master project
+# Initialize Shrimp Task Manager project
 from kimi_proxy.features.mcp.client import get_mcp_client
 
-client = get_mcp_client("task_master")
+client = get_mcp_client("shrimp_task_manager")
 await client.call("initialize_project", {
     "projectRoot": "/home/kidpixel/kimi-proxy",
     "skipInstall": False,
@@ -102,19 +107,19 @@ await client.call("initialize_project", {
 })
 ```
 
-### Common Task Master Operations
+### Common Shrimp Task Manager Operations
 
 ```bash
 # Parse PRD to generate tasks
-curl -X POST http://localhost:8000/api/memory/task-master/parse-prd \
+curl -X POST http://localhost:8000/api/memory/shrimp-task-manager/parse-prd \
   -H "Content-Type: application/json" \
   -d '{"input": "/home/kidpixel/kimi-proxy/.shrimp-task-manager/plan/prd.txt", "projectRoot": "/home/kidpixel/kimi-proxy", "force": true}'
 
 # Get all tasks
-curl http://localhost:8000/api/memory/task-master/tasks
+curl http://localhost:8000/api/memory/shrimp-task-manager/tasks
 
 # Analyze project complexity
-curl -X POST http://localhost:8000/api/memory/task-master/analyze-complexity \
+curl -X POST http://localhost:8000/api/memory/shrimp-task-manager/analyze-complexity \
   -H "Content-Type: application/json" \
   -d '{"projectRoot": "/home/kidpixel/kimi-proxy", "threshold": 5, "research": true}'
 ```
@@ -141,7 +146,7 @@ await client.call("expand_task", {
 client = get_mcp_client("sequential_thinking")
 
 result = await client.call("sequentialthinking_tools", {
-    "available_mcp_tools": ["task-master", "filesystem", "json-query"],
+    "available_mcp_tools": ["shrimp-task-manager", "filesystem", "json-query"],
     "thought": "I need to debug a streaming error in the proxy. Let me analyze the error patterns systematically.",
     "next_thought_needed": True,
     "thought_number": 1,
@@ -156,7 +161,7 @@ result = await client.call("sequentialthinking_tools", {
 curl -X POST http://localhost:8000/api/memory/sequential-thinking/call \
   -H "Content-Type: application/json" \
   -d '{
-    "available_mcp_tools": ["task-master", "filesystem"],
+    "available_mcp_tools": ["shrimp-task-manager", "filesystem"],
     "thought": "I need to investigate the ReadError in streaming. First, I should check the logs for error patterns.",
     "next_thought_needed": true,
     "thought_number": 1,
@@ -286,8 +291,8 @@ async def debug_with_mcp():
         "total_thoughts": 3
     })
     
-    # 3. Use task master to create debugging tasks
-    tm_client = get_mcp_client("task_master")
+    # 3. Use shrimp task manager to create debugging tasks
+    tm_client = get_mcp_client("shrimp_task_manager")
     await tm_client.call("add_task", {
         "projectRoot": "/home/kidpixel/kimi-proxy",
         "prompt": "Fix streaming ReadError based on log analysis",
@@ -305,7 +310,7 @@ try:
     result = await client.call("tool_name", params)
 except MCPConnectionError:
     # Server disconnected, try restart
-    await restart_mcp_server("task_master")
+    await restart_mcp_server("shrimp_task_manager")
     result = await client.call("tool_name", params)
 except MCPClientError as e:
     # Tool-specific error
@@ -323,7 +328,7 @@ except MCPClientError as e:
 netstat -tlnp | grep -E ':(8002|8003|8004|8005)'
 
 # Restart specific server
-./scripts/start-mcp-servers.sh restart-task-master
+./scripts/start-mcp-servers.sh restart-shrimp-task-manager
 ```
 
 **Workspace permissions:**

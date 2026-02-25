@@ -398,11 +398,11 @@ mcpServers:
       - "--url"
       - "redis://red-d0l2c17fte5s73955i40:KCL5iVxykagTchnJxhccAyCp9S8dWFls@red-d0l2c17fte5s73955i40:6379"
 
-  - name: switchbot-postgres
+  - name: photomaton-postgres
     command: uvx
     args: [ "--python", "3.12", "postgres-mcp", "--access-mode=unrestricted" ]
     env:
-      DATABASE_URI: "postgresql://postgres.tpjbanbcvfwyhoqsuyxf:%40vH2f85CAXjm96tz@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require"
+      DATABASE_URI: "postgresql://neondb_owner:npg_GwWL5Fltq2kO@ep-shiny-star-ad5t7thb-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
     connectionTimeout: 60000
 
   - name: switchbot-postgres
@@ -410,3 +410,4 @@ mcpServers:
     args: [ "--python", "3.12", "postgres-mcp", "--access-mode=unrestricted" ]
     env:
       DATABASE_URI: "postgresql://postgres.tpjbanbcvfwyhoqsuyxf:%40vH2f85CAXjm96tz@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require"
+    connectionTimeout: 60000

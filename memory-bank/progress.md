@@ -3,6 +3,34 @@ Aucune
 
 ## Tâches Complétées
 
+### [2026-02-25 18:40:00] - Interop MCP IDE (Windsurf/Cline/Continue) : stdio bridge + shim roots/list + configs repo - TERMINÉ
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Corriger les échecs de connexion MCP dans **Windsurf** et **Cline** pour :
+- `filesystem-agent`
+- `ripgrep-agent`
+- `shrimp-task-manager`
+
+**Cause racine** : Le **MCP Gateway HTTP** de Kimi Proxy ne mappe pas ces serveurs stdio. `get_mcp_server_base_url()` ne connaît que : `context-compression`, `sequential-thinking`, `fast-filesystem`, `json-query` → les autres retournent `unknown_server` (JSON-RPC `-32001`, HTTP 404).
+
+**Correctif appliqué** :
+- Alignement Windsurf/Cline sur Continue.dev : lancement des 3 serveurs en **stdio** via `python3 scripts/mcp_bridge.py <server>`.
+- Stabilisation Shrimp Task Manager : ajout dans `scripts/mcp_bridge.py` d’un **shim** qui intercepte la requête server→client `roots/list` et répond automatiquement avec une racine workspace (`file://...`).
+
+**Configs modifiées (repo)** :
+- `mcp_config.json` (Windsurf) : `filesystem-agent`, `ripgrep-agent`, `shrimp-task-manager` → stdio bridge + env (`MCP_FILESYSTEM_ALLOWED_ROOT`, `MCP_SHRIMP_TASK_MANAGER_COMMAND`, `DATA_DIR=/home/kidpixel/kimi-proxy/shrimp_data`).
+- `cline_mcp_settings.json` (Cline) : bascule `type: "stdio"` pour ces 3 serveurs + conservation du reste en gateway HTTP.
+- `config.yaml` (Continue.dev) : lu uniquement (pas modifié durant cette session).
+
+**Validation** :
+- Curl OK via gateway pour les serveurs HTTP (ex: `sequential-thinking`).
+- Harness Python OK pour `shrimp-task-manager` : `initialize` → `tools/list` → `tools/call` (dont `split_tasks`).
+
+**Points à faire (suite)** :
+- Vérifier/aligner les **configs réellement utilisées** par les IDE (hors repo) : `../.cline/data/settings/cline_mcp_settings.json` et `../.codeium/mcp_config.json`.
+- Exécuter le workflow Shrimp *via l’outil MCP* : `plan_task` → `analyze_task` → `split_tasks`, puis `execute_task` + `verify_task`.
+- Phase 5 : validation structure JSON/YAML + tests manuels dans Windsurf/Cline/Continue.dev + mise à jour documentation (interop + roots/list shim).
+
 ### [2026-02-25 14:25:00] - MCP Bridge stdio (filesystem-agent, ripgrep-agent, shrimp-task-manager) + configs + tests + doc - TERMINÉ
 **Statut** : ✅ COMPLETÉ
 **Description** : Ajout d’un bridge `scripts/mcp_bridge.py` supportant (1) forward HTTP vers le MCP Gateway pour les serveurs MCP HTTP existants et (2) relay stdio pour lancer des serveurs MCP locaux (filesystem-agent, ripgrep-agent, shrimp-task-manager). Filtrage stdout: seul le JSON-RPC (`{\"jsonrpc\":\"2.0\"}`) est forwardé vers stdout; les bannières/logs sont redirigés vers stderr.

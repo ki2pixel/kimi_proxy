@@ -198,14 +198,14 @@ Proxy → Routage HTTP agnostique (aucune connaissance MCP)
 
 ### APIs supprimées
 Les endpoints suivants ont été supprimés du proxy :
-- `/api/memory/task-master/*`
+- `/api/memory/shrimp-task-manager/*`
 - `/api/memory/sequential-thinking/*`
 - `/api/memory/filesystem/*`
 - `/api/memory/json-query/*`
 - `/api/memory/servers/phase4`
 
 ### Configuration migrée
-- ❌ **Avant**: `config.toml` avec sections `[mcp.task_master]`, etc.
+- ❌ **Avant**: `config.toml` avec sections `[mcp.shrimp_task_manager]`, etc.
 - ✅ **Maintenant**: `config.yaml` de Continue.dev
 
 ---

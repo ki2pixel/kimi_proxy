@@ -24,7 +24,7 @@ features/mcp/
 │   ├── __init__.py (797 B) ✅
 │   ├── qdrant.py (11 KB) ✅
 │   ├── compression.py (9.2 KB) ✅
-│   ├── task_master.py (11.9 KB) ✅
+│   ├── shrimp_task_manager.py (11.9 KB) ✅
 │   ├── sequential.py (6.5 KB) ✅
 │   ├── filesystem.py (9.1 KB) ✅
 │   └── json_query.py (8.8 KB) ✅
