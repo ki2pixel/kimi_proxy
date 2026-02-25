@@ -14,6 +14,7 @@ from . import health
 from . import websocket
 from . import models
 from . import memory
+from . import mcp_gateway
 
 __all__ = [
     "sessions",
@@ -28,4 +29,5 @@ __all__ = [
     "websocket",
     "models",
     "memory",
+    "mcp_gateway",
 ]

@@ -1,5 +1,7 @@
 # **Architectural Integration and Transport Troubleshooting of Model Context Protocol Servers in Continue.dev**
 
+**TL;DR**: si tu utilises des serveurs MCP en stdio (filesystem-agent, ripgrep-agent, shrimp-task-manager) et qu’ils écrivent des bannières/logs sur stdout, Continue peut casser le parsing JSON-RPC. Dans ce repo, la solution recommandée est `scripts/mcp_bridge.py` (relay + filtrage stdout). Voir: `docs/troubleshooting/MCP_Bridge_Stdio_Servers.md`.
+
 The Model Context Protocol (MCP) represents a foundational shift in how large language models (LLMs) interact with external data sources and computational tools. As an open standard proposed by Anthropic, MCP provides a universal "USB-C for AI," enabling a standardized interface between AI agents and diverse capabilities such as filesystem access, database querying, and external API orchestration.1 Within the Continue.dev ecosystem, these capabilities are integrated directly into the developer workflow, allowing models to serve as agentic entities capable of autonomous reasoning and tool execution.4 However, the transition from local process-based communication to network-oriented HTTP transports introduces significant complexity, often resulting in connectivity failures such as the "SSE error: Non-200 status code (404)" observed when configuring local servers on specific ports.6
 
 ## **Evolutionary Context of the Model Context Protocol**

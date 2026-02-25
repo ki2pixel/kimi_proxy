@@ -17,6 +17,7 @@ from .routes import (
     models,
     memory,
     cline,
+    mcp_gateway,
 )
 
 # Router principal
@@ -32,6 +33,9 @@ api_router.include_router(mcp.router, prefix="/api", tags=["mcp"])
 api_router.include_router(compression.router, prefix="/api/compress", tags=["compression"])
 api_router.include_router(compaction.router, prefix="/api/compaction", tags=["compaction"])
 api_router.include_router(health.router, prefix="", tags=["health"])
+
+# MCP Gateway (Observation Masking)
+api_router.include_router(mcp_gateway.router, prefix="/api", tags=["mcp-gateway"])
 
 # Cline (Solution 1 - ledger local)
 api_router.include_router(cline.router, prefix="", tags=["cline"])

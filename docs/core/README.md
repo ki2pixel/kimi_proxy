@@ -183,7 +183,7 @@ async def backup_database(source: str, target: str):
 5. Documenter les invariants
 
 ## Métriques Actuelles
-- **Database** : 15 migrations appliquées
+- **Database** : 13 opérations ALTER TABLE appliquées automatiquement au démarrage
 - **Tokens** : Comptage précis 100% (tiktoken)
 - **Models** : 25 structures typées
 - **Performance** : < 10ms pour comptage tokens
@@ -202,5 +202,5 @@ async def backup_database(source: str, target: str):
 - [ ] Export/import données
 
 ---
-*Dernière mise à jour : 2026-02-20*  
+*Dernière mise à jour : 2026-02-24*  
 *Conforme à documentation/SKILL.md - Sections : TL;DR ✔, Problem-First ✔, Comparaison ✔, Trade-offs ✔, Golden Rule ✔*

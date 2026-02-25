@@ -339,39 +339,39 @@ models:
 mcpServers:
   # Context providers Continue (nécessaires)
   - name: filesystem-agent
-    command: python3
-    args: ["/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py", "filesystem-agent"]
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/kidpixel"]
     env:
       PATH: "/usr/bin:/bin:/usr/local/bin"
-      MCP_BRIDGE_PATH_ENV: "/usr/bin:/bin:/usr/local/bin"
-      MCP_FILESYSTEM_ALLOWED_ROOT: "/home/kidpixel"
 
   - name: ripgrep-agent
-    command: python3
-    args: ["/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py", "ripgrep-agent"]
+    command: npx
+    args: ["-y", "mcp-ripgrep"]
     env:
       PATH: "/usr/bin:/bin:/usr/local/bin"
-      MCP_BRIDGE_PATH_ENV: "/usr/bin:/bin:/usr/local/bin"
 
   # MCP Phase 4 - Processus locaux (solution finale)
   - name: shrimp-task-manager
-    command: python3
-    args: ["/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py", "shrimp-task-manager"]
-    env:
-      PATH: "/usr/bin:/bin:/usr/local/bin"
-      MCP_SHRIMP_TASK_MANAGER_COMMAND: "/home/kidpixel/.local/bin/shrimp-task-manager"
+    command: /home/kidpixel/.local/bin/shrimp-task-manager
+    args: [ ]
 
   - name: sequential-thinking
-    command: python3
-    args: [ "/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py", "sequential-thinking" ]
+    command: npx
+    args: ["-y", "mcp-sequentialthinking-tools"]
+    env:
+      MAX_HISTORY_SIZE: "1000"
+      PATH: "/usr/bin:/bin:/usr/local/bin"
 
   - name: fast-filesystem
-    command: python3
-    args: [ "/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py", "fast-filesystem" ]
+    command: npx
+    args: ["-y", "fast-filesystem-mcp"]
+    env:
+      CREATE_BACKUP_FILES: "false"
+      PATH: "/usr/bin:/bin:/usr/local/bin"
 
   - name: json-query
-    command: python3
-    args: [ "/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py", "json-query" ]
+    command: node
+    args: [ "/home/kidpixel/kimi-proxy/mcp/json-query-mcp-main/dist/index.js" ]
 
   # Services externes Continue (nécessaires)
   - name: render-signal-mcp
@@ -404,3 +404,9 @@ mcpServers:
     env:
       DATABASE_URI: "postgresql://postgres.tpjbanbcvfwyhoqsuyxf:%40vH2f85CAXjm96tz@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require"
     connectionTimeout: 60000
+
+  - name: switchbot-postgres
+    command: uvx
+    args: [ "--python", "3.12", "postgres-mcp", "--access-mode=unrestricted" ]
+    env:
+      DATABASE_URI: "postgresql://postgres.tpjbanbcvfwyhoqsuyxf:%40vH2f85CAXjm96tz@aws-1-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require"

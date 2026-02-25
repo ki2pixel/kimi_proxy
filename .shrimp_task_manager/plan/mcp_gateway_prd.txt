@@ -1,0 +1,82 @@
+# PRD — MCP Gateway (Observation Masking) pour Kimi Proxy
+
+## Objectif
+Implémenter un "MCP Gateway" intégré à Kimi Proxy agissant comme méta-serveur MCP : il reçoit des requêtes JSON-RPC provenant de l'IDE (Cline/Continue), les forwarde vers un serveur MCP local ciblé, puis **intercepte et masque/tronque** les observations (tool responses) trop volumineuses afin d'éviter la saturation de la fenêtre de contexte et la consommation excessive de tokens.
+
+## Problème
+Certains outils MCP (ex: fast-filesystem) peuvent retourner des observations très volumineuses (fichiers 10k+ lignes). Ces retours saturent le contexte LLM et augmentent fortement le coût token.
+
+## Solution
+1. Kimi Proxy expose une route HTTP "Gateway".
+2. La route accepte une payload JSON-RPC 2.0 (dict JSON).
+3. Kimi Proxy forwarde via HTTP POST la requête brute au serveur MCP local (par server_name).
+4. Kimi Proxy reçoit la réponse JSON-RPC 2.0.
+5. Kimi Proxy applique **Observation Masking** sur le champ `result` (et/ou `error.data` si pertinent) :
+   - Si une string dépasse `max_chars` (ex: 4000), elle est tronquée en `head_chars` + marqueur + `tail_chars`.
+   - Le marqueur doit être explicite, stable, et indiquer taille originale + tailles head/tail.
+   - La troncature doit être récursive pour les structures JSON : dict/list/str.
+   - Le masking ne doit pas casser le schéma JSON-RPC (conserver `jsonrpc`, `id`, `result`/`error`).
+6. Retourner au client IDE la réponse JSON-RPC modifiée.
+
+## Contraintes Techniques
+- Respect strict architecture 5 couches:
+  API (FastAPI) ← Services ← Features ← Proxy ← Core
+- I/O HTTP uniquement via `httpx.AsyncClient`.
+- Typage strict (pas de `Any`).
+- Erreurs gérées proprement :
+  - Si serveur MCP indisponible/timeout -> réponse JSON-RPC `error` (code dédié) + message clair.
+  - Si réponse non-JSON ou invalide -> error JSON-RPC.
+- Ne pas casser l'existant : le nouveau code est additif.
+- Performance : masking doit être O(n) sur taille JSON, éviter copies inutiles massives.
+
+## Interfaces / Composants à créer
+
+### Features
+- `MCPGatewayService`
+  - `apply_observation_masking(payload: object) -> object` (masking récursif)
+  - `handle_rpc(server_name: str, request_json: object) -> object`
+
+### Proxy
+- Client forwarding JSON-RPC vers serveurs MCP locaux
+  - mapping `server_name -> base_url` (ports)
+  - méthode async `forward_jsonrpc(server_name: str, request_json: object) -> object`
+
+### API
+- Route: `POST /api/mcp-gateway/{server_name}/rpc`
+  - corps: JSON dict (JSON-RPC 2.0)
+  - réponse: JSON dict (JSON-RPC 2.0 masked)
+
+## Mapping Serveurs (initial)
+Doit être centralisé et facilement extensible.
+Exemples (à confirmer avec la conf existante):
+- fast-filesystem: http://127.0.0.1:8004
+- json-query: http://127.0.0.1:8005
+- sequential-thinking: http://127.0.0.1:8006
+- shrimp-task-manager: http://127.0.0.1:8007
+
+## Observation Masking — Spécification
+- Paramètres par défaut:
+  - `max_chars = 4000`
+  - `head_chars = 2000`
+  - `tail_chars = 2000`
+- Marqueur format:
+  `\n... [KIMI_PROXY_OBSERVATION_MASKED original_chars={orig} head={head} tail={tail}] ...\n`
+- Cas gérés:
+  - string très longue
+  - list/dict profond
+  - bytes/base64 en string (traité comme string)
+
+## Tests Unitaires
+- Test `apply_observation_masking`:
+  - input: string 10000 chars
+  - output: longueur <= max_chars + overhead marqueur
+  - head et tail présents
+  - marqueur présent
+- Test sur structure JSON (dict contenant list + nested dict)
+- Test erreurs forwarding (mock httpx Timeout/ConnectError) => retour JSON-RPC error
+
+## Critères d'acceptation
+- La route gateway est accessible et renvoie une réponse JSON-RPC valide.
+- Observation masking fonctionne et n'altère pas le JSON-RPC.
+- En cas d'erreur réseau, une error JSON-RPC est renvoyée (pas d'exception non gérée).
+- Tests unitaires passent.

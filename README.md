@@ -88,6 +88,24 @@ Quand vous dépassez 85% du contexte, un bouton apparaît. Mais ce n'est pas tou
 ### Phase 4 : Nouveaux Serveurs MCP - L'écosystème étendu
 Quatre serveurs MCP supplémentaires pour étendre les capacités du proxy :
 
+#### Accès fichiers : racine autorisée `MCP_ALLOWED_ROOT`
+
+Quand tu utilises **Fast Filesystem MCP** et **JSON Query MCP**, ils doivent pouvoir lire/écrire des fichiers dans tes workspaces. Par défaut, ces serveurs acceptent maintenant **tous les chemins sous** :
+
+```text
+/home/kidpixel/
+```
+
+Tu peux changer cette racine via la variable d’environnement `MCP_ALLOWED_ROOT` (fallback compat: `WORKSPACE_PATH`).
+
+La validation est volontairement stricte : le serveur résout le chemin demandé (`Path.resolve`) puis vérifie qu’il reste dans la racine autorisée (`relative_to`). Résultat : pas de `..` utilisable, et pas de symlink qui “s’échappe” vers `/etc`.
+
+### ❌ Exemple refusé (hors racine)
+`/etc/passwd`
+
+### ✅ Exemple autorisé (dans la racine)
+`/home/kidpixel/workflow_mediapipe/...`
+
 **Shrimp Task Manager MCP** (14 outils) : Gestion de tâches complète avec priorisation, dépendances et analyse de complexité. Intègre `get_tasks`, `parse_prd`, `expand_task`, `analyze_project_complexity` et plus.
 
 **Sequential Thinking MCP** (1 outil) : Raisonnement séquentiel structuré pour résoudre des problèmes complexes étape par étape, avec support de branches et révisions.
@@ -95,6 +113,78 @@ Quatre serveurs MCP supplémentaires pour étendre les capacités du proxy :
 **Fast Filesystem MCP** (25 outils) : Opérations fichiers haute performance - lecture, écriture, recherche de code, édition block-safe, compression, synchronisation de répertoires.
 
 **JSON Query MCP** (3 outils) : Requêtes JSON avancées avec JSONPath, recherche de clés et valeurs dans de gros fichiers JSON.
+
+### Phase 5 : MCP Gateway : appeler les serveurs MCP locaux via HTTP
+
+**TL;DR** : `POST /api/mcp-gateway/{server_name}/rpc` forwarde une requête JSON-RPC 2.0 vers le serveur MCP local correspondant; la réponse est renvoyée telle quelle, avec un **Observation Masking** automatique pour éviter les retours gigantesques.
+
+Tu as des serveurs MCP qui tournent en local, mais tu n’as pas envie que chaque client (UI, scripts, intégrations) doive connaître leurs ports, leur base URL, ou gérer les timeouts proprement.
+
+Le MCP Gateway est ce point d’entrée unique.
+
+### ✅ Ce que ça fait
+
+- Reçoit une requête JSON-RPC 2.0 brute.
+- Forwarde en HTTP vers `{base_url}/rpc`.
+- Renvoie la réponse JSON-RPC (champ `result` ou `error`) en conservant `id`.
+- Applique un masking sur les strings trop longues dans `result` ou `error.data`.
+
+### ❌ Ce que ça ne fait pas
+
+- Aucun mécanisme d’auth; c’est prévu pour un usage local.
+- Pas de découverte dynamique de serveurs; le mapping `server_name → base_url` est volontairement statique (audit facile).
+
+### Serveurs supportés (`server_name`)
+
+Le mapping est défini côté proxy :
+
+| server_name | base_url |
+| --- | --- |
+| `context-compression` | `http://127.0.0.1:8001` |
+| `sequential-thinking` | `http://127.0.0.1:8003` |
+| `fast-filesystem` | `http://127.0.0.1:8004` |
+| `json-query` | `http://127.0.0.1:8005` |
+
+### Exemple : lister les outils d’un serveur MCP
+
+```bash
+curl -sS \
+  -X POST http://localhost:8000/api/mcp-gateway/fast-filesystem/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+### Observation Masking (anti log-bomb)
+
+Quand une string dépasse 4000 caractères, elle est tronquée :
+
+```text
+<2000 chars>
+... [KIMI_PROXY_OBSERVATION_MASKED original_chars=12345 head=2000 tail=2000] ...
+<2000 chars>
+```
+
+### Erreurs (HTTP + JSON-RPC)
+
+Le gateway renvoie un status HTTP utile, mais aussi une erreur JSON-RPC standardisée :
+
+| Cas | HTTP | JSON-RPC `error.code` |
+| --- | --- | --- |
+| Serveur inconnu | 404 | `-32001` |
+| Timeout / connect error | 502 | `-32002` |
+| Réponse upstream non JSON | 502 | `-32003` |
+| Erreur interne | 502 | `-32603` |
+
+### Trade-offs
+
+| Choix | Avantage | Inconvénient |
+| --- | --- | --- |
+| Mapping statique des serveurs | Simple à auditer; pas de magie | Ajouter un serveur demande un changement code |
+| Masking automatique | UI et logs restent lisibles | Tu perds le détail complet dans la réponse |
+
+### Golden Rule
+
+Le gateway doit rester un “pont” : **payload JSON-RPC brut in, payload JSON-RPC brut out**; seule exception, le masking des observations trop volumineuses.
 
 ## Le Dashboard en temps réel
 
@@ -305,8 +395,8 @@ rm sessions.db && ./bin/kimi-proxy start
 ## Métriques Projet
 
 ### Architecture 5 Couches
-- **61 fichiers Python** dans l'architecture complète
-- **7410 lignes de code** Python (core + features + services + api)
+- **63 fichiers Python** dans l'architecture complète
+- **7534 lignes de code** Python (core + features + services + api)
 - **47 répertoires** structurés par responsabilité
 - **124 fichiers projet** totaux (documentation + configuration + scripts)
 
@@ -318,7 +408,7 @@ rm sessions.db && ./bin/kimi-proxy start
 ### Frontend Dashboard
 - **17 modules ES6** dans `static/js/modules/`
 - **703 fonctions/classes** JavaScript identifiées
-- **685 éléments HTML** avec IDs/classes structurés
+- **651 éléments HTML** avec IDs/classes structurés
 - **0 vulnérabilités XSS** (sécurité DOM appliquée)
 
 ### Base de Données

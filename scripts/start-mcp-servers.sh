@@ -190,7 +190,8 @@ start_servers() {
         log_info "Lancement du serveur de fast filesystem sur le port $FAST_FILESYSTEM_PORT..."
         
         # Démarrer en arrière-plan avec nohup
-        WORKSPACE_PATH="$(pwd)" nohup python3 /tmp/mcp_fast_filesystem_server.py > /tmp/mcp_fast_filesystem.log 2>&1 &
+        # Autorise tous les chemins sous /home/kidpixel par défaut (configurable)
+        MCP_ALLOWED_ROOT="/home/kidpixel" nohup python3 /tmp/mcp_fast_filesystem_server.py > /tmp/mcp_fast_filesystem.log 2>&1 &
         FAST_FILESYSTEM_PID=$!
         
         # Attendre que le serveur démarre
@@ -223,7 +224,8 @@ start_servers() {
         log_info "Lancement du serveur de json query sur le port $JSON_QUERY_PORT..."
         
         # Démarrer en arrière-plan avec nohup
-        WORKSPACE_PATH="$(pwd)" nohup python3 /tmp/mcp_json_query_server.py > /tmp/mcp_json_query.log 2>&1 &
+        # Autorise tous les chemins sous /home/kidpixel par défaut (configurable)
+        MCP_ALLOWED_ROOT="/home/kidpixel" nohup python3 /tmp/mcp_json_query_server.py > /tmp/mcp_json_query.log 2>&1 &
         JSON_QUERY_PID=$!
         
         # Attendre que le serveur démarre
@@ -296,6 +298,9 @@ PORT = 8001
 # Configuration workspace (reçu depuis l'environnement)
 WORKSPACE_PATH = os.getenv("WORKSPACE_PATH", "/home/kidpixel/kimi-proxy")
 
+# MCP minimal handshake support
+DEFAULT_MCP_PROTOCOL_VERSION = "2025-11-25"
+
 class CompressionHandler(BaseHTTPRequestHandler):
     """Handler pour les requêtes JSON-RPC 2.0"""
     
@@ -348,22 +353,141 @@ class CompressionHandler(BaseHTTPRequestHandler):
             req_id = request.get("id")
             
             # Router vers la méthode appropriée
+            if method == "initialize":
+                protocol_version = DEFAULT_MCP_PROTOCOL_VERSION
+                if isinstance(params, dict) and isinstance(params.get("protocolVersion"), str):
+                    protocol_version = str(params.get("protocolVersion"))
+                self._send_json_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "protocolVersion": protocol_version,
+                            "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
+                            "serverInfo": {"name": "context-compression-mcp", "version": "1.0.0"},
+                        },
+                        "id": req_id,
+                    }
+                )
+                return
+
+            if method == "notifications/initialized":
+                # Notification sans id côté JSON-RPC standard, mais on répond quand même
+                # pour rester compatible avec le gateway HTTP qui attend du JSON.
+                self._send_json_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req_id})
+                return
+
+            if method == "tools/list":
+                self._send_json_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "tools": [
+                                {
+                                    "name": "compress",
+                                    "description": "Compresse du contenu (zlib ou context_aware)",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "content": {"type": "string"},
+                                            "algorithm": {"type": "string"},
+                                            "target_ratio": {"type": "number"},
+                                        },
+                                        "required": ["content"],
+                                    },
+                                },
+                                {
+                                    "name": "decompress",
+                                    "description": "Décompresse du contenu",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "compressed": {"type": "string"},
+                                            "algorithm": {"type": "string"},
+                                        },
+                                        "required": ["compressed"],
+                                    },
+                                },
+                            ]
+                        },
+                        "id": req_id,
+                    }
+                )
+                return
+
+            if method == "tools/call":
+                tool_name = None
+                tool_args = {}
+                if isinstance(params, dict):
+                    tool_name = params.get("name")
+                    tool_args = params.get("arguments", {}) if isinstance(params.get("arguments"), dict) else {}
+
+                if tool_name == "compress":
+                    tool_result = self._handle_compress(tool_args)
+                elif tool_name == "decompress":
+                    tool_result = self._handle_decompress(tool_args)
+                else:
+                    self._send_json_response(
+                        {
+                            "jsonrpc": "2.0",
+                            "error": {"code": -32602, "message": f"Outil inconnu: {tool_name}"},
+                            "id": req_id,
+                        }
+                    )
+                    return
+
+                self._send_json_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "result": {"content": [{"type": "text", "text": json.dumps(tool_result, ensure_ascii=False)}]},
+                        "id": req_id,
+                    }
+                )
+                return
+
+            # -----------------------------------------------------------------
+            # MCP optional discovery APIs (Continue.dev compatibility)
+            # -----------------------------------------------------------------
+            if method == "resources/list":
+                self._send_json_response(
+                    {"jsonrpc": "2.0", "result": {"resources": []}, "id": req_id}
+                )
+                return
+
+            if method == "resources/templates/list":
+                self._send_json_response(
+                    {"jsonrpc": "2.0", "result": {"resourceTemplates": []}, "id": req_id}
+                )
+                return
+
+            if method == "prompts/list":
+                self._send_json_response(
+                    {"jsonrpc": "2.0", "result": {"prompts": []}, "id": req_id}
+                )
+                return
+
             if method == "health":
                 result = self._handle_health()
-            elif method == "compress":
-                result = self._handle_compress(params)
-            elif method == "decompress":
-                result = self._handle_decompress(params)
-            else:
-                result = {"error": f"Méthode inconnue: {method}"}
-            
-            # Réponse JSON-RPC 2.0
-            response = {
-                "jsonrpc": "2.0",
-                "result": result,
-                "id": req_id
-            }
-            self._send_json_response(response)
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+
+            if method == "compress":
+                result = self._handle_compress(params if isinstance(params, dict) else {})
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+
+            if method == "decompress":
+                result = self._handle_decompress(params if isinstance(params, dict) else {})
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+
+            self._send_json_response(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32601, "message": f"Method not found: {method}"},
+                    "id": req_id,
+                }
+            )
+            return
             
         except Exception as e:
             self._send_json_response({
@@ -469,6 +593,9 @@ import threading
 HOST = "0.0.0.0"
 PORT = 8003
 
+# MCP minimal handshake support
+DEFAULT_MCP_PROTOCOL_VERSION = "2025-11-25"
+
 class SequentialThinkingHandler(BaseHTTPRequestHandler):
     """Handler pour les requêtes JSON-RPC 2.0"""
     
@@ -519,20 +646,124 @@ class SequentialThinkingHandler(BaseHTTPRequestHandler):
             method = request.get("method")
             params = request.get("params", {})
             req_id = request.get("id")
-            
+
+            # MCP handshake + tools
+            if method == "initialize":
+                protocol_version = DEFAULT_MCP_PROTOCOL_VERSION
+                if isinstance(params, dict) and isinstance(params.get("protocolVersion"), str):
+                    protocol_version = str(params.get("protocolVersion"))
+                self._send_json_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "protocolVersion": protocol_version,
+                            "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
+                            "serverInfo": {"name": "sequential-thinking-mcp", "version": "1.0.0"},
+                        },
+                        "id": req_id,
+                    }
+                )
+                return
+
+            if method == "notifications/initialized":
+                # Voir commentaire dans compression: on répond pour rester compatible gateway.
+                self._send_json_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req_id})
+                return
+
+            if method == "tools/list":
+                self._send_json_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "tools": [
+                                {
+                                    "name": "sequentialthinking_tools",
+                                    "description": "Raisonnement séquentiel structuré (compatible Cline)",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "thought": {"type": "string"},
+                                            "problem": {"type": "string"},
+                                            "next_thought_needed": {"type": "boolean"},
+                                            "thought_number": {"type": "integer"},
+                                            "total_thoughts": {"type": "integer"},
+                                        },
+                                    },
+                                }
+                            ]
+                        },
+                        "id": req_id,
+                    }
+                )
+                return
+
+            if method == "tools/call":
+                tool_name = None
+                tool_args = {}
+                if isinstance(params, dict):
+                    tool_name = params.get("name")
+                    tool_args = params.get("arguments", {}) if isinstance(params.get("arguments"), dict) else {}
+
+                if tool_name != "sequentialthinking_tools":
+                    self._send_json_response(
+                        {
+                            "jsonrpc": "2.0",
+                            "error": {"code": -32602, "message": f"Outil inconnu: {tool_name}"},
+                            "id": req_id,
+                        }
+                    )
+                    return
+
+                tool_result = self._handle_sequential_thinking(tool_args)
+                self._send_json_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "result": {"content": [{"type": "text", "text": json.dumps(tool_result, ensure_ascii=False)}]},
+                        "id": req_id,
+                    }
+                )
+                return
+
+            # -----------------------------------------------------------------
+            # MCP optional discovery APIs (Continue.dev compatibility)
+            # -----------------------------------------------------------------
+            if method == "resources/list":
+                self._send_json_response(
+                    {"jsonrpc": "2.0", "result": {"resources": []}, "id": req_id}
+                )
+                return
+
+            if method == "resources/templates/list":
+                self._send_json_response(
+                    {"jsonrpc": "2.0", "result": {"resourceTemplates": []}, "id": req_id}
+                )
+                return
+
+            if method == "prompts/list":
+                self._send_json_response(
+                    {"jsonrpc": "2.0", "result": {"prompts": []}, "id": req_id}
+                )
+                return
+
+            # Legacy routes (compat)
             if method == "health":
                 result = self._handle_health()
-            elif method == "sequential_thinking":
-                result = self._handle_sequential_thinking(params)
-            else:
-                result = {"error": f"Méthode inconnue: {method}"}
-            
-            response = {
-                "jsonrpc": "2.0",
-                "result": result,
-                "id": req_id
-            }
-            self._send_json_response(response)
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+
+            if method == "sequential_thinking":
+                result = self._handle_sequential_thinking(params if isinstance(params, dict) else {})
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+
+            self._send_json_response(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32601, "message": f"Method not found: {method}"},
+                    "id": req_id,
+                }
+            )
+            return
             
         except Exception as e:
             self._send_json_response({
@@ -551,6 +782,8 @@ class SequentialThinkingHandler(BaseHTTPRequestHandler):
     
     def _handle_sequential_thinking(self, params: Dict[str, Any]) -> Dict[str, Any]:
         problem = params.get("problem", "")
+        if not problem and isinstance(params.get("thought"), str):
+            problem = str(params.get("thought"))
         # Simulation de raisonnement séquentiel
         return {
             "steps": [
@@ -590,6 +823,7 @@ Gère les opérations fichiers haute performance
 import json
 import os
 import shutil
+from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -599,8 +833,13 @@ import threading
 HOST = "0.0.0.0"
 PORT = 8004
 
-# Configuration workspace (reçu depuis l'environnement)
-WORKSPACE_PATH = os.getenv("WORKSPACE_PATH", "/home/kidpixel/kimi-proxy")
+# MCP minimal handshake support
+DEFAULT_MCP_PROTOCOL_VERSION = "2025-11-25"
+
+# Configuration racine autorisée (reçu depuis l'environnement)
+# - MCP_ALLOWED_ROOT est la nouvelle variable recommandée (root global)
+# - WORKSPACE_PATH est conservée en fallback pour compatibilité
+ALLOWED_ROOT = os.getenv("MCP_ALLOWED_ROOT") or os.getenv("WORKSPACE_PATH") or "/home/kidpixel"
 
 class FastFilesystemHandler(BaseHTTPRequestHandler):
     """Handler pour les requêtes JSON-RPC 2.0"""
@@ -618,28 +857,47 @@ class FastFilesystemHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode())
     
     def _is_path_allowed(self, path: str) -> bool:
-        """Vérifie si le chemin est dans le workspace autorisé"""
-        if not path:
+        """Vérifie si le chemin est sous la racine autorisée.
+
+        Sécurité:
+        - normalisation via Path.resolve(strict=False)
+        - appartenance via relative_to() (anti path traversal + symlinks)
+        """
+        if not path or not isinstance(path, str):
             return False
-        
-        # Résoudre le chemin absolu
-        abs_path = os.path.abspath(path)
-        workspace_abs = os.path.abspath(WORKSPACE_PATH)
-        
-        # Vérifier que le chemin commence par le workspace
-        return abs_path.startswith(workspace_abs)
+
+        try:
+            allowed_root = Path(ALLOWED_ROOT).expanduser().resolve(strict=False)
+            requested = Path(path).expanduser()
+            if not requested.is_absolute():
+                requested = Path.cwd() / requested
+            requested_resolved = requested.resolve(strict=False)
+
+            requested_resolved.relative_to(allowed_root)
+            return True
+        except (OSError, RuntimeError, ValueError):
+            return False
     
     def _restrict_to_workspace(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Restreint les paramètres aux chemins workspace autorisés"""
+        """Restreint les paramètres aux chemins autorisés."""
         # Pour les paramètres de fichier, vérifier les permissions
         file_params = ["path", "file_path", "directory", "source", "destination"]
         for param in file_params:
             if param in params:
                 path = params[param]
                 if not self._is_path_allowed(path):
-                    raise PermissionError(f"Accès refusé: chemin '{path}' hors du workspace autorisé '{WORKSPACE_PATH}'")
+                    raise PermissionError(
+                        f"Accès refusé: chemin '{path}' hors de la racine autorisée '{ALLOWED_ROOT}'"
+                    )
         
         return params
+
+    def _restrict_paths_list(self, paths: List[Any]) -> None:
+        for p in paths:
+            if not isinstance(p, str) or not self._is_path_allowed(p):
+                raise PermissionError(
+                    f"Accès refusé: chemin '{p}' hors de la racine autorisée '{ALLOWED_ROOT}'"
+                )
     
     def do_OPTIONS(self):
         """Gère les requêtes CORS preflight"""
@@ -676,29 +934,221 @@ class FastFilesystemHandler(BaseHTTPRequestHandler):
             method = request.get("method")
             params = request.get("params", {})
             req_id = request.get("id")
-            
-            # Vérifier les permissions pour toutes les méthodes filesystem
-            params = self._restrict_to_workspace(params)
-            
+
+            # MCP handshake + tools
+            if method == "initialize":
+                protocol_version = DEFAULT_MCP_PROTOCOL_VERSION
+                if isinstance(params, dict) and isinstance(params.get("protocolVersion"), str):
+                    protocol_version = str(params.get("protocolVersion"))
+                self._send_json_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "protocolVersion": protocol_version,
+                            "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
+                            "serverInfo": {"name": "fast-filesystem-mcp", "version": "1.0.0"},
+                        },
+                        "id": req_id,
+                    }
+                )
+                return
+
+            if method == "notifications/initialized":
+                self._send_json_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req_id})
+                return
+
+            if method == "tools/list":
+                self._send_json_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "tools": [
+                                {
+                                    "name": "fast_list_directory",
+                                    "description": "Lister un répertoire (workspace-only)",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {"path": {"type": "string"}},
+                                        "required": ["path"],
+                                    },
+                                },
+                                {
+                                    "name": "fast_read_file",
+                                    "description": "Lire un fichier texte (workspace-only)",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {"path": {"type": "string"}},
+                                        "required": ["path"],
+                                    },
+                                },
+                                {
+                                    "name": "fast_write_file",
+                                    "description": "Écrire un fichier texte (workspace-only)",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "path": {"type": "string"},
+                                            "content": {"type": "string"},
+                                        },
+                                        "required": ["path", "content"],
+                                    },
+                                },
+                                {
+                                    "name": "fast_search_files",
+                                    "description": "Recherche simple de fichiers (substring match)",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "directory": {"type": "string"},
+                                            "pattern": {"type": "string"},
+                                        },
+                                        "required": ["directory", "pattern"],
+                                    },
+                                },
+                                {
+                                    "name": "fast_read_multiple_files",
+                                    "description": "Lire plusieurs fichiers texte (workspace-only)",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {"paths": {"type": "array", "items": {"type": "string"}}},
+                                        "required": ["paths"],
+                                    },
+                                },
+                                {
+                                    "name": "fast_get_directory_tree",
+                                    "description": "Tree simple (max_depth) (workspace-only)",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "path": {"type": "string"},
+                                            "max_depth": {"type": "integer"},
+                                            "include_files": {"type": "boolean"},
+                                        },
+                                        "required": ["path"],
+                                    },
+                                },
+                            ]
+                        },
+                        "id": req_id,
+                    }
+                )
+                return
+
+            if method == "tools/call":
+                tool_name = None
+                tool_args: Dict[str, Any] = {}
+                if isinstance(params, dict):
+                    tool_name = params.get("name")
+                    if isinstance(params.get("arguments"), dict):
+                        tool_args = params.get("arguments")
+
+                try:
+                    if tool_name == "fast_list_directory":
+                        tool_args = self._restrict_to_workspace(tool_args)
+                        tool_result = self._handle_list_directory(tool_args)
+                    elif tool_name == "fast_read_file":
+                        tool_args = self._restrict_to_workspace(tool_args)
+                        tool_result = self._handle_read_file(tool_args)
+                    elif tool_name == "fast_write_file":
+                        tool_args = self._restrict_to_workspace(tool_args)
+                        tool_result = self._handle_write_file(tool_args)
+                    elif tool_name == "fast_search_files":
+                        tool_args = self._restrict_to_workspace(tool_args)
+                        tool_result = self._handle_search_files(tool_args)
+                    elif tool_name == "fast_read_multiple_files":
+                        paths = tool_args.get("paths", []) if isinstance(tool_args, dict) else []
+                        if not isinstance(paths, list):
+                            raise ValueError("Paramètre 'paths' invalide")
+                        self._restrict_paths_list(paths)
+                        tool_result = self._handle_read_multiple_files(paths)
+                    elif tool_name == "fast_get_directory_tree":
+                        tool_args = self._restrict_to_workspace(tool_args)
+                        tool_result = self._handle_get_directory_tree(tool_args)
+                    else:
+                        self._send_json_response(
+                            {
+                                "jsonrpc": "2.0",
+                                "error": {"code": -32602, "message": f"Outil inconnu: {tool_name}"},
+                                "id": req_id,
+                            }
+                        )
+                        return
+                except PermissionError as e:
+                    self._send_json_response(
+                        {"jsonrpc": "2.0", "error": {"code": -32000, "message": str(e)}, "id": req_id},
+                        403,
+                    )
+                    return
+                except Exception as e:
+                    self._send_json_response(
+                        {"jsonrpc": "2.0", "error": {"code": -32602, "message": str(e)}, "id": req_id},
+                        200,
+                    )
+                    return
+
+                self._send_json_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "result": {"content": [{"type": "text", "text": json.dumps(tool_result, ensure_ascii=False)}]},
+                        "id": req_id,
+                    }
+                )
+                return
+
+            # -----------------------------------------------------------------
+            # MCP optional discovery APIs (Continue.dev compatibility)
+            # -----------------------------------------------------------------
+            if method == "resources/list":
+                self._send_json_response(
+                    {"jsonrpc": "2.0", "result": {"resources": []}, "id": req_id}
+                )
+                return
+
+            if method == "resources/templates/list":
+                self._send_json_response(
+                    {"jsonrpc": "2.0", "result": {"resourceTemplates": []}, "id": req_id}
+                )
+                return
+
+            if method == "prompts/list":
+                self._send_json_response(
+                    {"jsonrpc": "2.0", "result": {"prompts": []}, "id": req_id}
+                )
+                return
+
+            # Legacy routes (compat)
+            # Vérifier les permissions pour toutes les méthodes filesystem legacy
+            params = self._restrict_to_workspace(params if isinstance(params, dict) else {})
+
             if method == "health":
                 result = self._handle_health()
-            elif method == "list_directory":
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+            if method == "list_directory":
                 result = self._handle_list_directory(params)
-            elif method == "read_file":
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+            if method == "read_file":
                 result = self._handle_read_file(params)
-            elif method == "write_file":
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+            if method == "write_file":
                 result = self._handle_write_file(params)
-            elif method == "search_files":
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+            if method == "search_files":
                 result = self._handle_search_files(params)
-            else:
-                result = {"error": f"Méthode inconnue: {method}"}
-            
-            response = {
-                "jsonrpc": "2.0",
-                "result": result,
-                "id": req_id
-            }
-            self._send_json_response(response)
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+
+            self._send_json_response(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32601, "message": f"Method not found: {method}"},
+                    "id": req_id,
+                }
+            )
+            return
             
         except PermissionError as e:
             self._send_json_response({
@@ -768,6 +1218,60 @@ class FastFilesystemHandler(BaseHTTPRequestHandler):
         except Exception as e:
             return {"error": str(e)}
 
+    def _handle_read_multiple_files(self, paths: List[str]) -> Dict[str, Any]:
+        results = []
+        for p in paths:
+            try:
+                with open(p, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                results.append({"path": p, "content": content, "size": len(content)})
+            except Exception as e:
+                results.append({"path": p, "error": str(e)})
+        return {"files": results, "count": len(results)}
+
+    def _handle_get_directory_tree(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        path = params.get("path", ".")
+        max_depth = params.get("max_depth", 3)
+        include_files = params.get("include_files", True)
+
+        if not isinstance(max_depth, int) or max_depth < 0:
+            max_depth = 3
+
+        def _build_tree(current_path: str, depth: int) -> Dict[str, Any]:
+            node: Dict[str, Any] = {
+                "name": os.path.basename(current_path) or current_path,
+                "path": current_path,
+                "type": "directory" if os.path.isdir(current_path) else "file",
+            }
+
+            if not os.path.isdir(current_path) or depth >= max_depth:
+                if os.path.isfile(current_path):
+                    try:
+                        node["size"] = os.path.getsize(current_path)
+                    except Exception:
+                        node["size"] = 0
+                return node
+
+            children = []
+            try:
+                for entry in os.scandir(current_path):
+                    if entry.is_dir(follow_symlinks=False):
+                        children.append(_build_tree(entry.path, depth + 1))
+                    elif include_files:
+                        try:
+                            size = entry.stat(follow_symlinks=False).st_size
+                        except Exception:
+                            size = 0
+                        children.append({"name": entry.name, "path": entry.path, "type": "file", "size": size})
+            except Exception as e:
+                node["error"] = str(e)
+                return node
+
+            node["children"] = children
+            return node
+
+        return {"tree": _build_tree(path, 0)}
+
 def run_server():
     """Démarre le serveur HTTP"""
     server = HTTPServer((HOST, PORT), FastFilesystemHandler)
@@ -794,6 +1298,7 @@ Gère les requêtes JSON avancées
 
 import json
 import os
+from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -803,8 +1308,13 @@ import threading
 HOST = "0.0.0.0"
 PORT = 8005
 
-# Configuration workspace (reçu depuis l'environnement)
-WORKSPACE_PATH = os.getenv("WORKSPACE_PATH", "/home/kidpixel/kimi-proxy")
+# MCP minimal handshake support
+DEFAULT_MCP_PROTOCOL_VERSION = "2025-11-25"
+
+# Configuration racine autorisée (reçu depuis l'environnement)
+# - MCP_ALLOWED_ROOT est la nouvelle variable recommandée (root global)
+# - WORKSPACE_PATH est conservée en fallback pour compatibilité
+ALLOWED_ROOT = os.getenv("MCP_ALLOWED_ROOT") or os.getenv("WORKSPACE_PATH") or "/home/kidpixel"
 
 class JsonQueryHandler(BaseHTTPRequestHandler):
     """Handler pour les requêtes JSON-RPC 2.0"""
@@ -822,26 +1332,38 @@ class JsonQueryHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode())
     
     def _is_path_allowed(self, path: str) -> bool:
-        """Vérifie si le chemin est dans le workspace autorisé"""
-        if not path:
+        """Vérifie si le chemin est sous la racine autorisée.
+
+        Sécurité:
+        - normalisation via Path.resolve(strict=False)
+        - appartenance via relative_to() (anti path traversal + symlinks)
+        """
+        if not path or not isinstance(path, str):
             return False
-        
-        # Résoudre le chemin absolu
-        abs_path = os.path.abspath(path)
-        workspace_abs = os.path.abspath(WORKSPACE_PATH)
-        
-        # Vérifier que le chemin commence par le workspace
-        return abs_path.startswith(workspace_abs)
+
+        try:
+            allowed_root = Path(ALLOWED_ROOT).expanduser().resolve(strict=False)
+            requested = Path(path).expanduser()
+            if not requested.is_absolute():
+                requested = Path.cwd() / requested
+            requested_resolved = requested.resolve(strict=False)
+
+            requested_resolved.relative_to(allowed_root)
+            return True
+        except (OSError, RuntimeError, ValueError):
+            return False
     
     def _restrict_to_workspace(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Restreint les paramètres aux chemins workspace autorisés"""
+        """Restreint les paramètres aux chemins autorisés."""
         # Pour les paramètres de fichier, vérifier les permissions
         file_params = ["file_path", "path"]
         for param in file_params:
             if param in params:
                 path = params[param]
                 if not self._is_path_allowed(path):
-                    raise PermissionError(f"Accès refusé: chemin '{path}' hors du workspace autorisé '{WORKSPACE_PATH}'")
+                    raise PermissionError(
+                        f"Accès refusé: chemin '{path}' hors de la racine autorisée '{ALLOWED_ROOT}'"
+                    )
         
         return params
     
@@ -880,28 +1402,158 @@ class JsonQueryHandler(BaseHTTPRequestHandler):
             method = request.get("method")
             params = request.get("params", {})
             req_id = request.get("id")
-            
-            # Vérifier les permissions pour les méthodes qui accèdent aux fichiers
+
+            # MCP handshake + tools
+            if method == "initialize":
+                protocol_version = DEFAULT_MCP_PROTOCOL_VERSION
+                if isinstance(params, dict) and isinstance(params.get("protocolVersion"), str):
+                    protocol_version = str(params.get("protocolVersion"))
+                self._send_json_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "protocolVersion": protocol_version,
+                            "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
+                            "serverInfo": {"name": "json-query-mcp", "version": "1.0.0"},
+                        },
+                        "id": req_id,
+                    }
+                )
+                return
+
+            if method == "notifications/initialized":
+                self._send_json_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req_id})
+                return
+
+            if method == "tools/list":
+                self._send_json_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "tools": [
+                                {
+                                    "name": "json_query_search_values",
+                                    "description": "Trouver toutes les valeurs d'une clé dans un JSON",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "json_data": {},
+                                            "key": {"type": "string"},
+                                        },
+                                        "required": ["json_data", "key"],
+                                    },
+                                },
+                                {
+                                    "name": "json_query_search_keys",
+                                    "description": "Extraire toutes les clés d'un JSON",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {"json_data": {}},
+                                        "required": ["json_data"],
+                                    },
+                                },
+                                {
+                                    "name": "json_query_query_json",
+                                    "description": "Query simple par clé (prototype)",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "json_data": {},
+                                            "query": {"type": "string"},
+                                        },
+                                        "required": ["json_data", "query"],
+                                    },
+                                },
+                            ]
+                        },
+                        "id": req_id,
+                    }
+                )
+                return
+
+            if method == "tools/call":
+                tool_name = None
+                tool_args: Dict[str, Any] = {}
+                if isinstance(params, dict):
+                    tool_name = params.get("name")
+                    if isinstance(params.get("arguments"), dict):
+                        tool_args = params.get("arguments")
+
+                if tool_name == "json_query_search_values":
+                    tool_result = self._handle_find_values({"json_data": tool_args.get("json_data"), "key": tool_args.get("key")})
+                elif tool_name == "json_query_search_keys":
+                    tool_result = self._handle_extract_keys({"json_data": tool_args.get("json_data")})
+                elif tool_name == "json_query_query_json":
+                    tool_result = self._handle_query_json({"json_data": tool_args.get("json_data"), "query": tool_args.get("query")})
+                else:
+                    self._send_json_response(
+                        {
+                            "jsonrpc": "2.0",
+                            "error": {"code": -32602, "message": f"Outil inconnu: {tool_name}"},
+                            "id": req_id,
+                        }
+                    )
+                    return
+
+                self._send_json_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "result": {"content": [{"type": "text", "text": json.dumps(tool_result, ensure_ascii=False)}]},
+                        "id": req_id,
+                    }
+                )
+                return
+
+            # -----------------------------------------------------------------
+            # MCP optional discovery APIs (Continue.dev compatibility)
+            # -----------------------------------------------------------------
+            if method == "resources/list":
+                self._send_json_response(
+                    {"jsonrpc": "2.0", "result": {"resources": []}, "id": req_id}
+                )
+                return
+
+            if method == "resources/templates/list":
+                self._send_json_response(
+                    {"jsonrpc": "2.0", "result": {"resourceTemplates": []}, "id": req_id}
+                )
+                return
+
+            if method == "prompts/list":
+                self._send_json_response(
+                    {"jsonrpc": "2.0", "result": {"prompts": []}, "id": req_id}
+                )
+                return
+
+            # Legacy routes (compat)
             if method in ["query_json", "extract_keys", "find_values"]:
-                params = self._restrict_to_workspace(params)
-            
+                params = self._restrict_to_workspace(params if isinstance(params, dict) else {})
+
             if method == "health":
                 result = self._handle_health()
-            elif method == "query_json":
-                result = self._handle_query_json(params)
-            elif method == "extract_keys":
-                result = self._handle_extract_keys(params)
-            elif method == "find_values":
-                result = self._handle_find_values(params)
-            else:
-                result = {"error": f"Méthode inconnue: {method}"}
-            
-            response = {
-                "jsonrpc": "2.0",
-                "result": result,
-                "id": req_id
-            }
-            self._send_json_response(response)
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+            if method == "query_json":
+                result = self._handle_query_json(params if isinstance(params, dict) else {})
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+            if method == "extract_keys":
+                result = self._handle_extract_keys(params if isinstance(params, dict) else {})
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+            if method == "find_values":
+                result = self._handle_find_values(params if isinstance(params, dict) else {})
+                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                return
+
+            self._send_json_response(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32601, "message": f"Method not found: {method}"},
+                    "id": req_id,
+                }
+            )
+            return
             
         except PermissionError as e:
             self._send_json_response({

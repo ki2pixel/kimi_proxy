@@ -20,6 +20,39 @@ L'application nécessite une interface unifiée pour interagir avec les serveurs
 - **JSON Query MCP**: Requêtes JSON (3 outils)
 - **Emplacement**: Serveurs locaux dans Continue.dev (processus séparés)
 
+#### Bridge stdio (Continue/Cline/Windsurf): éviter la corruption JSON-RPC
+
+Continue/Cline consomment un flux JSON-RPC 2.0 sur stdout. Certains serveurs MCP stdio (notamment `@modelcontextprotocol/server-filesystem` et `mcp-ripgrep`) écrivent une bannière sur stdout au démarrage; cela casse le parsing côté IDE.
+
+Dans ce repo, on utilise `scripts/mcp_bridge.py` comme point d’entrée unique côté IDE:
+
+- il lance le serveur stdio en sous-processus;
+- il relaie stdin/stdout;
+- il filtre stdout et ne forwarde que des objets JSON-RPC (`{"jsonrpc":"2.0"}`), le reste part sur stderr.
+
+Doc dédiée (exemples de config sans secrets): `docs/troubleshooting/MCP_Bridge_Stdio_Servers.md`.
+
+#### Accès fichiers (Fast Filesystem / JSON Query): `MCP_ALLOWED_ROOT`
+
+Ces deux serveurs manipulent des chemins fournis par l’IDE (lecture, écriture, tree, recherche, etc.).
+
+Pour éviter une whitelist par workspace, l’accès est contrôlé par une **racine unique** :
+
+- `MCP_ALLOWED_ROOT` (recommandé)
+- fallback compat: `WORKSPACE_PATH`
+- défaut: `/home/kidpixel`
+
+La validation est faite côté serveur en résolvant le chemin puis en vérifiant qu’il reste sous la racine autorisée (`Path.resolve` + `relative_to`). Cela bloque :
+
+- le path traversal (`..`)
+- les symlinks qui pointent hors racine (symlink escape)
+
+### Phase 5 - MCP Gateway HTTP
+- **Endpoint**: `POST /api/mcp-gateway/{server_name}/rpc`
+- **Fonction**: Forwarding JSON-RPC vers serveurs MCP locaux via HTTP
+- **Observation Masking**: Troncature automatique des réponses volumineuses (>4000 chars)
+- **Serveurs supportés**: context-compression, sequential-thinking, fast-filesystem, json-query
+
 ## Composants Principaux
 
 ### État Global MCP
@@ -185,6 +218,8 @@ const latencyText = server.connected ? `${server.latency_ms.toFixed(0)}ms` : 'N/
 | État centralisé | Cohérence garantie | Complexité synchronisation |
 | **Choix actuel** | **Monitoring complet** | **Overhead réseau modéré** |
 
+
+
 ## Golden Rule
 **Chaque opération MCP doit émettre un événement approprié pour permettre aux modules UI de se mettre à jour automatiquement sans couplage direct.**
 
@@ -195,7 +230,5 @@ const latencyText = server.connected ? `${server.latency_ms.toFixed(0)}ms` : 'N/
 - [ ] Métriques performance par outil
 - [ ] Support serveurs MCP dynamiques
 
----
-*Dernière mise à jour : 2026-02-21*
-*Conforme à documentation/SKILL.md - Sections : TL;DR ✔, Problem-First ✔, Comparaison ✔, Trade-offs ✔, Golden Rule ✔*</content>
-<parameter name="path">/home/kidpixel/kimi-proxy/docs/features/mcp.md
+*Dernière mise à jour : 2026-02-25*
+*Conforme à documentation/SKILL.md : TL;DR ✔, Problem-First ✔, Comparaison ✔, Trade-offs ✔, Golden Rule ✔*

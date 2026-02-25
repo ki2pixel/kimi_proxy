@@ -77,8 +77,8 @@ API Layer (FastAPI) ← Services (WebSocket) ← Features (MCP) ← Proxy (HTTPX
 - `GET /api/cline/usage` - Métriques d'utilisation Cline
 - `POST /api/cline/import` - Import de données Cline existantes
 
-### Proxy Endpoint
-- `POST /chat/completions` - Proxy transparent vers APIs LLM
+### MCP Gateway (Phase 5)
+- `POST /api/mcp-gateway/{server_name}/rpc` - Forwarding JSON-RPC vers serveurs MCP locaux (Observation Masking automatique)
 
 ### Health & Monitoring
 - `GET /health` - Health check avec infos session/log watcher
