@@ -10,7 +10,11 @@
       "env": {
         "PATH": "/usr/bin:/bin:/usr/local/bin",
         "MCP_BRIDGE_PATH_ENV": "/usr/bin:/bin:/usr/local/bin",
-        "MCP_FILESYSTEM_ALLOWED_ROOT": "/home/kidpixel"
+        "MCP_FILESYSTEM_ALLOWED_ROOT": "/home/kidpixel",
+        "MCP_BRIDGE_MONITORING_ENABLED": "1",
+        "MCP_BRIDGE_MONITORING_LOG_PATH": "/tmp/kimi-proxy/mcp-bridge-filesystem.jsonl",
+        "MCP_BRIDGE_MONITORING_QUEUE_MAX": "1000",
+        "MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT": "1"
       }
     },
     "ripgrep-agent": {
@@ -22,7 +26,12 @@
       ],
       "env": {
         "PATH": "/usr/bin:/bin:/usr/local/bin",
-        "MCP_BRIDGE_PATH_ENV": "/usr/bin:/bin:/usr/local/bin"
+        "MCP_BRIDGE_PATH_ENV": "/usr/bin:/bin:/usr/local/bin",
+        "MCP_BRIDGE_MONITORING_ENABLED": "1",
+        "MCP_BRIDGE_STDIO_STREAM_LIMIT": "8388608",
+        "MCP_BRIDGE_MONITORING_LOG_PATH": "/tmp/kimi-proxy/mcp-bridge-ripgrep.jsonl",
+        "MCP_BRIDGE_MONITORING_QUEUE_MAX": "1000",
+        "MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT": "1"
       }
     },
     "shrimp-task-manager": {
@@ -36,7 +45,11 @@
         "PATH": "/usr/bin:/bin:/usr/local/bin",
         "MCP_BRIDGE_PATH_ENV": "/usr/bin:/bin:/usr/local/bin",
         "MCP_SHRIMP_TASK_MANAGER_COMMAND": "/home/kidpixel/.local/bin/shrimp-task-manager",
-        "DATA_DIR": "/home/kidpixel/kimi-proxy/shrimp_data"
+        "DATA_DIR": "/home/kidpixel/kimi-proxy/shrimp_data",
+        "MCP_BRIDGE_MONITORING_ENABLED": "1",
+        "MCP_BRIDGE_MONITORING_LOG_PATH": "/tmp/kimi-proxy/mcp-bridge-shrimp.jsonl",
+        "MCP_BRIDGE_MONITORING_QUEUE_MAX": "1000",
+        "MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT": "1"
       }
     },
     "sequential-thinking": {

@@ -32,6 +32,7 @@ SHRIMP_TASK_MANAGER_PORT=8002
 SEQUENTIAL_THINKING_PORT=8003
 FAST_FILESYSTEM_PORT=8004
 JSON_QUERY_PORT=8005
+PRUNER_PORT=8006
 PID_FILE_MCP=".mcp-servers.pid"
 
 # =============================================================================
@@ -240,6 +241,11 @@ start_servers() {
             exit 1
         fi
     fi
+
+    # -------------------------------------------------------------------------
+    # 6b. Serveur MCP Pruner
+    # -------------------------------------------------------------------------
+    start_pruner_server
     
     # -------------------------------------------------------------------------
     # 7. Vérification des serveurs stdio (via bridge)
@@ -303,6 +309,38 @@ start_servers() {
     echo "  📋 JSON Query: HTTP (port $JSON_QUERY_PORT)"
     echo ""
     log_info "Pour arrêter: ./scripts/start-mcp-servers.sh stop"
+}
+
+# =============================================================================
+# Démarrage du serveur MCP Pruner (Python/FastAPI)
+# =============================================================================
+
+start_pruner_server() {
+    echo ""
+    log_info "Vérification MCP Pruner..."
+
+    if check_port $PRUNER_PORT; then
+        log_success "MCP Pruner déjà en écoute (port $PRUNER_PORT)"
+        return
+    fi
+
+    log_info "Lancement du serveur MCP Pruner sur le port $PRUNER_PORT..."
+
+    MCP_PRUNER_PORT="$PRUNER_PORT" PYTHONPATH="$(pwd)/src:$PYTHONPATH" nohup \
+        python3 -m kimi_proxy.features.mcp_pruner.server \
+        > /tmp/mcp_pruner.log 2>&1 &
+    PRUNER_PID=$!
+
+    sleep 2
+
+    if check_port $PRUNER_PORT; then
+        log_success "MCP Pruner démarré (PID: $PRUNER_PID)"
+        echo $PRUNER_PID > /tmp/mcp_pruner.pid
+    else
+        log_error "Échec du démarrage du serveur MCP Pruner"
+        echo "   Logs: /tmp/mcp_pruner.log"
+        exit 1
+    fi
 }
 
 # =============================================================================
@@ -1718,7 +1756,7 @@ stop_servers() {
         fi
         rm -f /tmp/mcp_compression.pid
     fi
-    
+
     # Arrêter le serveur de sequential thinking
     if [ -f /tmp/mcp_sequential_thinking.pid ]; then
         pid=$(cat /tmp/mcp_sequential_thinking.pid)
@@ -1748,12 +1786,23 @@ stop_servers() {
         fi
         rm -f /tmp/mcp_json_query.pid
     fi
+
+    # Arrêter le serveur MCP Pruner
+    if [ -f /tmp/mcp_pruner.pid ]; then
+        pid=$(cat /tmp/mcp_pruner.pid)
+        if kill -0 $pid 2>/dev/null; then
+            kill -9 $pid 2>/dev/null || true
+            log_success "MCP Pruner arrêté (PID: $pid)"
+        fi
+        rm -f /tmp/mcp_pruner.pid
+    fi
     
     # Tuer par port si nécessaire
     kill_port $COMPRESSION_PORT 2>/dev/null || true
     kill_port $SEQUENTIAL_THINKING_PORT 2>/dev/null || true
     kill_port $FAST_FILESYSTEM_PORT 2>/dev/null || true
     kill_port $JSON_QUERY_PORT 2>/dev/null || true
+    kill_port $PRUNER_PORT 2>/dev/null || true
     
     log_success "Tous les serveurs MCP arrêtés"
 }
@@ -1765,11 +1814,11 @@ stop_servers() {
 status_servers() {
     echo "📊 Statut des serveurs MCP"
     echo ""
-    
+
     # Qdrant
     echo -n "Qdrant MCP: "
     QDRANT_URL=$(grep -A 10 '\[mcp.qdrant\]' config.toml 2>/dev/null | grep '^url' | cut -d'"' -f2)
-    
+
     if [[ "$QDRANT_URL" == *"cloud.qdrant.io"* ]]; then
         # Vérifier la connectivité Cloud
         QDRANT_API_KEY=$(grep -A 15 '\[mcp.qdrant\]' config.toml 2>/dev/null | grep '^api_key' | cut -d'"' -f2)
@@ -1788,7 +1837,7 @@ status_servers() {
     else
         log_warning "❌ Déconnecté (port $QDRANT_PORT non écouté)"
     fi
-    
+
     # Compression
     echo -n "Compression MCP: "
     if check_port $COMPRESSION_PORT; then
@@ -1796,7 +1845,7 @@ status_servers() {
     else
         log_warning "❌ Déconnecté (port $COMPRESSION_PORT non écouté)"
     fi
-    
+
     # Sequential Thinking
     echo -n "Sequential Thinking MCP: "
     if check_port $SEQUENTIAL_THINKING_PORT; then
@@ -1804,7 +1853,7 @@ status_servers() {
     else
         log_warning "❌ Déconnecté (port $SEQUENTIAL_THINKING_PORT non écouté)"
     fi
-    
+
     # Fast Filesystem
     echo -n "Fast Filesystem MCP: "
     if check_port $FAST_FILESYSTEM_PORT; then
@@ -1812,7 +1861,7 @@ status_servers() {
     else
         log_warning "❌ Déconnecté (port $FAST_FILESYSTEM_PORT non écouté)"
     fi
-    
+
     # JSON Query
     echo -n "JSON Query MCP: "
     if check_port $JSON_QUERY_PORT; then
@@ -1820,47 +1869,63 @@ status_servers() {
     else
         log_warning "❌ HTTP Déconnecté (port $JSON_QUERY_PORT)"
     fi
-    
+
+    # MCP Pruner
+    echo -n "MCP Pruner: "
+    if check_port $PRUNER_PORT; then
+        log_success "✅ HTTP Connecté (port $PRUNER_PORT)"
+    else
+        log_warning "❌ HTTP Déconnecté (port $PRUNER_PORT)"
+    fi
+
     echo ""
     echo "Serveurs MCP via Bridge:"
+
     echo -n "  Filesystem Agent: "
     if grep -q "name: filesystem-agent" config.yaml 2>/dev/null; then
         log_success "✅ Stdio configuré (lancé à la demande)"
     else
         log_warning "❌ Non configuré"
     fi
-    
+
     echo -n "  Ripgrep Agent: "
     if grep -q "name: ripgrep-agent" config.yaml 2>/dev/null; then
         log_success "✅ Stdio configuré (lancé à la demande)"
     else
         log_warning "❌ Non configuré"
     fi
-    
+
     echo -n "  Shrimp Task Manager: "
     if grep -q "name: shrimp-task-manager" config.yaml 2>/dev/null; then
         log_success "✅ Stdio configuré (lancé à la demande)"
     else
         log_warning "❌ Non configuré"
     fi
-    
+
     echo -n "  Sequential Thinking: "
     if check_port $SEQUENTIAL_THINKING_PORT; then
         log_success "✅ HTTP configuré (port $SEQUENTIAL_THINKING_PORT)"
     else
         log_warning "❌ HTTP déconnecté"
     fi
-    
+
     echo -n "  Fast Filesystem: "
     if check_port $FAST_FILESYSTEM_PORT; then
         log_success "✅ HTTP configuré (port $FAST_FILESYSTEM_PORT)"
     else
         log_warning "❌ HTTP déconnecté"
     fi
-    
+
     echo -n "  JSON Query: "
     if check_port $JSON_QUERY_PORT; then
         log_success "✅ HTTP configuré (port $JSON_QUERY_PORT)"
+    else
+        log_warning "❌ HTTP déconnecté"
+    fi
+
+    echo -n "  MCP Pruner: "
+    if check_port $PRUNER_PORT; then
+        log_success "✅ HTTP configuré (port $PRUNER_PORT)"
     else
         log_warning "❌ HTTP déconnecté"
     fi

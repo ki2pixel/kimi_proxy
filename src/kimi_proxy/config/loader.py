@@ -1,7 +1,14 @@
-"""
+"""src.kimi_proxy.config.loader
+
 Chargement de la configuration TOML.
+
+Note d'architecture:
+- Le package `config/` est consommé par la couche Features.
+- Il ne doit donc pas dépendre de `features/*` afin d'éviter les imports circulaires
+  et de préserver l'isolation des couches.
 """
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -211,3 +218,162 @@ def get_compression_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "preserve_recent_exchanges": DEFAULT_COMPRESSION_CONFIG["preserve_recent_exchanges"],
         "summary_max_tokens": DEFAULT_COMPRESSION_CONFIG["summary_max_tokens"],
     }
+
+
+@dataclass(frozen=True)
+class ObservationMaskingSchema1Config:
+    """Configuration Schéma 1 (tool results conversationnels)."""
+
+    enabled: bool = False
+    window_turns: int = 8
+    keep_errors: bool = True
+    keep_last_k_per_tool: int | None = None
+    placeholder_template: str = (
+        "[Observation masquée: résultat d’outil ancien (tool_call_id={tool_call_id}, "
+        "outil={tool_name}, chars={original_chars})]"
+    )
+
+
+def get_observation_masking_schema1_config(config: Dict[str, Any]) -> ObservationMaskingSchema1Config:
+    """Charge la configuration Schéma 1 depuis le TOML.
+
+    Propriétés:
+    - Fallback robuste si section absente/incomplète
+    - Validation/clamp des types pour éviter crash runtime
+    - Ne dépend pas de la couche Features
+    """
+
+    defaults = ObservationMaskingSchema1Config()
+    observation_masking_obj = config.get("observation_masking")
+    if not isinstance(observation_masking_obj, dict):
+        return defaults
+
+    schema1_obj = observation_masking_obj.get("schema1")
+    if not isinstance(schema1_obj, dict):
+        return defaults
+
+    enabled_obj = schema1_obj.get("enabled", defaults.enabled)
+    enabled = bool(enabled_obj)
+
+    window_turns_obj = schema1_obj.get("window_turns", defaults.window_turns)
+    if isinstance(window_turns_obj, int) and not isinstance(window_turns_obj, bool):
+        window_turns = max(0, window_turns_obj)
+    else:
+        window_turns = defaults.window_turns
+
+    keep_errors_obj = schema1_obj.get("keep_errors", defaults.keep_errors)
+    keep_errors = bool(keep_errors_obj)
+
+    keep_last_k_obj = schema1_obj.get("keep_last_k_per_tool", defaults.keep_last_k_per_tool)
+    keep_last_k: int | None
+    if isinstance(keep_last_k_obj, int) and not isinstance(keep_last_k_obj, bool):
+        keep_last_k = keep_last_k_obj if keep_last_k_obj > 0 else None
+    else:
+        keep_last_k = defaults.keep_last_k_per_tool
+
+    placeholder_obj = schema1_obj.get("placeholder_template", defaults.placeholder_template)
+    placeholder_template = placeholder_obj if isinstance(placeholder_obj, str) else defaults.placeholder_template
+
+    return ObservationMaskingSchema1Config(
+        enabled=enabled,
+        window_turns=window_turns,
+        keep_errors=keep_errors,
+        keep_last_k_per_tool=keep_last_k,
+        placeholder_template=placeholder_template,
+    )
+
+
+@dataclass(frozen=True)
+class ContextPruningConfig:
+    """Configuration d'élagage de contexte via MCP Pruner (Lot C2).
+
+    Objectif: activer un pruning local-first dans le pipeline `/chat/completions`,
+    avec rollback instantané (feature flag) et fallback no-op.
+
+    Important:
+    - Ce module ne dépend pas de `features/*` (évite imports circulaires).
+    - Les champs sont volontairement simples et sérialisables.
+    """
+
+    enabled: bool = False
+
+    # Seuil pour éviter d'appeler le pruner sur des messages courts
+    min_chars_to_prune: int = 2000
+
+    # Timeout global de l'appel MCP (en ms). En pratique, doit rester court.
+    call_timeout_ms: int = 1500
+
+    # Paramètres `options` envoyés à `tools/call` / `prune_text`
+    max_prune_ratio: float = 0.55
+    min_keep_lines: int = 40
+    timeout_ms: int = 1500
+    annotate_lines: bool = True
+    include_markers: bool = True
+
+
+def get_context_pruning_config(config: Dict[str, Any]) -> ContextPruningConfig:
+    """Charge la configuration `context_pruning` depuis le TOML.
+
+    Propriétés:
+    - Fallback robuste si section absente/incomplète
+    - Validation/clamp des types pour éviter crash runtime
+    """
+
+    defaults = ContextPruningConfig()
+    obj = config.get("context_pruning")
+    if not isinstance(obj, dict):
+        return defaults
+
+    enabled = bool(obj.get("enabled", defaults.enabled))
+
+    min_chars_obj = obj.get("min_chars_to_prune", defaults.min_chars_to_prune)
+    if isinstance(min_chars_obj, int) and not isinstance(min_chars_obj, bool):
+        min_chars_to_prune = max(0, min_chars_obj)
+    else:
+        min_chars_to_prune = defaults.min_chars_to_prune
+
+    call_timeout_obj = obj.get("call_timeout_ms", defaults.call_timeout_ms)
+    if isinstance(call_timeout_obj, int) and not isinstance(call_timeout_obj, bool):
+        call_timeout_ms = max(1, call_timeout_obj)
+    else:
+        call_timeout_ms = defaults.call_timeout_ms
+
+    # options
+    options_obj = obj.get("options")
+    options = options_obj if isinstance(options_obj, dict) else {}
+
+    max_prune_ratio_obj = options.get("max_prune_ratio", defaults.max_prune_ratio)
+    if isinstance(max_prune_ratio_obj, (int, float)) and not isinstance(max_prune_ratio_obj, bool):
+        max_prune_ratio = float(max_prune_ratio_obj)
+        if max_prune_ratio < 0.0:
+            max_prune_ratio = 0.0
+        if max_prune_ratio > 1.0:
+            max_prune_ratio = 1.0
+    else:
+        max_prune_ratio = defaults.max_prune_ratio
+
+    min_keep_lines_obj = options.get("min_keep_lines", defaults.min_keep_lines)
+    if isinstance(min_keep_lines_obj, int) and not isinstance(min_keep_lines_obj, bool):
+        min_keep_lines = max(0, min_keep_lines_obj)
+    else:
+        min_keep_lines = defaults.min_keep_lines
+
+    timeout_ms_obj = options.get("timeout_ms", defaults.timeout_ms)
+    if isinstance(timeout_ms_obj, int) and not isinstance(timeout_ms_obj, bool):
+        timeout_ms = max(1, timeout_ms_obj)
+    else:
+        timeout_ms = defaults.timeout_ms
+
+    annotate_lines = bool(options.get("annotate_lines", defaults.annotate_lines))
+    include_markers = bool(options.get("include_markers", defaults.include_markers))
+
+    return ContextPruningConfig(
+        enabled=enabled,
+        min_chars_to_prune=min_chars_to_prune,
+        call_timeout_ms=call_timeout_ms,
+        max_prune_ratio=max_prune_ratio,
+        min_keep_lines=min_keep_lines,
+        timeout_ms=timeout_ms,
+        annotate_lines=annotate_lines,
+        include_markers=include_markers,
+    )

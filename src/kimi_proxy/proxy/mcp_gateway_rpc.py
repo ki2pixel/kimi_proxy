@@ -40,6 +40,7 @@ def get_mcp_server_base_url(server_name: str) -> str | None:
         "sequential-thinking": "http://127.0.0.1:8003",
         "fast-filesystem": "http://127.0.0.1:8004",
         "json-query": "http://127.0.0.1:8005",
+        "pruner": "http://127.0.0.1:8006",
     }
     return mapping.get(server_name)
 

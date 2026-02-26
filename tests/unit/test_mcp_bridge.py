@@ -156,6 +156,7 @@ async def test_pipe_child_stdout_jsonrpc_only_filters_non_jsonrpc_to_stderr():
         stream=stream,
         stdout_buffer=_Buf(stdout_buf),
         stderr_buffer=_Buf(stderr_buf),
+        server_name="filesystem-agent",
     )
 
     stdout_text = stdout_buf.decode("utf-8", errors="replace")
@@ -168,6 +169,61 @@ async def test_pipe_child_stdout_jsonrpc_only_filters_non_jsonrpc_to_stderr():
 
     # Les autres lignes sont redirigées vers stderr
     assert "Secure MCP Filesystem Server" in stderr_text
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_pipe_child_stdout_jsonrpc_only_emits_jsonrpc_error_on_readline_limit_overrun(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+
+    class _FakeStream:
+        async def readline(self) -> bytes:
+            raise ValueError("Separator is not found, and chunk exceed the limit")
+
+    stdout_buf = bytearray()
+    stderr_buf = bytearray()
+
+    class _Buf:
+        def __init__(self, target: bytearray) -> None:
+            self._t = target
+
+        def write(self, b: bytes) -> None:
+            self._t.extend(b)
+
+        def flush(self) -> None:
+            return
+
+    # Capture stdout JSON-RPC error payload
+    out = io.StringIO()
+    monkeypatch.setattr(mcp_bridge.sys, "stdout", out)
+
+    inflight = mcp_bridge.InflightTracker()
+    inflight.observe_client_message({"jsonrpc": "2.0", "id": 123, "method": "tools/call", "params": {}})
+
+    await mcp_bridge._pipe_child_stdout_jsonrpc_only(
+        stream=_FakeStream(),
+        stdout_buffer=_Buf(stdout_buf),
+        stderr_buffer=_Buf(stderr_buf),
+        server_name="ripgrep-agent",
+        inflight=inflight,
+    )
+
+    stderr_text = stderr_buf.decode("utf-8", errors="replace")
+    assert "MCP_BRIDGE_STDIO_STREAM_LIMIT" in stderr_text
+    assert "chunk exceed the limit" in stderr_text
+
+    payload = json.loads(out.getvalue().splitlines()[0])
+    assert payload["error"]["code"] == -32001
+    assert payload["id"] == 123
+
+
+@pytest.mark.unit
+def test_get_stdio_stream_limit_bytes_clamps_env(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+    monkeypatch.setenv("MCP_BRIDGE_STDIO_STREAM_LIMIT", "1")
+    assert mcp_bridge._get_stdio_stream_limit_bytes() >= 64 * 1024
+    monkeypatch.setenv("MCP_BRIDGE_STDIO_STREAM_LIMIT", str(999999999))
+    assert mcp_bridge._get_stdio_stream_limit_bytes() <= 64 * 1024 * 1024
 
 
 @pytest.mark.asyncio
@@ -323,4 +379,114 @@ async def test_main_routes_by_server_name(monkeypatch):
     await mcp_bridge.main()
 
     assert called == ["gateway:json-query", "relay:filesystem-agent"]
+
+
+@pytest.mark.unit
+def test_bridge_monitor_from_env_disabled_by_default(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+    monkeypatch.delenv("MCP_BRIDGE_MONITORING_ENABLED", raising=False)
+    monkeypatch.delenv("MCP_BRIDGE_MONITORING_LOG_PATH", raising=False)
+    monkeypatch.delenv("MCP_BRIDGE_MONITORING_QUEUE_MAX", raising=False)
+    monkeypatch.delenv("MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT", raising=False)
+
+    monitor = mcp_bridge.BridgeMonitor.from_env(server_name="filesystem-agent")
+    assert monitor.enabled is False
+
+
+@pytest.mark.unit
+def test_bridge_monitor_counts_requests_and_responses():
+    mcp_bridge = _import_mcp_bridge()
+
+    monitor = mcp_bridge.BridgeMonitor(
+        server_name="filesystem-agent",
+        enabled=True,
+        log_path=None,
+        queue_max=10,
+        summary_on_exit=False,
+    )
+
+    req = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"secret": "x"}}
+    monitor.observe_json_obj(direction="client_to_server", obj=req)
+    assert monitor.client_to_server_requests_by_method["tools/call"] == 1
+
+    resp_ok = {"jsonrpc": "2.0", "id": 1, "result": {"ok": True}}
+    monitor.observe_json_obj(direction="server_to_client", obj=resp_ok)
+    assert monitor.responses_total == 1
+    assert monitor.responses_error_total == 0
+
+    resp_err = {"jsonrpc": "2.0", "id": 2, "error": {"code": -1, "message": "boom"}}
+    monitor.observe_json_obj(direction="server_to_client", obj=resp_err)
+    assert monitor.responses_total == 2
+    assert monitor.responses_error_total == 1
+
+    # Non-JSON-RPC => ignoré
+    monitor.observe_json_obj(direction="client_to_server", obj={"hello": "world"})
+    assert monitor.client_to_server_requests_by_method["tools/call"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_bridge_monitor_writes_jsonl_without_params_or_result(tmp_path):
+    mcp_bridge = _import_mcp_bridge()
+
+    log_path = tmp_path / "mcp_bridge.jsonl"
+    monitor = mcp_bridge.BridgeMonitor(
+        server_name="filesystem-agent",
+        enabled=True,
+        log_path=log_path,
+        queue_max=50,
+        summary_on_exit=False,
+    )
+    await monitor.start()
+
+    req = {"jsonrpc": "2.0", "id": 10, "method": "tools/list", "params": {"secret": "x"}}
+    resp = {"jsonrpc": "2.0", "id": 10, "result": {"tools": []}}
+    monitor.observe_json_obj(direction="client_to_server", obj=req)
+    monitor.observe_json_obj(direction="server_to_client", obj=resp)
+
+    await monitor.stop()
+
+    text = log_path.read_text(encoding="utf-8")
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    assert len(lines) >= 2
+
+    parsed = [json.loads(ln) for ln in lines]
+    for obj in parsed:
+        # Ne jamais logguer de payloads potentiellement sensibles.
+        assert "params" not in obj
+        assert "result" not in obj
+        assert "error" not in obj
+
+    assert any(o.get("kind") == "request" and o.get("method") == "tools/list" for o in parsed)
+    assert any(o.get("kind") == "response" for o in parsed)
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_bridge_monitor_queue_overflow_increments_drops(monkeypatch, tmp_path):
+    mcp_bridge = _import_mcp_bridge()
+
+    async def _slow_to_thread(func, /, *args, **kwargs):
+        # Ralentit artificiellement le writer pour déclencher la backpressure.
+        await asyncio.sleep(0.05)
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(mcp_bridge.asyncio, "to_thread", _slow_to_thread)
+
+    log_path = tmp_path / "mcp_bridge_overflow.jsonl"
+    monitor = mcp_bridge.BridgeMonitor(
+        server_name="ripgrep-agent",
+        enabled=True,
+        log_path=log_path,
+        queue_max=1,
+        summary_on_exit=False,
+    )
+    await monitor.start()
+
+    for i in range(100):
+        req = {"jsonrpc": "2.0", "id": i, "method": "tools/list", "params": {"n": i}}
+        monitor.observe_json_obj(direction="client_to_server", obj=req)
+
+    await monitor.stop()
+    assert monitor.log_dropped_total > 0
 

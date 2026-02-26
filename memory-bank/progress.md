@@ -3,6 +3,118 @@ Aucune
 
 ## Tâches Complétées
 
+### [2026-02-26 20:41:00] - MCP ripgrep-agent : timeouts `-32001` (bridge stdio) + configs + docs + vérification - TERMINÉ
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Éliminer les timeouts / erreurs `-32001` observés avec `ripgrep-agent` via le bridge stdio (RCA: limite ~64KiB de `StreamReader.readline()` sur stdout quand une réponse JSON-RPC 1-ligne est trop volumineuse).
+
+**Livrables** :
+- Bridge: `scripts/mcp_bridge.py`
+  - `MCP_BRIDGE_STDIO_STREAM_LIMIT` configurable (défaut 8MiB, clamp 64KiB–64MiB) appliqué à stdin bridge + pipes subprocess.
+  - Suivi best-effort des IDs JSON-RPC inflight + émission immédiate d’erreurs JSON-RPC `-32001` en cas d’overrun stdout (pas de hang IDE).
+- Tests unitaires: `tests/unit/test_mcp_bridge.py` mis à jour (validation -32001 sur dépassement limite).
+- Configs (repo): `config.yaml`, `cline_mcp_settings.json`, `mcp_config.json`
+  - `MCP_BRIDGE_MONITORING_LOG_PATH` distinct par serveur (filesystem/ripgrep/shrimp).
+  - `MCP_BRIDGE_STDIO_STREAM_LIMIT=8388608` (8MiB) explicite pour `ripgrep-agent`.
+- Docs troubleshooting:
+  - `docs/troubleshooting/MCP_Bridge_Stdio_Servers.md` (RCA + runbook + env `MCP_BRIDGE_STDIO_STREAM_LIMIT`).
+  - `docs/troubleshooting/MCP_IDE_Interop.md` (diagnostic `-32001`: `unknown_server` vs stdout limit + runbook).
+- Harness offline déterministe (sans dépendre de `npx`/réseau):
+  - `tests/fixtures/fake_mcp_server_stdio.py`
+  - `tests/mcp/harness_bridge_stdio_limits.py`
+
+**Validation** :
+- Suite: `./bin/kimi-proxy test` → **134 passed**.
+- Harness: `python3 tests/mcp/harness_bridge_stdio_limits.py` → **OK**.
+
+**Notes** :
+- Les tests/harness évitent les blocages possibles liés au démarrage `npx` (download/cache).
+- Si l’IDE utilise un fichier de config hors repo (ex: VS Code/Cline), vérifier le chemin réellement chargé.
+
+### [2026-02-26 16:50:00] - Docs Updater: parité runtime API + clarification MCP/Gateway + pruner A2 - TERMINÉ
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Synchroniser la documentation avec l’état runtime réel après audit structurel et vérification code-first.
+
+**Livrables** :
+- `docs/api/README.md` réécrit avec inventaire runtime monté (58 routes effectives, 56 méthode+chemin uniques), corrections de chemins compaction et suppression bulk sessions.
+- `docs/features/mcp.md` clarifié pour distinguer UI Phase 3/4, source backend de statuts (2 serveurs spécialisés) et capacité gateway (5 serveurs routables).
+- `docs/features/mcp-pruner.md` enrichi d’une section d’alignement implémentation A2 (handshake, alias `recover_range`, fail-open, TTL, variables d’environnement).
+
+**Validation** :
+- Comptage décorateurs routes: `60`.
+- Comptage runtime FastAPI monté: `58` routes HTTP effectives, `56` couples méthode+chemin uniques.
+- Vérification mapping gateway: `context-compression`, `sequential-thinking`, `fast-filesystem`, `json-query`, `pruner`.
+
+**Notes** :
+- Aucun changement de code applicatif; documentation et traçabilité uniquement.
+- Le décalage décorateurs/runtime est explicitement documenté pour éviter les futures dérives.
+
+### [2026-02-26 16:12:00] - MCP Pruner : C1 spec transparence/recovery + C2 intégration /chat/completions - TERMINÉ
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** :
+- C1: clarifier et harmoniser le contrat de transparence + recovery (annotations/markers/ranges, erreurs, fail-open).
+- C2: intégrer un appel au serveur MCP Pruner local dans `/chat/completions` avant token counting et avant envoi provider, sous feature flag et avec fallback no-op.
+
+**Livrables** :
+- Spec mise à jour: `docs/features/mcp-pruner.md` (markers canonique, règle d’identité marker↔annotation, recovery ranges, erreurs -32004/-32005, fail-open, exemples `curl`).
+- Config: `config.toml` + loader `ContextPruningConfig` dans `src/kimi_proxy/config/loader.py`.
+- Proxy pruning (I/O HTTP local): `src/kimi_proxy/proxy/context_pruning.py`.
+- Intégration pipeline: `src/kimi_proxy/api/routes/proxy.py`.
+- Tests intégration: `tests/integration/test_proxy_context_pruning_c2.py`.
+
+**Validation** :
+- `python3 -m compileall -q src/kimi_proxy/config/loader.py src/kimi_proxy/proxy/context_pruning.py src/kimi_proxy/api/routes/proxy.py`.
+- `pytest -q tests/integration/test_proxy_context_pruning_c2.py tests/integration/test_proxy_observation_masking_schema1.py`.
+
+**Notes** :
+- Le pruning est volontairement conservateur: il ne modifie que les messages `role="tool"` (préservation stricte des invariants tool-calling).
+- Logs uniquement metadata-only (pas de contenu pruné).
+
+### [2026-02-26 13:03:30] - Observation Masking Schéma 1 : benchmark offline + documentation - TERMINÉ
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Documenter et valider opérationnellement le masking conversationnel Schéma 1 (masquage des anciens `role="tool"` via fenêtre en *tours tool*), et fournir un benchmark offline pour mesurer l’impact tokens/chars.
+
+**Livrables** :
+- Fixture tool-heavy : `tests/fixtures/schema1_tool_heavy.json`
+- Benchmark offline : `scripts/bench_observation_masking_schema1.py` (zéro réseau, sortie stable `--json`, exécutable via `python3` sans installer le package)
+- Documentation : `docs/WIP/schema1_observation_masking.md`
+- README : ajout d’une section “Schéma 1 : Observation Masking” (lien doc + activation config + commande benchmark)
+
+**Validation** :
+- Benchmark : `python3 scripts/bench_observation_masking_schema1.py --json --window-turns 1`
+- Suite de tests : `./bin/kimi-proxy test` → **120 passed**
+
+**Notes** :
+- La doc clarifie la différence entre Schéma 1 (messages envoyés au provider) et le masking JSON-RPC du MCP Gateway (anti log-bomb).
+
+### [2026-02-25 21:08:30] - Monitoring MCP Bridge stdio : compteurs + JSONL opt-in - TERMINÉ
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Ajouter un monitoring simple pour les serveurs MCP relayés en stdio via `scripts/mcp_bridge.py` (filesystem-agent, ripgrep-agent, shrimp-task-manager), sans jamais corrompre le flux JSON-RPC sur stdout.
+
+**Solution** :
+- Ajout d’un `BridgeMonitor` opt-in activé via env vars (`MCP_BRIDGE_MONITORING_*`).
+- Compteurs en mémoire (requêtes par `method`, réponses totales et erreurs).
+- Logging JSONL optionnel (metadata-only; jamais `params`, `result`, `error`).
+- Écritures non-bloquantes (queue asyncio + `asyncio.to_thread`) et gestion backpressure (drops).
+- Instrumentation sur stdin→child.stdin, stdout child filtré→stdout, et shim Shrimp `roots/list`.
+
+**Tests** :
+- `tests/unit/test_mcp_bridge.py` étendu (BridgeMonitor + overflow queue).
+- Suite complète: `./bin/kimi-proxy test` → **109 passed**.
+
+**Docs** :
+- `docs/troubleshooting/MCP_Bridge_Stdio_Servers.md` : ajout section Monitoring (activation, format JSONL, sécurité, trade-offs).
+
+**Variables d’environnement (nouveau)** :
+- `MCP_BRIDGE_MONITORING_ENABLED`
+- `MCP_BRIDGE_MONITORING_LOG_PATH`
+- `MCP_BRIDGE_MONITORING_QUEUE_MAX`
+- `MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT`
+
 ### [2026-02-25 18:40:00] - Interop MCP IDE (Windsurf/Cline/Continue) : stdio bridge + shim roots/list + configs repo - TERMINÉ
 **Statut** : ✅ COMPLETÉ
 

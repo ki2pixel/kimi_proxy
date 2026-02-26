@@ -2,11 +2,19 @@
 
 **TL;DR**: Correction des échecs de connexion MCP dans Windsurf et Cline en basculant les serveurs stdio (filesystem-agent, ripgrep-agent, shrimp-task-manager) sur un bridge Python avec shim roots/list. Continue.dev déjà aligné.
 
+Si tu vois une erreur JSON-RPC `-32001`, ne pars pas du principe que c’est toujours `unknown_server`. Dans notre stack, ce code peut aussi apparaître quand le **bridge stdio** ne parvient pas à relayer une réponse (ex: sortie trop volumineuse côté ripgrep-agent).
+
 ## Problème
 
-Les IDE Windsurf et Cline échouaient à se connecter aux serveurs MCP stdio `filesystem-agent`, `ripgrep-agent`, `shrimp-task-manager`. Le MCP Gateway HTTP ne mappe que les serveurs gateway (`context-compression`, `sequential-thinking`, etc.), retournant `unknown_server` (JSON-RPC `-32001`, HTTP 404) pour les stdio.
+Tu peux rencontrer deux problèmes distincts qui se ressemblent côté IDE:
 
-Cause racine : `get_mcp_server_base_url()` ne connaissait que les serveurs HTTP.
+1) **Interop / routage**: les IDE Windsurf et Cline échouaient à se connecter aux serveurs MCP stdio `filesystem-agent`, `ripgrep-agent`, `shrimp-task-manager`. Le MCP Gateway HTTP ne mappe que les serveurs gateway (`context-compression`, `sequential-thinking`, etc.), retournant `unknown_server` (JSON-RPC `-32001`, HTTP 404) pour les stdio.
+
+2) **Timeout ripgrep-agent**: certaines requêtes `ripgrep-agent` renvoient une réponse JSON-RPC énorme sur une seule ligne (beaucoup de matches). Par défaut, `asyncio` impose une limite (~64KiB) sur `StreamReader.readline()`. Si la réponse dépasse cette limite, la lecture stdout côté bridge peut échouer et l’IDE remonte un timeout / `-32001`.
+
+Cause racine (interop): `get_mcp_server_base_url()` ne connaissait que les serveurs HTTP.
+
+Cause racine (timeouts): limite interne `readline()` sur stdout quand une réponse JSON-RPC dépasse la limite de stream.
 
 ## Solution Appliquée
 
@@ -37,6 +45,7 @@ Shrimp Task Manager appelle `roots/list` du serveur vers le client. Le shim inte
       "command": "python3",
       "args": ["/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py", "ripgrep-agent"],
       "env": {
+        "MCP_BRIDGE_STDIO_STREAM_LIMIT": "8388608",
         "MCP_BRIDGE_PATH_ENV": "/usr/bin:/bin:/usr/local/bin",
         "PATH": "/usr/bin:/bin:/usr/local/bin"
       }
@@ -59,11 +68,14 @@ Shrimp Task Manager appelle `roots/list` du serveur vers le client. Le shim inte
 ### Repo (cline_mcp_settings.json pour Cline)
 Même structure que ci-dessus, avec `type: "stdio"` et bridge.
 
-### Hors Repo (../.cline/data/settings/cline_mcp_settings.json)
-Aligné automatiquement via session.
+### Hors repo (config réellement utilisée par l’IDE)
 
-### Hors Repo (../.codeium/mcp_config.json)
-Aligné automatiquement via session.
+Selon l’IDE, le fichier réellement utilisé n’est pas forcément celui du repo. Par exemple:
+
+- VS Code + Cline: `~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`
+- Windsurf/Codeium: fichier `mcp_config.json` spécifique (selon installation)
+
+Si tu modifies le repo mais que l’IDE continue à échouer, commence par vérifier le chemin de config chargé par l’IDE.
 
 ## Validation
 
@@ -94,7 +106,32 @@ Documenter systématiquement les interops IDE pour éviter les régressions. Uti
 
 **Choix Kimi Proxy** : Bridge stdio pour flexibilité maximale.
 
+## Diagnostiquer un `-32001`
+
+Même code, causes différentes. Voici un tri rapide.
+
+### ❌ Interprétation automatique: "-32001 = unknown_server"
+
+Tu perds du temps si tu cherches uniquement du côté routing/gateway alors que le bridge a juste échoué à relayer une réponse trop grosse.
+
+### ✅ Lecture pragmatique: regarde le message + stderr
+
+1) Si le message parle de `unknown_server` ou HTTP 404: tu n’es pas sur la bonne route (gateway au lieu de stdio bridge).
+2) Si le message parle de stdout/limit/"chunk exceed the limit": c’est une réponse trop volumineuse.
+
+### Runbook (ripgrep-agent)
+
+1) **Borne la requête**: réduis `maxResults`, cible un dossier, ou scinde le pattern.
+2) **Augmente la limite**: `MCP_BRIDGE_STDIO_STREAM_LIMIT=8388608` (ou plus si nécessaire).
+3) **Fallback shell** si tu as besoin d’un résultat volumineux:
+
+```bash
+rg -n "pattern" . | head -n 200
+```
+
+Tu récupères un extrait exploitable, puis tu raffines la requête dans l’IDE.
+
 ---
 
-*Dernière mise à jour : 2026-02-25*  
+*Dernière mise à jour : 2026-02-26*  
 *Conforme à documentation/SKILL.md - Sections : TL;DR ✔, Problem-First ✔, Comparaison ❌/✅ ✔, Trade-offs ✔, Golden Rule ✔*

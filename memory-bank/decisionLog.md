@@ -1,5 +1,20 @@
 ## Décisions Techniques Récentes
 
+### [2026-02-26 16:52:00] - Synchronisation docs/code: parité runtime API + clarification MCP/Gateway + alignement Pruner A2
+**Contexte** : Les documents API/MCP présentaient un décalage avec l’exécution réelle (routes montées vs décorateurs, endpoints compaction renommés, distinction frontend phase grouping vs backend status réel). Le scope utilisateur validé incluait 3 fichiers docs + synchronisation memory-bank.
+**Décision** : Documenter la vérité d’exécution comme source canonique, tout en conservant la traçabilité des écarts statiques (décorateurs) pour audit.
+**Alternatives considérées** :
+- Conserver les noms historiques de endpoints pour compatibilité doc (rejeté : confusion opérationnelle)
+- Ne documenter que le comptage statique des décorateurs (rejeté : ne reflète pas le runtime effectif)
+- **Choix** : double comptage explicite + endpoints runtime exacts + notes de convergence
+**Implémentation** :
+- `docs/api/README.md` : réécriture avec métriques duales (60 décorateurs, 58 routes montées effectives, 56 method+path uniques), correction des chemins compaction/sessions
+- `docs/features/mcp.md` : clarification architecture frontend/backend et mapping gateway (`context-compression`, `sequential-thinking`, `fast-filesystem`, `json-query`, `pruner`)
+- `docs/features/mcp-pruner.md` : ajout section d’alignement A2 (JSON-RPC handshake, outils `prune_text`/`recover_text`/`recover_range`/`health`, fail-open, TTL store, variables d’environnement)
+- `memory-bank/progress.md` : entrée de clôture de la tâche
+**Résultat** : Documentation alignée sur le comportement réel, réduction des ambiguïtés pour exploitation et debugging, meilleure traçabilité des écarts docs/code.
+**Leçons apprises** : Pour les surfaces API/MCP, la validation runtime doit primer ; la distinction “source statique vs exécution effective” doit être explicite dans les docs critiques.
+
 ### [2026-02-24 15:27:00] - Workflow Docs-Updater - Mise à jour documentation complète
 **Contexte** : Audit structurel révèle discrepancies entre documentation et code actuel (53 vs 60 routes API, métriques obsolètes, Cline non documenté)
 **Décision** : Exécuter workflow docs-updater avec application stricte du skill documentation/SKILL.md

@@ -64,6 +64,18 @@ messages = [
 
 Le sanitizer détecte automatiquement les messages > 1000 tokens de type tool/console, les masque pendant l'envoi, et les stocke pour récupération ultérieure. Résultat : 20-40% d'économie de tokens sans perte d'information.
 
+### Schéma 1 : Observation Masking (tool results anciens)
+
+Quand tu enchaînes beaucoup de tool-calls, les anciens résultats d’outil (logs/JSON) peuvent dominer le contexte. Le proxy peut masquer uniquement le `content` des messages `role="tool"` les plus anciens, sans casser `tool_calls[].id` ↔ `tool_call_id`.
+
+- Doc : `docs/WIP/schema1_observation_masking.md`
+- Activation : section `[observation_masking.schema1]` dans `config.toml`
+- Benchmark offline :
+
+```bash
+python3 scripts/bench_observation_masking_schema1.py --json --window-turns 1
+```
+
 ## Les trois phases de gestion du contexte
 
 Pensez à votre conversation comme à un restaurant. Le sanitizer, c'est le serveur qui ne vous lit pas les tickets de cuisine. MCP, c'est votre sommelier qui se souvient de vos préférences. La compression, c'est quand vous demandez l'addition et le serveur vous résume ce que vous avez commandé.

@@ -343,7 +343,6 @@ context:
 # MCP SERVERS
 # ============================================
 mcpServers:
-  # Context providers Continue (nécessaires)
   - name: filesystem-agent
     command: python3
     args: ["/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py", "filesystem-agent"]
@@ -351,6 +350,10 @@ mcpServers:
       PATH: "/usr/bin:/bin:/usr/local/bin"
       MCP_BRIDGE_PATH_ENV: "/usr/bin:/bin:/usr/local/bin"
       MCP_FILESYSTEM_ALLOWED_ROOT: "/home/kidpixel"
+      MCP_BRIDGE_MONITORING_ENABLED: "1"
+      MCP_BRIDGE_MONITORING_LOG_PATH: "/tmp/kimi-proxy/mcp-bridge-filesystem.jsonl"
+      MCP_BRIDGE_MONITORING_QUEUE_MAX: "1000"
+      MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT: "1"
 
   - name: ripgrep-agent
     command: python3
@@ -358,14 +361,24 @@ mcpServers:
     env:
       PATH: "/usr/bin:/bin:/usr/local/bin"
       MCP_BRIDGE_PATH_ENV: "/usr/bin:/bin:/usr/local/bin"
+      MCP_BRIDGE_STDIO_STREAM_LIMIT: "8388608"
+      MCP_BRIDGE_MONITORING_ENABLED: "1"
+      MCP_BRIDGE_MONITORING_LOG_PATH: "/tmp/kimi-proxy/mcp-bridge-ripgrep.jsonl"
+      MCP_BRIDGE_MONITORING_QUEUE_MAX: "1000"
+      MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT: "1"
 
-  # MCP Phase 4 - Processus locaux (solution finale)
   - name: shrimp-task-manager
     command: python3
     args: ["/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py", "shrimp-task-manager"]
     env:
       PATH: "/usr/bin:/bin:/usr/local/bin"
+      MCP_BRIDGE_PATH_ENV: "/usr/bin:/bin:/usr/local/bin"
       MCP_SHRIMP_TASK_MANAGER_COMMAND: "/home/kidpixel/.local/bin/shrimp-task-manager"
+      DATA_DIR: "/home/kidpixel/kimi-proxy/shrimp_data"
+      MCP_BRIDGE_MONITORING_ENABLED: "1"
+      MCP_BRIDGE_MONITORING_LOG_PATH: "/tmp/kimi-proxy/mcp-bridge-shrimp.jsonl"
+      MCP_BRIDGE_MONITORING_QUEUE_MAX: "1000"
+      MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT: "1"
 
   - name: sequential-thinking
     command: python3
@@ -379,7 +392,6 @@ mcpServers:
     command: python3
     args: [ "/home/kidpixel/kimi-proxy/scripts/mcp_bridge.py", "json-query" ]
 
-  # Services externes Continue (nécessaires)
   - name: render-signal-mcp
     url: "https://mcp.render.com/mcp"
     headers:

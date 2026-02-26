@@ -1,0 +1,168 @@
+PRD — Schéma 1 « Observation Masking » (conversation-level)
+=========================================================
+
+Date: 2026-02-26
+Repo: /home/kidpixel/kimi-proxy
+
+
+1) Objectif
+-----------
+Remplacer la troncature générique actuelle (principalement sur payloads JSON-RPC MCP Gateway) par un **masking ciblé des anciens tool_results dans l’historique `messages`**, avant envoi au provider / modèle, conformément au Schéma 1 (docs/WIP/schema1_observation_masking.md).
+
+Le masking doit:
+- Réduire significativement les tokens/coûts en masquant **uniquement** les observations (tool results) plus anciennes qu’une fenêtre N (par ex. 5–10 tours).
+- Préserver strictement l’intégrité du tool-calling: IDs, ordre, adjacency tool_use↔tool_result.
+- Être activable/désactivable via feature flag (rollback instantané).
+
+
+2) Contexte & état actuel (constat)
+----------------------------------
+Actuellement, `src/kimi_proxy/features/mcp/gateway.py` implémente un “Observation Masking” qui est en réalité une **troncature récursive de strings** dans des payloads JSON (incluant réponses JSON-RPC 2.0) via un marker `KIMI_PROXY_OBSERVATION_MASKED`.
+
+Ce composant:
+- est utile pour limiter les réponses MCP gateway volumineuses,
+- mais ne répond pas au besoin Schéma 1, qui est **conversation-level** (avant envoi au modèle).
+
+Points d’intégration réels identifiés:
+- Spécification: docs/WIP/schema1_observation_masking.md
+- Masking gateway (payload): src/kimi_proxy/features/mcp/gateway.py
+- Route gateway JSON-RPC: src/kimi_proxy/api/routes/mcp_gateway.py
+- Pipeline chat completions: src/kimi_proxy/api/routes/proxy.py
+- Tool-call IDs: src/kimi_proxy/proxy/tool_utils.py
+- Tests gateway existants: tests/unit/features/test_mcp_gateway.py
+
+
+3) Portée (in-scope)
+--------------------
+3.1 Fonctionnel
+- Ajouter une politique de masking conversationnelle `MaskPolicy` configurable.
+- Implémenter une fonction pure (sans I/O) dans la couche **Features**:
+  - `mask_old_tool_results(messages, policy)`
+  - Entrée: liste de messages au format OpenAI chat completions (dicts) tel qu’accepté par le proxy actuel.
+  - Sortie: nouvelle liste de messages (copie), avec certains `tool` messages dont `content` est remplacé par un placeholder court.
+
+3.2 Intégration
+- Appliquer ce masking dans le pipeline `/chat/completions` **avant**:
+  - le comptage de tokens final,
+  - l’envoi au provider,
+  - et idéalement avant toute logique d’auto-compaction qui dépend du comptage.
+
+3.3 Sécurité/robustesse
+- Ne jamais supprimer d’entrées de `messages`.
+- Ne jamais changer les IDs `tool_call_id` / `tool_calls[].id`.
+- Conserver l’ordre des messages.
+- Conserver la relation `assistant.tool_calls[].id` ↔ `tool.tool_call_id`.
+
+
+4) Hors portée (out-of-scope)
+-----------------------------
+- Modifier le protocole tool-calling des providers.
+- Introduire des routes API non standards ou compat “/v1/…”.
+- Remplacer/retirer le masking JSON-RPC existant côté `MCPGatewayService` (il reste en place, rôle distinct).
+- Summarisation LLM (coûteuse) comme substitut au masking.
+
+
+5) Contraintes techniques (obligatoires)
+--------------------------------------
+- Respect strict de `.clinerules/codingstandards.md`.
+- Architecture 5 couches:
+  API (FastAPI) ← Services ← Features ← Proxy (HTTPX) ← Core (SQLite)
+  La logique métier doit rester en **Features**.
+- Async/await obligatoire pour I/O (mais la fonction de masking elle-même doit être pure et synchrone).
+- Typing strict, **pas de Any** nouveau.
+- Compatibilité ascendante (pas de rupture API / schémas actuels).
+- Ne pas casser les flux compaction/sanitizer existants.
+- Préserver l’intégrité tool_use↔tool_result (IDs, adjacency, structure JSON).
+
+
+6) Définition proposée: “tour”
+-----------------------------
+Dans ce repo, pour Schéma 1, un “tour” est défini comme:
+- un couple logique:
+  1) message `assistant` contenant `tool_calls` (OpenAI)
+  2) suivi par un ou plusieurs messages `tool` dont `tool_call_id` matche les `tool_calls[].id`.
+
+La fenêtre N est comptée en **tours tool** (pas en messages brut), afin de préserver l’adjacence.
+
+
+7) Politique de masking (MaskPolicy)
+-----------------------------------
+Paramètres cibles:
+- enabled: bool (feature flag)
+- window_turns: int (recommandé 5–10)
+- keep_errors: bool (true)
+  - si un tool_result est une erreur (heuristiques définies dans spec technique), ne pas le masquer
+- keep_last_k_per_tool: int | None (optionnel)
+- placeholder_template: str
+  - placeholder court, en français, incluant métadonnées minimales:
+    - tool_name (si disponible)
+    - tool_call_id
+    - ancien_size_chars et/ou tokens estimés si disponible
+    Exemple:
+    "[Observation masquée: résultat d’outil ancien (tool_call_id=..., tool=..., chars=...)]"
+
+
+8) Critères d’acceptation
+-------------------------
+Fonctionnels:
+- Quand le flag est OFF: comportement strictement inchangé.
+- Quand le flag est ON:
+  - les `tool` messages plus vieux que N tours ont leur `content` remplacé par un placeholder.
+  - les `tool` messages des N derniers tours restent intacts.
+  - l’adjacence tool_use↔tool_result est conservée.
+  - les IDs et l’ordre ne changent pas.
+  - si keep_errors=true: les erreurs restent non masquées.
+
+Techniques:
+- Tests unitaires couvrant:
+  - sélection correcte des tool_results à masquer
+  - invariants (structure, IDs, ordre)
+  - exemptions erreurs
+  - compatibilité avec messages sans outils
+- Tests d’intégration (au moins route proxy) sur un historique mixte tool/non-tool.
+
+Performance / Coûts:
+- Un benchmark offline (replay) produit des métriques avant/après:
+  - tokens estimés requête
+  - taille chars/JSON
+  - coût estimé (même modèle, même session)
+  - delta %
+- Objectif: réduction tangible sur scénarios tool-heavy (non chiffré à l’avance, mais mesuré et documenté).
+
+
+9) Métriques à collecter
+------------------------
+- Nombre de tool_results masqués par requête.
+- Tokens estimés avant/après masking (tiktoken) pour `messages`.
+- Taille totale chars des contents tool avant/après.
+- Taux d’erreurs (HTTP/provider) inchangé.
+
+
+10) Risques & mitigations
+-------------------------
+- Risque: N trop bas → perte d’information critique.
+  - Mitigation: default conservateur (ex. 8), keep_errors=true, placeholder informatif.
+- Risque: casser la structure tool-calling (IDs/adjacency).
+  - Mitigation: invariants formalisés + tests structurels + vérif JSON query.
+- Risque: confusion avec compaction existante.
+  - Mitigation: séparation claire “masking conversationnel” vs “compaction/summarization”.
+- Risque: formats tool non-OpenAI.
+  - Mitigation: scoper explicitement le format actuellement supporté dans proxy; ajouter fallback no-op.
+
+
+11) Stratégie de rollback
+-------------------------
+- Feature flag `enabled=false` → retour immédiat au comportement actuel.
+- Aucune migration DB.
+- Aucun changement d’API publique.
+
+
+12) Plan d’exécution (haut niveau)
+---------------------------------
+- T1: Spécification technique & contrat (MaskPolicy, invariants, placeholder).
+- T2: Implémentation en couche Features (fonction pure + helpers).
+- T3: Intégration `/chat/completions` (avant tokens / envoi provider).
+- T4: Config TOML + loader/settings (flag, paramètres).
+- T5: Tests unitaires/intégration.
+- T6: Bench tokens/coûts offline replay.
+- T7: Documentation technique + guide d’exploitation (activation, tuning, rollback).

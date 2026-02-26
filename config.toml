@@ -163,6 +163,48 @@ fallback_threshold = 0.90
 heavy_duty_fallback = true
 
 # ============================================
+# OBSERVATION MASKING — Schéma 1 (tool results conversationnels)
+# ============================================
+
+[observation_masking.schema1]
+# Feature flag (rollback instantané)
+enabled = false
+
+# Fenêtre en nombre de "tours tool" à conserver intacts
+window_turns = 8
+
+# Conserver les tool results qui ressemblent à des erreurs
+keep_errors = true
+
+# Optionnel: conserver au moins les K derniers résultats par outil
+# (0 ou absence => désactivé)
+keep_last_k_per_tool = 0
+
+# Placeholder court (français). Variables: {tool_call_id}, {tool_name}, {original_chars}
+placeholder_template = "[Observation masquée: résultat d’outil ancien (tool_call_id={tool_call_id}, outil={tool_name}, chars={original_chars})]"
+
+# ============================================
+# CONTEXT PRUNING — MCP Pruner (Lot C2)
+# ============================================
+
+[context_pruning]
+# Feature flag (rollback instantané)
+enabled = false
+
+# Évite d'appeler le pruner sur des tool results courts
+min_chars_to_prune = 2000
+
+# Timeout global de l'appel MCP (ms)
+call_timeout_ms = 1500
+
+[context_pruning.options]
+max_prune_ratio = 0.55
+min_keep_lines = 40
+timeout_ms = 1500
+annotate_lines = true
+include_markers = true
+
+# ============================================
 # PARAMÈTRES DE CONTRÔLE
 # ============================================
 

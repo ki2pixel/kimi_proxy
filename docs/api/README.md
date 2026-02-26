@@ -1,170 +1,125 @@
-# API Layer - Routes et Endpoints
+# API Layer — Routes et Endpoints
 
 ## TL;DR
-Couche interface utilisateur FastAPI orchestrant 60 routes REST/WebSocket avec gestion erreurs streaming, extraction tokens partielle, retry automatique, et nouvelle intégration Cline.
+La couche API expose aujourd’hui **58 routes HTTP effectives** pour **56 couples méthode+chemin uniques**. Le point d’entrée central reste `POST /chat/completions`, avec une compatibilité OpenAI minimale via `GET /models`.
 
 ## Problème
-L'API Kimi Proxy expose une surface complexe de 60 endpoints Python (7387 LOC) sans documentation centralisée, créant une courbe d'apprentissage abrupte pour les développeurs et des difficultés de maintenance.
+Le code source contient des doublons de décorateurs et des routes historiques. Sans inventaire runtime FastAPI, la documentation diverge rapidement des chemins réellement exposés.
 
-## Architecture 5 Couches
-L'API Layer est la couche supérieure de l'architecture Kimi Proxy, dépendant des Services, Features, Proxy et Core layers.
-
+## Architecture 5 couches
 ```
-API Layer (FastAPI) ← Services (WebSocket) ← Features (MCP) ← Proxy (HTTPX) ← Core (SQLite)
+API (FastAPI) ← Services (WebSocket) ← Features (MCP) ← Proxy (HTTPX) ← Core (SQLite)
 ```
 
-## Routes Principales
+## Inventaire vérifié (runtime)
 
-### Sessions Management
-- `GET /api/sessions` - Liste toutes les sessions
-- `POST /api/sessions` - Crée une nouvelle session
-- `GET /api/sessions/active` - Récupère la session active avec statistiques
-- `POST /api/sessions/{id}/activate` - Active une session spécifique
-- `GET /api/sessions/auto-status` - Statut auto-session pour session active
-- `POST /api/sessions/toggle-auto` - Active/désactive auto-session
-- `DELETE /api/sessions/{id}` - Supprime une session
-- `POST /api/sessions/vacuum` - Exécute VACUUM sur base de données
-- `GET /api/sessions/diagnostic` - Informations diagnostiques sessions
+### Sessions
+- `GET /api/sessions`
+- `POST /api/sessions`
+- `GET /api/sessions/active`
+- `GET /api/sessions/{session_id}`
+- `POST /api/sessions/{session_id}/activate`
+- `GET /api/sessions/auto-status`
+- `POST /api/sessions/toggle-auto`
+- `DELETE /api/sessions` (bulk)
+- `POST /api/sessions/vacuum`
+- `GET /api/sessions/diagnostic`
 
-### Providers Configuration
-- `GET /api/providers` - Liste providers configurés avec modèles groupés
+### Providers et modèles
+- `GET /api/providers`
+- `GET /api/models`
+- `GET /api/models/all`
+- `GET /models` (format OpenAI-compatible)
 
-### Models Management
-- `GET /api/models` - Liste modèles disponibles (format OpenAI-compatible)
-- `GET /api/models/all` - Liste détaillée de tous les modèles
+### Proxy, santé, monitoring
+- `POST /chat/completions`
+- `GET /health`
+- `GET /api/rate-limit`
+- `WS /ws`
 
-### Exports
-- `GET /api/export/csv` - Export métriques session active en CSV
-- `GET /api/export/json` - Export métriques session active en JSON
+### Exports et sanitizer
+- `GET /api/export/csv`
+- `GET /api/export/json`
+- `GET /api/mask/{content_hash}`
+- `GET /api/mask`
+- `GET /api/sanitizer/stats`
+- `POST /api/sanitizer/toggle`
 
-### Sanitizer (Phase 1)
-- `GET /api/mask/{hash}` - Récupère contenu masqué par hash
-- `GET /api/mask` - Liste contenus masqués récents
-- `GET /api/sanitizer/stats` - Statistiques du sanitizer
-- `POST /api/sanitizer/toggle` - Active/désactive sanitizer
+### Cline
+- `GET /api/cline/status`
+- `GET /api/cline/usage`
+- `POST /api/cline/import`
 
-### Memory Operations (MCP Phase 2-3)
-- `GET /api/sessions/{id}/memory` - Stats mémoire d'une session (Phase 2)
-- `GET /api/memory/stats` - Stats globales mémoire (Phase 2)
-- `GET /api/memory/servers` - Statuts serveurs MCP externes (Phase 3)
-- `POST /api/memory/similarity` - Recherche sémantique via Qdrant
-- `POST /api/memory/compress` - Compression contenu via Context Compression MCP
-- `POST /api/memory/store` - Stockage nouvelle mémoire standardisée
-- `GET /api/memory/frequent` - Mémoires fréquemment utilisées
-- `POST /api/memory/cluster/{session_id}` - Clustering mémoires d'une session
-- `GET /api/memory/similar/{session_id}` - Mémoires similaires à une session
-- `GET /api/memory/stats/advanced` - Stats avancées mémoire MCP
-- `POST /api/memory/cleanup` - Nettoie mémoires épisodiques anciennes
-- `POST /api/memory/promote-patterns/{session_id}` - Promeut patterns fréquents
-- `GET /api/memory/all-servers` - Statuts tous serveurs MCP
+### Mémoire MCP
+- `GET /api/sessions/{session_id}/memory`
+- `GET /api/memory/stats`
+- `GET /api/memory/servers`
+- `GET /api/memory/all-servers`
+- `POST /api/memory/similarity`
+- `POST /api/memory/compress`
+- `POST /api/memory/store`
+- `GET /api/memory/frequent`
+- `POST /api/memory/cluster/{session_id}`
+- `GET /api/memory/similar/{session_id}`
+- `GET /api/memory/stats/advanced`
+- `POST /api/memory/cleanup`
+- `POST /api/memory/promote-patterns/{session_id}`
 
-### Compaction & Compression
-- `POST /api/compaction/{session_id}` - Compactage manuel session
-- `GET /api/compaction/{session_id}/stats` - Stats compactage session
-- `GET /api/compaction/stats` - Stats globales compactage
-- `GET /api/compaction/{session_id}/history` - Historique compactage session
-- `POST /api/compaction/{session_id}/reserved-tokens` - Définir tokens réservés
-- `POST /api/compaction/{session_id}/simulate` - Simuler compactage
-- `POST /api/compaction/{session_id}/auto-toggle` - Activer/désactiver auto-compactage
-- `GET /api/compaction/{session_id}/auto-status` - Statut auto-compactage
-- `GET /api/compaction/ui-config` - Configuration UI compactage
-- `POST /api/compress/{session_id}` - Compression manuelle session
-- `GET /api/compress/{session_id}/stats` - Stats compression session
-- `GET /api/compress/stats` - Stats globales compression
+### Compaction et compression
+- `POST /api/compaction/{session_id}`
+- `GET /api/compaction/stats`
+- `GET /api/compaction/{session_id}/stats`
+- `GET /api/compaction/{session_id}/history`
+- `GET /api/compaction/{session_id}/history-chart`
+- `GET /api/compaction/{session_id}/preview`
+- `POST /api/compaction/{session_id}/reserved`
+- `POST /api/compaction/{session_id}/simulate`
+- `POST /api/compaction/{session_id}/toggle-auto`
+- `GET /api/compaction/{session_id}/auto-status`
+- `GET /api/compaction/config/ui`
+- `POST /api/compress/{session_id}`
+- `GET /api/compress/stats`
+- `GET /api/compress/{session_id}/stats`
 
-### Cline Integration (Nouveau)
-- `GET /api/cline/status` - Statut de l'intégration Cline
-- `GET /api/cline/usage` - Métriques d'utilisation Cline
-- `POST /api/cline/import` - Import de données Cline existantes
+### MCP Gateway
+- `POST /api/mcp-gateway/{server_name}/rpc`
+- Serveurs supportés côté proxy: `context-compression`, `sequential-thinking`, `fast-filesystem`, `json-query`, `pruner`
 
-### MCP Gateway (Phase 5)
-- `POST /api/mcp-gateway/{server_name}/rpc` - Forwarding JSON-RPC vers serveurs MCP locaux (Observation Masking automatique)
+## Corrections de parité appliquées
 
-### Health & Monitoring
-- `GET /health` - Health check avec infos session/log watcher
-- `GET /api/rate-limit` - Statut rate limiting actuel
+### ❌ Avant
+- `POST /api/compaction/{session_id}/reserved-tokens`
+- `POST /api/compaction/{session_id}/auto-toggle`
+- `GET /api/compaction/ui-config`
+- `DELETE /api/sessions/{id}`
 
-### WebSocket Endpoint
-- `WS /ws` - Communication temps réel avec dashboard
+### ✅ Maintenant
+- `POST /api/compaction/{session_id}/reserved`
+- `POST /api/compaction/{session_id}/toggle-auto`
+- `GET /api/compaction/config/ui`
+- `DELETE /api/sessions`
 
-## Haute Complexité - Pattern 6
-
-### Fonction `proxy_chat` (Score F - 40+)
-**Localisation** : `src/kimi_proxy/api/routes/proxy.py`
-**Complexité** : Orchestration complexe du routage proxy avec gestion erreurs streaming, extraction tokens partielle, retry automatique.
-
-```python
-# Points critiques
-- Gestion asynchrone des flux SSE
-- Extraction tokens depuis streams partiellement corrompus  
-- Retry exponentiel avec backoff
-- Transformation formats (Gemini ↔ OpenAI)
-```
-
-### Fonction `_proxy_to_provider` (Score E - 30-39)
-**Localisation** : `src/kimi_proxy/api/routes/proxy.py`
-**Complexité** : Appel HTTPX asynchrone avec transformation formats, gestion timeouts, et récupération erreurs.
-
-## Patterns Système Appliqués
-- **Pattern 1** : Architecture 5 couches stricte
-- **Pattern 2** : Dependency Injection via FastAPI Depends
-- **Pattern 6** : Error Handling robuste avec extraction tokens partielle
-- **Pattern 14** : Async/Await obligatoire pour toutes les opérations I/O
-
-## Error Handling Stratégique
-
-### ❌ Approche Naïve
-```python
-try:
-    response = await client.post(url, json=data)
-    return response.json()
-except Exception:
-    return {"error": "Failed"}
-```
-
-### ✅ Approche Kimi Proxy
-```python
-try:
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(url, json=data)
-        response.raise_for_status()
-        return response.json()
-except httpx.TimeoutException:
-    # Extraction tokens partiels du stream corrompu
-    partial_usage = extract_usage_from_stream(corrupted_stream)
-    return {"error": "Timeout", "partial_usage": partial_usage}
-except httpx.ConnectError:
-    # Retry avec backoff exponentiel
-    return await retry_with_backoff(url, data, max_retries=3)
-```
+## Notes de traçabilité
+- `sessions.py` contient deux doublons de décorateurs (`/auto-status`, `/toggle-auto`).
+- `memory.py` existe dans `api/routes`, mais son router n’est pas monté dans `api/router.py`.
+- Les métriques de cette page proviennent de l’application FastAPI montée, pas uniquement des décorateurs source.
 
 ## Trade-offs
-| Approche | Avantages | Inconvénients |
-|----------|-----------|---------------|
-| Routes séparées | Clarté, testabilité | Plus de boilerplate |
-| Routes génériques | DRY, flexibilité | Complexité accrue |
-| **Choix Kimi Proxy** | **Équilibre maintenabilité** | **Documentation essentielle** |
+| Approche | Avantage | Limite |
+|---|---|---|
+| Compter les décorateurs | Rapide | Sur-estime la surface réelle |
+| Compter les routes montées | Fidèle runtime | Demande un contrôle applicatif |
+| Choix actuel | Documentation exacte à l’exécution | Doit être relancée après refactor routeur |
 
 ## Golden Rule
-**Toute nouvelle route API doit inclure :**
-1. Documentation FastAPI (`@app.get(..., summary="...")`)
-2. Gestion erreurs Pattern 6
-3. Tests unitaires async
-4. Mise à jour cette documentation
+**Documenter à partir des routes montées, puis signaler explicitement les doublons et routes non montées.**
 
-## Métriques Actuelles
-- **60 routes API détectées** réparties sur 13 fichiers route
-- **61 fichiers Python** dans l'API layer (7387 LOC total)
-- **Complexité moyenne** : C (17.42)
-- **Points chauds** : 2 fonctions E/F nécessitant attention
-- **Coverage** : Tests en cours d'implémentation
-
-## Prochaines Évolutions
-- [ ] Auto-génération OpenAPI/Swagger
-- [ ] Rate limiting par endpoint
-- [ ] Monitoring temps réel des performances
-- [ ] Documentation interactive avec exemples
+## Métriques API
+- 60 décorateurs HTTP détectés dans les fichiers de routes
+- 58 routes HTTP effectives
+- 56 couples méthode+chemin uniques
+- 13 fichiers avec décorateurs actifs (`api/routes` contient 15 fichiers avec `__init__.py` et `websocket.py`)
 
 ---
-*Dernière mise à jour : 2026-02-24*  
-*Conforme à documentation/SKILL.md - Sections : TL;DR ✔, Problem-First ✔, Comparaison ✔, Trade-offs ✔, Golden Rule ✔*
+*Dernière mise à jour: 2026-02-26*  
+*Conforme documentation/SKILL.md: TL;DR, problem-first, blocs ❌/✅, trade-offs, Golden Rule.*

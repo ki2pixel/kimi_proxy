@@ -1,0 +1,110 @@
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "Tu es un assistant."
+    },
+    {
+      "role": "user",
+      "content": "Donne-moi un résumé et appelle quelques outils."
+    },
+
+    {
+      "role": "assistant",
+      "content": "Je vais appeler un outil A.",
+      "tool_calls": [
+        {
+          "id": "call_A_1",
+          "type": "function",
+          "function": {
+            "name": "tool.a",
+            "arguments": "{}"
+          }
+        },
+        {
+          "id": "call_B_1",
+          "type": "function",
+          "function": {
+            "name": "tool.b",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_A_1",
+      "content": "Résultat A1: Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse.\nLong contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse.\nLong contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse.\nLong contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse."
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_B_1",
+      "content": "Résultat B1: Contenu très long pour tester la réduction de tokens après masking. Contenu très long pour tester la réduction de tokens après masking. Contenu très long pour tester la réduction de tokens après masking. Contenu très long pour tester la réduction de tokens après masking.\nContenu très long pour tester la réduction de tokens après masking. Contenu très long pour tester la réduction de tokens après masking. Contenu très long pour tester la réduction de tokens après masking. Contenu très long pour tester la réduction de tokens après masking.\nContenu très long pour tester la réduction de tokens après masking. Contenu très long pour tester la réduction de tokens après masking. Contenu très long pour tester la réduction de tokens après masking. Contenu très long pour tester la réduction de tokens après masking."
+    },
+
+    {
+      "role": "assistant",
+      "content": "Je vais appeler un outil A à nouveau.",
+      "tool_calls": [
+        {
+          "id": "call_A_2",
+          "type": "function",
+          "function": {
+            "name": "tool.a",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_A_2",
+      "content": "Résultat A2: Texte de sortie long (tool.a) pour simuler un dump JSON ou un résultat détaillé. Texte de sortie long (tool.a) pour simuler un dump JSON ou un résultat détaillé. Texte de sortie long (tool.a) pour simuler un dump JSON ou un résultat détaillé.\nTexte de sortie long (tool.a) pour simuler un dump JSON ou un résultat détaillé. Texte de sortie long (tool.a) pour simuler un dump JSON ou un résultat détaillé. Texte de sortie long (tool.a) pour simuler un dump JSON ou un résultat détaillé.\nTexte de sortie long (tool.a) pour simuler un dump JSON ou un résultat détaillé. Texte de sortie long (tool.a) pour simuler un dump JSON ou un résultat détaillé. Texte de sortie long (tool.a) pour simuler un dump JSON ou un résultat détaillé."
+    },
+
+    {
+      "role": "assistant",
+      "content": "Je vais appeler un outil C.",
+      "tool_calls": [
+        {
+          "id": "call_C_1",
+          "type": "function",
+          "function": {
+            "name": "tool.c",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_C_1",
+      "content": "{\"error\": \"Timeout while calling tool.c\"}"
+    },
+
+    {
+      "role": "assistant",
+      "content": "Dernier appel outil D.",
+      "tool_calls": [
+        {
+          "id": "call_D_1",
+          "type": "function",
+          "function": {
+            "name": "tool.d",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_D_1",
+      "content": "Résultat D1: Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse. Long contenu pour simuler une observation volumineuse."
+    },
+
+    {
+      "role": "assistant",
+      "content": "Merci."
+    }
+  ]
+}

@@ -21,7 +21,7 @@ from ...core.database import (
 )
 from ...core.tokens import count_tokens_tiktoken
 from ...core.constants import DEFAULT_MAX_CONTEXT, MCP_MAX_RESPONSE_TOKENS
-from ...config.loader import get_config
+from ...config.loader import get_config, get_observation_masking_schema1_config, get_context_pruning_config
 from ...config.display import get_max_context_for_session
 from ...services.websocket_manager import get_connection_manager
 from ...services.rate_limiter import get_rate_limiter
@@ -29,6 +29,9 @@ from ...services.alerts import check_threshold_alert, create_context_limit_alert
 from ...proxy.router import get_target_url_for_session, get_provider_host_header, map_model_name
 from ...proxy.stream import stream_generator, extract_usage_from_response
 from ...proxy.client import create_proxy_client
+from ...features.observation_masking import MaskPolicy, mask_old_tool_results
+from ...features.pruner_goal_hint import derive_goal_hint
+from ...proxy.context_pruning import prune_tool_messages_best_effort
 
 router = APIRouter()
 
@@ -94,7 +97,10 @@ async def proxy_chat(request: Request):
     from ...core.auto_session import process_auto_session
     
     current_session = get_active_session()
-    json_body = json.loads(body) if body else {}
+    try:
+        json_body = json.loads(body) if body else {}
+    except json.JSONDecodeError:
+        json_body = {}
     
     # Traiter la logique d'auto-session
     session, new_session_created = process_auto_session(json_body, current_session)
@@ -105,15 +111,68 @@ async def proxy_chat(request: Request):
     max_context = get_max_context_for_session(session, models, DEFAULT_MAX_CONTEXT)
     target_url = get_target_url_for_session(session, providers)
     provider_key = session.get("provider", "managed:kimi-code") if session else "managed:kimi-code"
-    
-    # Calcul tokens simple
+
+    messages_obj = json_body.get("messages") if isinstance(json_body, dict) else None
+    messages = messages_obj if isinstance(messages_obj, list) else []
+
+    # Schéma 1: observation masking conversationnel (tool results) avant tokens/provider send
+    schema1_cfg = get_observation_masking_schema1_config(config)
+    schema1_policy = MaskPolicy(
+        enabled=schema1_cfg.enabled,
+        window_turns=schema1_cfg.window_turns,
+        keep_errors=schema1_cfg.keep_errors,
+        keep_last_k_per_tool=schema1_cfg.keep_last_k_per_tool,
+        placeholder_template=schema1_cfg.placeholder_template,
+    )
+    effective_messages = messages
+    body_for_provider = body
+    if schema1_policy.enabled:
+        try:
+            effective_messages = mask_old_tool_results(messages, schema1_policy)
+            masked_body_json = dict(json_body)
+            masked_body_json["messages"] = effective_messages
+            body_for_provider = json.dumps(masked_body_json).encode("utf-8")
+        except Exception as e:
+            print(f"⚠️ [OBSERVATION MASKING] Échec schema1 (no-op): {e}")
+            effective_messages = messages
+            body_for_provider = body
+
+    # Lot C2: Context Pruning (MCP Pruner) — prune uniquement `role="tool"` pour
+    # préserver les invariants tool-calling.
+    pruning_cfg = get_context_pruning_config(config)
+    if pruning_cfg.enabled:
+        try:
+            goal_hint = derive_goal_hint(effective_messages)
+            effective_messages, pruning_summary = await prune_tool_messages_best_effort(
+                messages=effective_messages,
+                goal_hint=goal_hint,
+                cfg=pruning_cfg,
+                source_type="logs",
+            )
+
+            pruned_body_json = dict(json_body)
+            pruned_body_json["messages"] = effective_messages
+            body_for_provider = json.dumps(pruned_body_json).encode("utf-8")
+
+            # Logs metadata-only (pas de contenu pruné)
+            if pruning_summary.calls_attempted > 0:
+                print(
+                    "✂️ [CONTEXT PRUNING] "
+                    f"calls={pruning_summary.calls_attempted} "
+                    f"pruned_messages={pruning_summary.messages_pruned} "
+                    f"fallbacks={pruning_summary.used_fallback_count} "
+                    f"warnings={','.join(pruning_summary.warnings) if pruning_summary.warnings else 'none'}"
+                )
+        except Exception as e:
+            print(f"⚠️ [CONTEXT PRUNING] Échec (no-op): {e}")
+
+    # Calcul tokens simple (sur les messages effectivement envoyés)
     estimated_tokens = 0
     try:
-        json_body = json.loads(body)
-        messages = json_body.get("messages", [])
-        for msg in messages:
-            estimated_tokens += count_tokens_tiktoken([msg])
-    except:
+        for msg in effective_messages:
+            if isinstance(msg, dict):
+                estimated_tokens += count_tokens_tiktoken([msg])
+    except (TypeError, ValueError):
         estimated_tokens = 0
     
     # Vérification limite contexte
@@ -159,7 +218,7 @@ async def proxy_chat(request: Request):
             session_id=session["id"],
             current_tokens=cumulative_tokens,  # Utiliser les tokens cumulés
             max_context=max_context,
-            messages=json_body.get("messages", []),  # Messages de la requête
+            messages=effective_messages,  # Messages de la requête (maskés si activé)
             trigger_callback=lambda result, info: print(f"🗜️ [AUTO-COMPACTION] Déclenchée: {info}")
         )
         
@@ -170,7 +229,7 @@ async def proxy_chat(request: Request):
     
     # Proxy direct
     return await _proxy_to_provider(
-        body=body,
+        body=body_for_provider,
         headers=headers,
         provider_key=provider_key,
         providers=providers,
