@@ -123,7 +123,7 @@ Opérations fichiers haute performance avec API optimisée.
 - `fast_search_code` - Recherche dans le code (regex support)
 
 **Édition (4)**
-- `fast_edit_block` - Remplacement de bloc précis
+- `edit_file` - Remplacement de bloc précis
 - `fast_safe_edit` - Édition avec confirmation
 - `fast_edit_multiple_blocks` - Éditions multiples
 - `fast_edit_blocks` - Édition en batch

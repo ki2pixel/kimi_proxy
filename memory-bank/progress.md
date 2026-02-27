@@ -1,6 +1,53 @@
 ## Tâche en cours
 Aucune
 
+### [2026-02-27 15:58:00] - Phase DeepInfra Pruner (Tasks 1→6) : implémentation + tests + documentation - TERMINÉ
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Finaliser la chaîne DeepInfra pour MCP Pruner de bout en bout, en conservant la compatibilité proxy et un mode fail-open robuste (env > TOML, fallback heuristique), puis clôturer avec tests et documentation FR.
+
+**Livrables** :
+- Task 1: client DeepInfra async `src/kimi_proxy/features/mcp_pruner/deepinfra_client.py` (HTTPX, parsing best-effort, exceptions typées).
+- Task 2: moteur pruning DeepInfra `src/kimi_proxy/features/mcp_pruner/deepinfra_engine.py` (top-K lignes, markers/annotations canoniques).
+- Task 3: intégration serveur `src/kimi_proxy/features/mcp_pruner/server.py` (sélection backend `KIMI_PRUNING_BACKEND`, priorité `env > toml`, cache TTL in-memory, métriques coût/tokens, fail-open).
+- Task 4: fallback TOML + loader backend pruner (`config.toml` + loader config), avec priorité finale `env > toml`.
+- Task 5: tests DeepInfra/fallback/compat proxy:
+  - `tests/unit/features/test_mcp_pruner_deepinfra.py`
+  - `tests/integration/test_proxy_context_pruning_c2.py`
+- Task 6: documentation FR enrichie `docs/features/mcp-pruner.md` (DeepInfra opt-in, env vars, troubleshooting 401/429/timeout/parse, rollback).
+
+**Validation** :
+- Shrimp: **6/6 tâches complétées** (Tasks 1→6 marquées completed).
+- Tests Task 5: `./bin/kimi-proxy test tests/unit/features/test_mcp_pruner_deepinfra.py tests/integration/test_proxy_context_pruning_c2.py -q` ✅.
+- Vérification doc Task 6: sections DeepInfra + troubleshooting présentes, alignées runtime (`env > config.toml`, stats/warnings, fail-open).
+
+**Notes** :
+- Correctif test critique: conservation d’un `REAL_HTTPX_ASYNC_CLIENT` pour éviter l’effet de bord du monkeypatch de `pruner_server.httpx.AsyncClient` sur le client ASGI du test runner.
+- Le backend cloud reste strictement **opt-in**; l’heuristique locale demeure la voie par défaut.
+
+### [2026-02-27 00:58:00] - Incident démarrage MCP Pruner (port 8006) + validation globale MCP - TERMINÉ
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Diagnostiquer et corriger l’échec de démarrage du serveur MCP Pruner pendant `./start.sh`, puis valider le redémarrage complet MCP sans régression.
+
+**Livrables** :
+- Correctif robustesse readiness pruner: `scripts/start-mcp-servers.sh`
+  - remplacement `sleep 2` par boucle d’attente bornée (12s),
+  - vérification process vivant via `kill -0`,
+  - diagnostic actionnable (`tail -n 80 /tmp/mcp_pruner.log`) en échec.
+- Correctif wrapper global: `start.sh` pointe vers `bin/kimi-proxy`.
+- Documentation troubleshooting: `docs/features/mcp-pruner.md` (RCA + commandes de vérification + log vide non bloquant).
+
+**Validation** :
+- Restart MCP OK + status OK.
+- Ports en écoute: 8001/8003/8004/8005/8006 (et 8000 dashboard) confirmés.
+- Probes pruner: `GET /health` OK, JSON-RPC `initialize` OK.
+- Non-régression: `./bin/kimi-proxy test` → **134 passed**.
+
+**Notes** :
+- Un process orphelin sur `:8000` peut fausser la validation globale; nettoyage requis avant certains runs.
+- `/tmp/mcp_pruner.log` peut rester vide en démarrage nominal (`uvicorn` warning + access_log off).
+
 ## Tâches Complétées
 
 ### [2026-02-26 20:41:00] - MCP ripgrep-agent : timeouts `-32001` (bridge stdio) + configs + docs + vérification - TERMINÉ

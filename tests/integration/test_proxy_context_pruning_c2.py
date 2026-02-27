@@ -155,10 +155,17 @@ async def test_context_pruning_enabled_prunes_tool_message(monkeypatch, async_cl
                 }
             ],
             "stats": {
+                # On envoie volontairement des champs additionnels pour valider la compat
+                # avec les réponses enrichies du serveur (DeepInfra + métriques).
+                "backend": "deepinfra",
                 "tokens_est_before": 100,
                 "tokens_est_after": 10,
                 "used_fallback": False,
                 "pruned_ratio": 0.9,
+                "tokens_saved_est": 90,
+                "cost_estimated_usd": 0.0000009,
+                "deepinfra_latency_ms": 7,
+                "deepinfra_cached": False,
             },
             "warnings": [],
         }

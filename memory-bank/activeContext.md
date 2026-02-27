@@ -1,6 +1,15 @@
 ## Tâche en Cours
 Aucune
 
+## Dernière Session
+- [2026-02-27 15:58:00] - Phase DeepInfra Pruner (Tasks 1→6) finalisée et validée dans Shrimp.
+- Implémentation complète livrée: client DeepInfra async (`deepinfra_client.py`), moteur pruning top-K (`deepinfra_engine.py`), intégration serveur MCP (`server.py`) avec sélection backend `env > toml`, fail-open heuristique, cache TTL in-memory et métriques enrichies.
+- Validation qualité: tests Task 5 passés (`tests/unit/features/test_mcp_pruner_deepinfra.py` + `tests/integration/test_proxy_context_pruning_c2.py`) via `./bin/kimi-proxy test ... -q`; correction du patch `httpx.AsyncClient` en tests ASGI (référence client réel conservée).
+- Documentation Task 6 terminée: `docs/features/mcp-pruner.md` mis à jour (FR) avec TL;DR, problem-first, blocs ❌/✅, trade-offs, Golden Rule, troubleshooting DeepInfra (401/429/timeout/parse), rollback et alignement strict env vars/runtime.
+- [2026-02-27 00:58:00] - Incident démarrage MCP Pruner résolu: faux négatif readiness corrigé dans `scripts/start-mcp-servers.sh` (boucle 12s + `kill -0` + diagnostic log), wrapper `start.sh` corrigé vers `bin/kimi-proxy`, validations restart/global OK, tests `./bin/kimi-proxy test` = 134/134.
+- Vérifications opérationnelles: ports 8000/8001/8003/8004/8005/8006 LISTEN, `GET /health` pruner OK, JSON-RPC `initialize` OK.
+- Documentation enrichie: `docs/features/mcp-pruner.md` section troubleshooting (RCA, commandes, note log vide).
+
 ## Session Terminée
 - [2026-02-26 20:41:00] - **MCP ripgrep-agent timeouts (-32001) — TERMINÉ** :
   - RCA: limite ~64KiB de `StreamReader.readline()` sur stdout (réponses JSON-RPC 1-ligne trop volumineuses).

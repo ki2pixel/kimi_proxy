@@ -326,21 +326,40 @@ start_pruner_server() {
 
     log_info "Lancement du serveur MCP Pruner sur le port $PRUNER_PORT..."
 
-    MCP_PRUNER_PORT="$PRUNER_PORT" PYTHONPATH="$(pwd)/src:$PYTHONPATH" nohup \
+    MCP_PRUNER_PORT="$PRUNER_PORT" PYTHONPATH="$(pwd)/src:${PYTHONPATH:-}" nohup \
         python3 -m kimi_proxy.features.mcp_pruner.server \
         > /tmp/mcp_pruner.log 2>&1 &
     PRUNER_PID=$!
 
-    sleep 2
+    # Readiness: le démarrage peut dépasser 2s (imports/uvicorn).
+    # On attend jusqu'à 12s et on s'arrête si le process meurt.
+    local max_wait_s=12
+    local waited_s=0
 
-    if check_port $PRUNER_PORT; then
-        log_success "MCP Pruner démarré (PID: $PRUNER_PID)"
-        echo $PRUNER_PID > /tmp/mcp_pruner.pid
-    else
-        log_error "Échec du démarrage du serveur MCP Pruner"
-        echo "   Logs: /tmp/mcp_pruner.log"
-        exit 1
+    while [ $waited_s -lt $max_wait_s ]; do
+        if check_port $PRUNER_PORT; then
+            log_success "MCP Pruner démarré (PID: $PRUNER_PID)"
+            echo $PRUNER_PID > /tmp/mcp_pruner.pid
+            return
+        fi
+
+        if ! kill -0 "$PRUNER_PID" 2>/dev/null; then
+            break
+        fi
+
+        sleep 1
+        waited_s=$((waited_s + 1))
+    done
+
+    log_error "Échec du démarrage du serveur MCP Pruner (attendu ${max_wait_s}s)"
+    echo "   Logs: /tmp/mcp_pruner.log"
+    echo "   PID: $PRUNER_PID"
+    if [ -f /tmp/mcp_pruner.log ]; then
+        echo ""
+        echo "--- Dernières lignes (/tmp/mcp_pruner.log) ---"
+        tail -n 80 /tmp/mcp_pruner.log 2>/dev/null || true
     fi
+    exit 1
 }
 
 # =============================================================================

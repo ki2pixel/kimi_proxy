@@ -58,7 +58,7 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
   - **Écriture**: `fast_write_file`, `fast_large_write_file`
   - **Navigation**: `fast_list_directory`, `fast_get_directory_tree`
   - **Recherche**: `fast_search_files`, `fast_search_code`
-  - **Édition**: `fast_edit_block`, `fast_safe_edit`, `fast_edit_multiple_blocks`
+  - **Édition**: `edit_file`, `fast_safe_edit`, `fast_edit_multiple_blocks`
   - **Gestion**: `fast_copy_file`, `fast_move_file`, `fast_delete_file`
   - **Batch**: `fast_batch_file_operations`
   - **Compression**: `fast_compress_files`, `fast_extract_archive`

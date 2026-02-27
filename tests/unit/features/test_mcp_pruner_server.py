@@ -7,6 +7,8 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+import kimi_proxy.features.mcp_pruner.server as pruner_server
+from kimi_proxy.features.mcp_pruner.deepinfra_client import DeepInfraHTTPError, DeepInfraRerankResult
 from kimi_proxy.features.mcp_pruner.server import create_app
 
 
@@ -106,6 +108,8 @@ async def test_tools_call_prune_text_and_recover_text(async_client: httpx.AsyncC
     assert isinstance(stats, dict)
     assert isinstance(stats.get("tokens_est_before"), int)
     assert isinstance(stats.get("tokens_est_after"), int)
+    assert "tokens_saved_est" in stats
+    assert "cost_estimated_usd" in stats
 
     recover_req = {
         "jsonrpc": "2.0",
@@ -208,3 +212,215 @@ async def test_recover_text_invalid_range_returns_domain_error(async_client: htt
     err = rec_body.get("error")
     assert isinstance(err, dict)
     assert err.get("code") == -32005
+
+
+@pytest.mark.asyncio
+async def test_tools_call_prune_text_deepinfra_success(monkeypatch: pytest.MonkeyPatch, async_client: httpx.AsyncClient) -> None:
+    monkeypatch.setenv("KIMI_PRUNING_BACKEND", "deepinfra")
+    monkeypatch.setenv("DEEPINFRA_API_KEY", "test-key")
+    monkeypatch.setenv("DEEPINFRA_MAX_DOCS", "128")
+
+    async def _fake_rerank(self: object, *, query: str, documents: list[str]) -> DeepInfraRerankResult:
+        # Score haut sur la première et dernière ligne pour forcer des blocs prunés.
+        scores: dict[int, float] = {}
+        if documents:
+            scores[0] = 10.0
+            scores[len(documents) - 1] = 9.0
+        return DeepInfraRerankResult(scores_by_index=scores, elapsed_ms=7)
+
+    monkeypatch.setattr(pruner_server.DeepInfraClient, "rerank", _fake_rerank)
+
+    text = "\n".join(
+        [
+            "L1 keep",
+            "L2 prune",
+            "L3 prune",
+            "L4 prune",
+            "L5 prune",
+            "L6 prune",
+            "L7 prune",
+            "L8 keep",
+        ]
+    )
+
+    prune_req = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "prune_text",
+            "arguments": {
+                "text": text,
+                "goal_hint": "keep",
+                "source_type": "docs",
+                "options": {
+                    "max_prune_ratio": 0.8,
+                    "min_keep_lines": 2,
+                    "timeout_ms": 1500,
+                    "annotate_lines": True,
+                    "include_markers": True,
+                },
+            },
+        },
+        "id": "deepinfra-ok",
+    }
+
+    resp = await async_client.post("/rpc", json=prune_req)
+    assert resp.status_code == 200
+    body = resp.json()
+    payload = json.loads(str(body["result"]["content"][0]["text"]))
+
+    stats = payload.get("stats")
+    assert isinstance(stats, dict)
+    assert stats.get("backend") == "deepinfra"
+    assert stats.get("used_fallback") is False
+    assert stats.get("deepinfra_latency_ms") == 7
+
+    pruned_text = str(payload.get("pruned_text"))
+    assert "⟦PRUNÉ:" in pruned_text
+
+    # Règle critique: si annotate_lines=true, les markers ne doivent JAMAIS être préfixés par "N│".
+    for line in pruned_text.splitlines():
+        assert "│ ⟦PRUNÉ:" not in line
+
+
+@pytest.mark.asyncio
+async def test_tools_call_prune_text_deepinfra_fallback_on_http_error(
+    monkeypatch: pytest.MonkeyPatch, async_client: httpx.AsyncClient
+) -> None:
+    monkeypatch.setenv("KIMI_PRUNING_BACKEND", "deepinfra")
+    monkeypatch.setenv("DEEPINFRA_API_KEY", "test-key")
+    monkeypatch.setenv("DEEPINFRA_MAX_DOCS", "128")
+
+    async def _fake_rerank_error(self: object, *, query: str, documents: list[str]) -> DeepInfraRerankResult:
+        raise DeepInfraHTTPError("rate_limited", status_code=429, endpoint_url="https://example.test")
+
+    monkeypatch.setattr(pruner_server.DeepInfraClient, "rerank", _fake_rerank_error)
+
+    prune_req = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "prune_text",
+            "arguments": {
+                "text": "a\n" * 20,
+                "goal_hint": "a",
+                "source_type": "docs",
+                "options": {
+                    "max_prune_ratio": 0.8,
+                    "min_keep_lines": 2,
+                    "timeout_ms": 1500,
+                    "annotate_lines": False,
+                    "include_markers": True,
+                },
+            },
+        },
+        "id": "deepinfra-fallback",
+    }
+
+    resp = await async_client.post("/rpc", json=prune_req)
+    assert resp.status_code == 200
+    body = resp.json()
+    payload = json.loads(str(body["result"]["content"][0]["text"]))
+
+    stats = payload.get("stats")
+    assert isinstance(stats, dict)
+    assert stats.get("backend") == "deepinfra"
+    assert stats.get("used_fallback") is True
+    assert stats.get("deepinfra_http_status") == 429
+
+    warnings = payload.get("warnings")
+    assert isinstance(warnings, list)
+    assert "deepinfra_error" in warnings
+
+
+@pytest.mark.asyncio
+async def test_backend_selection_uses_toml_when_env_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("KIMI_PRUNING_BACKEND", raising=False)
+    monkeypatch.setenv("DEEPINFRA_API_KEY", "test-key")
+
+    # Force config TOML simulée (fallback) — deepinfra activé
+    monkeypatch.setattr(pruner_server, "get_config", lambda: {"mcp_pruner": {"backend": "deepinfra"}})
+
+    async def _fake_rerank(self: object, *, query: str, documents: list[str]) -> DeepInfraRerankResult:
+        scores: dict[int, float] = {}
+        if documents:
+            scores[0] = 1.0
+        return DeepInfraRerankResult(scores_by_index=scores, elapsed_ms=3)
+
+    monkeypatch.setattr(pruner_server.DeepInfraClient, "rerank", _fake_rerank)
+
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        prune_req = {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": "prune_text",
+                "arguments": {
+                    "text": "a\n" * 10,
+                    "goal_hint": "a",
+                    "source_type": "docs",
+                    "options": {
+                        "max_prune_ratio": 0.8,
+                        "min_keep_lines": 2,
+                        "timeout_ms": 1500,
+                        "annotate_lines": False,
+                        "include_markers": True,
+                    },
+                },
+            },
+            "id": "toml-backend",
+        }
+
+        resp = await client.post("/rpc", json=prune_req)
+        assert resp.status_code == 200
+        payload = json.loads(str(resp.json()["result"]["content"][0]["text"]))
+        stats = payload.get("stats")
+        assert isinstance(stats, dict)
+        assert stats.get("backend") == "deepinfra"
+
+
+@pytest.mark.asyncio
+async def test_backend_selection_env_overrides_toml(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KIMI_PRUNING_BACKEND", "heuristic")
+    monkeypatch.setenv("DEEPINFRA_API_KEY", "test-key")
+
+    # Toml prétend deepinfra mais env force heuristic
+    monkeypatch.setattr(pruner_server, "get_config", lambda: {"mcp_pruner": {"backend": "deepinfra"}})
+
+    async def _should_not_call_rerank(self: object, *, query: str, documents: list[str]) -> DeepInfraRerankResult:
+        raise AssertionError("DeepInfraClient.rerank ne doit pas être appelé quand env force heuristic")
+
+    monkeypatch.setattr(pruner_server.DeepInfraClient, "rerank", _should_not_call_rerank)
+
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        prune_req = {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": "prune_text",
+                "arguments": {
+                    "text": "a\n" * 10,
+                    "goal_hint": "a",
+                    "source_type": "docs",
+                    "options": {
+                        "max_prune_ratio": 0.8,
+                        "min_keep_lines": 2,
+                        "timeout_ms": 1500,
+                        "annotate_lines": False,
+                        "include_markers": True,
+                    },
+                },
+            },
+            "id": "env-overrides",
+        }
+
+        resp = await client.post("/rpc", json=prune_req)
+        assert resp.status_code == 200
+        payload = json.loads(str(resp.json()["result"]["content"][0]["text"]))
+        stats = payload.get("stats")
+        assert isinstance(stats, dict)
+        assert stats.get("backend") == "heuristic"

@@ -14,7 +14,7 @@ Le pruner doit donc:
 
 - **Élaguer** de façon déterministe et “task‑aware” (via `goal_hint`).
 - **Ne jamais être un filtre destructif**: il doit laisser des traces (markers/annotations) et permettre la **récupération**.
-- Rester **local‑first**: aucun appel réseau externe; aucune exfiltration.
+- Rester **local‑first par défaut**: aucun appel réseau externe; backend cloud uniquement en opt‑in.
 
 ---
 
@@ -325,8 +325,12 @@ Règle: si un marker est inséré, il doit être l’image exacte de l’annotat
 ## 7) Local‑first & sécurité
 
 ### 7.1 Local‑first
-- Le serveur **ne doit pas** effectuer d’appels réseau externes.
-- Les données entrantes (`text`) ne doivent pas quitter la machine.
+- Par défaut, le serveur est **local‑first** (aucun appel réseau externe).
+- Si vous activez le backend cloud **DeepInfra** (opt‑in), le serveur effectuera un appel réseau vers DeepInfra, et une partie du contenu (`text` → lignes) quittera la machine.
+
+En pratique:
+- **backend=heuristic**: local‑only.
+- **backend=deepinfra**: cloud opt‑in (exfiltration contrôlée par l’utilisateur via env vars).
 
 ### 7.2 Anti prompt‑injection (principes)
 - Traiter `text` et `goal_hint` comme **contenu non fiable**.
@@ -491,9 +495,265 @@ Le pruner doit être **audit‑friendly**: chaque suppression doit être traçab
   - `MCP_PRUNER_PORT`
   - `MCP_PRUNER_MAX_INPUT_CHARS`
   - `MCP_PRUNER_PRUNE_ID_TTL_S`
+  - Cache (env > TOML):
+    - `MCP_PRUNER_CACHE_TTL_S`
+    - `MCP_PRUNER_CACHE_MAX_ITEMS` (alias compat: `MCP_PRUNER_CACHE_MAX_ENTRIES`)
+  - Sélection backend pruning (env > TOML):
+    - `KIMI_PRUNING_BACKEND` (`heuristic` | `deepinfra`, alias: `cloud`)
+  - DeepInfra (cloud opt‑in, secrets uniquement en env):
+    - `DEEPINFRA_API_KEY` (obligatoire si backend deepinfra)
+    - `DEEPINFRA_ENDPOINT_URL` (optionnel)
+    - `DEEPINFRA_TIMEOUT_MS` (optionnel; fallback TOML `mcp_pruner.deepinfra_timeout_ms`)
+    - `DEEPINFRA_MAX_DOCS` (optionnel; fallback TOML `mcp_pruner.deepinfra_max_docs`)
+
+---
+
+## 13) Backend DeepInfra (cloud, opt‑in)
+
+### TL;DR
+Le pruner est **heuristique et local** par défaut. Si vous avez besoin d’un pruning plus “task‑aware”, vous pouvez activer DeepInfra via `KIMI_PRUNING_BACKEND=deepinfra` et `DEEPINFRA_API_KEY=...`.
+
+Règles importantes:
+- **Priorité**: `env > config.toml`.
+- **Secrets**: la clé DeepInfra reste **uniquement** en variable d’environnement.
+- **Fail‑open**: en cas d’erreur DeepInfra (timeout/401/429/JSON invalide…), le serveur ne crash pas; il retombe sur la baseline heuristique avec `stats.used_fallback=true`.
+
+### Le problème
+La baseline heuristique est robuste, mais elle ne “comprend” pas votre objectif. Sur des logs ou du code très longs, elle peut garder trop de bruit ou supprimer des lignes importantes.
+
+DeepInfra ajoute un signal: un reranker score vos lignes en fonction de `goal_hint`, puis le pruner conserve les meilleures lignes **sans violer** `max_prune_ratio` et `min_keep_lines`.
+
+### Activation (env > TOML)
+
+#### ❌ À éviter: mettre des secrets dans `config.toml`
+```toml
+[mcp_pruner]
+backend = "deepinfra"
+deepinfra_api_key = "sk-..." # interdit: secrets dans le TOML
+```
+
+#### ✅ Recommandé: backend en env, secrets en env
+```bash
+export KIMI_PRUNING_BACKEND=deepinfra
+export DEEPINFRA_API_KEY="sk_deepinfra_..."
+
+# optionnels
+export DEEPINFRA_TIMEOUT_MS=20000
+export DEEPINFRA_MAX_DOCS=128
+```
+
+### Paramètres supportés
+
+#### Sélection backend
+- `KIMI_PRUNING_BACKEND`:
+  - `deepinfra` (ou alias `cloud`) pour activer DeepInfra.
+  - toute autre valeur (ou variable absente) => heuristique, sauf si TOML demande DeepInfra.
+
+Fallback TOML (si env absent):
+```toml
+[mcp_pruner]
+backend = "heuristic" # ou "deepinfra"
+deepinfra_timeout_ms = 20000
+deepinfra_max_docs = 64
+cache_ttl_s = 30
+cache_max_entries = 256
+```
+
+#### DeepInfra (cloud)
+- `DEEPINFRA_API_KEY` (obligatoire si backend deepinfra)
+- `DEEPINFRA_ENDPOINT_URL` (optionnel; défaut: `https://api.deepinfra.com/v1/inference/Qwen/Qwen3-Reranker-0.6B`)
+- `DEEPINFRA_TIMEOUT_MS` (optionnel; sinon fallback TOML `mcp_pruner.deepinfra_timeout_ms`)
+- `DEEPINFRA_MAX_DOCS` (optionnel; sinon fallback TOML `mcp_pruner.deepinfra_max_docs`)
+
+#### Cache (réduction appels cloud)
+Le serveur maintient un cache TTL in‑memory pour éviter de reranker deux fois le même contenu.
+
+- `MCP_PRUNER_CACHE_TTL_S` (optionnel; sinon fallback TOML `mcp_pruner.cache_ttl_s`)
+- `MCP_PRUNER_CACHE_MAX_ITEMS` (optionnel; sinon fallback TOML `mcp_pruner.cache_max_entries`)
+  - Alias compat: `MCP_PRUNER_CACHE_MAX_ENTRIES`
+
+### Ce que vous verrez dans la réponse
+
+#### Champs `stats` (DeepInfra)
+En plus des champs standards (`tokens_est_*`, `pruned_ratio`, `elapsed_ms`, `used_fallback`), le backend DeepInfra peut fournir:
+
+- `backend`: `"deepinfra"`
+- `deepinfra_latency_ms`: latence rerank (0 en `cache_hit`)
+- `deepinfra_docs_scored`: nombre de lignes réellement scorées
+- `deepinfra_docs_total`: nombre total de lignes
+- `deepinfra_http_status`: `200` en nominal; présent aussi en cas d’erreur HTTP (ex: `429`)
+- `deepinfra_cached`: bool (si le résultat provient du cache)
+- `tokens_saved_est`: estimation des tokens économisés (`tokens_est_before - tokens_est_after`)
+- `cost_estimated_usd`: coût estimé associé aux tokens économisés (formule côté serveur)
+
+#### Warnings (liste non exhaustive)
+- `cache_hit`
+- `deepinfra_docs_truncated` (si `deepinfra_docs_total > deepinfra_docs_scored`)
+- `deepinfra_error` + un code plus précis:
+  - `deepinfra_http_error` (HTTP 401/429/etc. ou transport)
+  - `deepinfra_parse_error` (JSON inattendu / non-JSON)
+  - `deepinfra_config_error` (ex: `DEEPINFRA_API_KEY` absente)
+
+### Exemples testables
+
+#### 1) Vérifier la santé du serveur
+```bash
+curl -sS http://127.0.0.1:8006/health | jq
+```
+
+#### 2) Appeler `prune_text` (backend DeepInfra)
+```bash
+export KIMI_PRUNING_BACKEND=deepinfra
+export DEEPINFRA_API_KEY="sk_deepinfra_..."
+
+curl -sS \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":2,
+    "method":"tools/call",
+    "params":{
+      "name":"prune_text",
+      "arguments":{
+        "text":"L1 keep\nL2 prune\nL3 prune\nL4 keep",
+        "goal_hint":"keep",
+        "source_type":"docs",
+        "options":{
+          "max_prune_ratio":0.75,
+          "min_keep_lines":1,
+          "timeout_ms":1500,
+          "annotate_lines":true,
+          "include_markers":true
+        }
+      }
+    }
+  }' \
+  http://127.0.0.1:8006/rpc | jq -r '.result.content[0].text' | jq
+```
+
+### Trade-offs (heuristic vs DeepInfra)
+
+| Backend | Appel réseau | Qualité “task‑aware” | Coût | Mode échec |
+| --- | --- | --- | --- | --- |
+| `heuristic` | Non | Moyenne | 0$ | Pas de dépendance externe |
+| `deepinfra` | Oui (opt‑in) | Meilleure sur contextes longs | $ (provider) | **Fail‑open** vers heuristique (`used_fallback=true`) |
+
+## Golden Rule (DeepInfra)
+Activez DeepInfra **uniquement** si vous acceptez un appel cloud; gardez les secrets en env, et gardez en tête que le système est conçu pour **ne jamais casser** votre pipeline: en cas d’erreur, il retombe sur l’heuristique.
 
 ### ❌ Hypothèse erronée
 Le pruner baseline implémente déjà un modèle externe SWE-Pruner/ONNX complet.
 
 ### ✅ État réel
 Le lot A2 implémente une baseline heuristique locale. Le contrat d’interface reste stable et compatible pour brancher ensuite un moteur de pruning plus avancé.
+
+---
+
+## 14) Troubleshooting démarrage MCP Pruner (incident 2026-02-27)
+
+### TL;DR
+Si `start-mcp-servers.sh` annonce un échec pruner alors que le serveur est sain, la cause la plus probable est un **faux négatif de readiness** (démarrage > 2s). Le correctif est une boucle d’attente bornée (12s) avec vérification `kill -0` et diagnostic de log.
+
+### Problème observé
+- Symptôme: `Échec du démarrage du serveur MCP Pruner` lors de `./start.sh` ou `./scripts/start-mcp-servers.sh start`.
+- Faux indice fréquent: `/tmp/mcp_pruner.log` vide (0 octet).
+
+### Cause racine validée
+- L’ancienne logique utilisait `sleep 2` + check port unique.
+- Le pruner peut ouvrir le port après ~2.6s selon la charge/imports.
+- Résultat: le script échouait trop tôt alors que le serveur devenait disponible juste après.
+
+### Correctif appliqué
+Dans `scripts/start-mcp-servers.sh`, `start_pruner_server()`:
+- démarre le pruner avec `PYTHONPATH="$(pwd)/src:${PYTHONPATH:-}"`;
+- attend jusqu’à 12 secondes avec boucle (`check_port` chaque seconde);
+- arrête l’attente si le process meurt (`kill -0`);
+- en échec réel, affiche un diagnostic actionnable (`tail -n 80 /tmp/mcp_pruner.log`).
+
+### Pourquoi le log peut rester vide
+Un `/tmp/mcp_pruner.log` vide n’implique pas un crash:
+- `uvicorn` est lancé en `log_level="warning"`;
+- `access_log=False`;
+- au démarrage nominal, aucune ligne n’est forcément écrite.
+
+### Commandes de vérification recommandées
+
+```bash
+./scripts/start-mcp-servers.sh restart
+./scripts/start-mcp-servers.sh status
+
+ss -ltn | grep -E ':8001 |:8003 |:8004 |:8005 |:8006 '
+
+curl -sS http://localhost:8006/health | jq
+curl -sS -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","clientInfo":{"name":"diag","version":"1.0.0"}}}' \
+  http://localhost:8006/rpc | jq
+```
+
+### Cas particulier rencontré pendant validation globale
+Un échec de `./start.sh` peut venir d’un wrapper shell invalide ou d’un process orphelin sur `:8000`, indépendamment du pruner:
+- wrapper corrigé: `start.sh` pointe vers `bin/kimi-proxy`;
+- si `:8000` est déjà occupé par un ancien process non référencé, stopper ce process avant la validation.
+
+### Golden Rule (ops)
+Pour diagnostiquer un démarrage MCP: **privilégier les probes réseau (`/health`, JSON-RPC `initialize`) et l’état des ports**; ne pas utiliser la taille de `/tmp/mcp_pruner.log` comme signal principal de santé.
+
+---
+
+## 15) Troubleshooting DeepInfra (401/429/timeout/parse)
+
+### TL;DR
+Si DeepInfra est instable, vous ne devez pas “réparer” le proxy en urgence: le serveur pruner est déjà **fail‑open**. Votre priorité est d’identifier la cause (clé API, rate limit, timeout) et, si besoin, de **rollback** vers l’heuristique.
+
+### 1) DeepInfra ne s’active pas (reste en heuristique)
+Checklist:
+- Vérifier `KIMI_PRUNING_BACKEND=deepinfra` (ou `cloud`).
+- Si `KIMI_PRUNING_BACKEND` est absent, vérifier le fallback TOML `[mcp_pruner].backend`.
+
+### 2) 401 Unauthorized
+Symptômes:
+- `warnings` contient `deepinfra_error` + `deepinfra_http_error`.
+- `stats.deepinfra_http_status == 401`.
+
+Causes fréquentes:
+- `DEEPINFRA_API_KEY` absente ou invalide.
+
+Actions:
+- Vérifier que la variable d’environnement est chargée (ex: `.env` → `./scripts/start.sh`).
+- Regénérer la clé côté DeepInfra si nécessaire.
+
+### 3) 429 Rate limited
+Symptômes:
+- `stats.deepinfra_http_status == 429`.
+- `warnings` inclut `deepinfra_http_error`.
+
+Actions:
+- Réduire la cadence; augmenter le cache TTL (`MCP_PRUNER_CACHE_TTL_S`).
+- Réduire la charge par appel en diminuant `DEEPINFRA_MAX_DOCS`.
+
+### 4) Timeout
+Symptômes:
+- `warnings` contient `deepinfra_http_error` (timeout transport).
+- Le résultat est pruné en heuristique avec `stats.used_fallback=true`.
+
+Actions:
+- Augmenter `DEEPINFRA_TIMEOUT_MS`.
+- Vérifier la connectivité réseau et le DNS.
+
+### 5) JSON invalide / parse error
+Symptômes:
+- `warnings` contient `deepinfra_parse_error`.
+
+Causes fréquentes:
+- Endpoint custom (`DEEPINFRA_ENDPOINT_URL`) renvoie un format incompatible.
+
+Actions:
+- Revenir au `DEEPINFRA_ENDPOINT_URL` par défaut.
+- Vérifier la réponse brute côté réseau (hors pruner) uniquement si vous savez ce que vous faites.
+
+### 6) Rollback rapide (recommandé)
+```bash
+export KIMI_PRUNING_BACKEND=heuristic
+```
+
+Ou simplement unset la variable (et garder `backend=heuristic` côté TOML).

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Memory Bank Protocol defines the mandatory lifecycle of project context. It uses fast-filesystem MCP tools to minimize token overhead while maintaining precise documentation.
+The Memory Bank Protocol defines the mandatory lifecycle of project context. It uses fast-filesystem and filesystem-agent MCP tools to minimize token overhead while maintaining precise documentation.
 
 **Token-Saver Mode**: Minimize context usage by leveraging tools instead of pre-loading data.
 
@@ -21,7 +21,7 @@ The Memory Bank Protocol defines the mandatory lifecycle of project context. It 
 
 ## File Structure & Responsibilities
 
-Access via `fast_read_file`, `fast_edit_block`, or `fast_list_directory` using absolute paths:
+Access via `fast_read_file`, `edit_file`, or `fast_list_directory` using absolute paths:
 
 - **`productContext.md`**: Project scope, goals, and standards
 - **`activeContext.md`**: Current session state, active decisions, and blockers
@@ -65,7 +65,7 @@ Access via `fast_read_file`, `fast_edit_block`, or `fast_list_directory` using a
 1. **Halt**: Stop current activity
 2. **Acknowledge**: Respond with `[MEMORY BANK: UPDATING]`
 3. **Audit**: Review current chat for decisions, changes, or clarifications
-4. **Sync**: Call `fast_edit_block` on relevant files (usually `progress.md` and `activeContext.md`)
+4. **Sync**: Call `edit_file` on relevant files (usually `progress.md` and `activeContext.md`)
 5. **Clean**: Do NOT summarize entire project history, only current session deltas
 
 ## Observability & Dashboard Triggers

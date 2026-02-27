@@ -10,7 +10,7 @@ Note d'architecture:
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Literal
 
 from ..core.exceptions import ConfigurationError
 
@@ -218,6 +218,90 @@ def get_compression_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "preserve_recent_exchanges": DEFAULT_COMPRESSION_CONFIG["preserve_recent_exchanges"],
         "summary_max_tokens": DEFAULT_COMPRESSION_CONFIG["summary_max_tokens"],
     }
+
+
+@dataclass(frozen=True)
+class MCPPrunerBackendConfig:
+    """Configuration du serveur MCP Pruner (fallback TOML).
+
+    Règle de priorité:
+    - env > toml
+    - ce fichier ne contient pas de secrets (API keys restent en env)
+    """
+
+    backend: Literal["heuristic", "deepinfra"] = "heuristic"
+    deepinfra_timeout_ms: int = 20_000
+    deepinfra_max_docs: int = 64
+    cache_ttl_s: int = 30
+    cache_max_entries: int = 256
+
+
+def get_mcp_pruner_backend_config(config: Dict[str, Any]) -> MCPPrunerBackendConfig:
+    """Charge la config `[mcp_pruner]` depuis le TOML avec fallback robuste.
+
+    Important:
+    - Ne doit pas dépendre de `features/*`.
+    - N'applique pas la priorité env: cette priorité est gérée au point de consommation.
+    """
+
+    defaults = MCPPrunerBackendConfig()
+    obj = config.get("mcp_pruner")
+    if not isinstance(obj, dict):
+        return defaults
+
+    backend_obj = obj.get("backend", defaults.backend)
+    backend: Literal["heuristic", "deepinfra"]
+    if isinstance(backend_obj, str) and backend_obj.strip().lower() in {"deepinfra", "cloud"}:
+        backend = "deepinfra"
+    else:
+        backend = "heuristic"
+
+    def _clamp_int(value: object, *, default: int, min_value: int, max_value: int) -> int:
+        if isinstance(value, int) and not isinstance(value, bool):
+            v = value
+        elif isinstance(value, float) and not isinstance(value, bool):
+            v = int(value)
+        else:
+            return default
+        if v < min_value:
+            return min_value
+        if v > max_value:
+            return max_value
+        return v
+
+    deepinfra_timeout_ms = _clamp_int(
+        obj.get("deepinfra_timeout_ms", defaults.deepinfra_timeout_ms),
+        default=defaults.deepinfra_timeout_ms,
+        min_value=1,
+        max_value=120_000,
+    )
+    deepinfra_max_docs = _clamp_int(
+        obj.get("deepinfra_max_docs", defaults.deepinfra_max_docs),
+        default=defaults.deepinfra_max_docs,
+        min_value=1,
+        max_value=512,
+    )
+
+    cache_ttl_s = _clamp_int(
+        obj.get("cache_ttl_s", defaults.cache_ttl_s),
+        default=defaults.cache_ttl_s,
+        min_value=1,
+        max_value=3600,
+    )
+    cache_max_entries = _clamp_int(
+        obj.get("cache_max_entries", defaults.cache_max_entries),
+        default=defaults.cache_max_entries,
+        min_value=1,
+        max_value=100_000,
+    )
+
+    return MCPPrunerBackendConfig(
+        backend=backend,
+        deepinfra_timeout_ms=deepinfra_timeout_ms,
+        deepinfra_max_docs=deepinfra_max_docs,
+        cache_ttl_s=cache_ttl_s,
+        cache_max_entries=cache_max_entries,
+    )
 
 
 @dataclass(frozen=True)

@@ -1,13 +1,13 @@
 ---
 trigger: always_on
-description: Memory Bank Protocol (Version Fast-Filesystem MCP-Optimized)
+description: Memory Bank Protocol (Version Filesystem-Agent MCP-Optimized)
 globs: 
 ---
 
-# Memory Bank Protocol (Version Fast-Filesystem MCP-Optimized)
+# Memory Bank Protocol (Version Filesystem-Agent MCP-Optimized)
 
 ## Overview
-This protocol defines the mandatory cycle of life for project context. It uses the `fast-filesystem` MCP server to minimize token noise while maintaining surgical precision in documentation.
+This protocol defines the mandatory cycle of life for project context. It uses the `fast-filesystem` and `filesystem-agent` MCP servers to minimize token noise while maintaining surgical precision in documentation.
 
 **Windsurf is now in 'Token-Saver' mode. Minimize context usage by using tools instead of pre-loading.**
 
@@ -21,12 +21,12 @@ This protocol defines the mandatory cycle of life for project context. It uses t
 4. **Prefix Requirement:** Begin the response with `[MEMORY BANK: ACTIVE (MCP-PULL)]`.
 5. **Fault Tolerance (Fallback):** If `fast_read_file` fails ("server not found"), state that the fast-filesystem MCP is unavailable and proceed without context.
 6. **Prohibition:** Never load more than one file at a time.
-7. **Locking Instruction:** ALWAYS use absolute paths for memory-bank files in `/home/kidpixel/kimi-proxy/memory-bank/`. Use EXCLUSIVELY the fast-filesystem MCP tools (fast_*). Do NOT attempt to read memory-bank files via regular filesystem tools (read_file).
+7. **Locking Instruction:** ALWAYS use absolute paths for memory-bank files in `/home/kidpixel/kimi-proxy/memory-bank/`. Use EXCLUSIVELY the fast-filesystem and filesystem-agent MCP tools. Do NOT attempt to read memory-bank files via regular filesystem tools (read_file).
 
 ---
 
 ## 2. File Structure & Responsibilities
-Access these via `fast_read_file`, `fast_edit_block`, or `fast_list_directory` using absolute paths in `/home/kidpixel/kimi-proxy/memory-bank/`.
+Access these via `fast_read_file`, `edit_file`, or `fast_list_directory` using absolute paths in `/home/kidpixel/kimi-proxy/memory-bank/`.
 
 -   **`productContext.md`**: Project scope, goals, and standards.
 -   **`activeContext.md`**: Current session state, active decisions, and blockers.
@@ -75,7 +75,7 @@ Access these via `fast_read_file`, `fast_edit_block`, or `fast_list_directory` u
     1.  **Halt:** Stop current activity.
     2.  **Acknowledge:** Respond with `[MEMORY BANK: UPDATING]`.
     3.  **Audit:** Review current chat for decisions, changes, or clarifications.
-    4.  **Sync:** Call `fast_edit_block` on relevant files (usually `progress.md` and `activeContext.md`).
+    4.  **Sync:** Call `edit_file` on relevant files (usually `progress.md` and `activeContext.md`).
     5.  **Clean:** Do NOT summarize the entire project history, only the *current session's* deltas.
 
 ---

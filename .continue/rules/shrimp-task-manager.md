@@ -168,7 +168,7 @@ Utilise `process_thought` avec `sequentialthinking-tools` pour valider la logiqu
 
 ### Avec Fast Filesystem
 
-Utilise `fast_edit_block` pour implémenter les tâches générées par Shrimp Task Manager de manière chirurgicale.
+Utilise `edit_file` pour implémenter les tâches générées par Shrimp Task Manager de manière chirurgicale.
 
 ### Avec JSON Query
 

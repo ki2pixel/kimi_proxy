@@ -13,11 +13,11 @@ invokable: true
    - Suspendre la tâche en cours puis résumer la session.  
    - Utiliser `search` pour identifier les fichiers additionnels à consulter (ex. docs liés à la session).
 3. **Mettre à jour la Memory Bank**  
-   - Update the files using the 'fast_edit_block' tool.
+   - Update the files using the 'edit_file' tool.
    - Before each modification, read the relevant section with 'fast_read_file' to minimize changes.
-   - Document `decisionLog.md`, `progress.md` and active `activeContext.md` according to the protocol.
+   - Document decisions, progress and active context according to the protocol.
 4. **Clôturer la session**  
    - Résumer les tâches finalisées dans la réponse utilisateur.  
    - Vérifier avec 'fast_read_file' que `progress.md` indique "Aucune tâche active" et que `activeContext.md` est revenu à l'état neutre.
 
-**Locking Instruction:** Utilisez les outils fast-filesystem (fast_*) pour accéder aux fichiers memory-bank avec des chemins absolus.
+**Locking Instruction:** Utilisez les outils fast-filesystem (fast_*) et filesystem-agent pour accéder aux fichiers memory-bank avec des chemins absolus.

@@ -1,6 +1,6 @@
 ---
 name: json-query-expert
-description: Expert en manipulation de données JSON massives via le pattern "Sniper". Stratégie | Ne jamais charger un fichier > 1000 lignes. Inspection via json_query_jsonpath. Édition via fast_edit_block.
+description: Expert en manipulation de données JSON massives via le pattern "Sniper". Stratégie | Ne jamais charger un fichier > 1000 lignes. Inspection via json_query_jsonpath. Édition via edit_file.
 ---
 
 # JSON Query Expert
@@ -15,13 +15,13 @@ JSON Query Expert utilise le pattern "Sniper" pour les fichiers JSON :
 - Jamais de chargement complet de fichiers > 1000 lignes
 - Extraction ciblée avec `json_query_jsonpath`
 - Localisation précise avant édition
-- Modification chirurgicale avec `fast_edit_block`
+- Modification chirurgicale avec `edit_file`
 
 ### Workflow obligatoire
 
 1. **Inspection** : `json_query_jsonpath` pour localiser les données
 2. **Localisation** : Trouver les lignes exactes dans le fichier
-3. **Édition** : `fast_edit_block` pour modification ciblée
+3. **Édition** : `edit_file` pour modification ciblée
 4. **Validation** : Vérification minimale du résultat
 
 ### Patterns d'utilisation
@@ -36,7 +36,7 @@ json_query_jsonpath package.json "$.scripts.dev"
 json_query_search_keys package.json "scripts.dev"
 
 # 3. Éditer chirurgicalement
-fast_edit_block package.json --line 15 --replacement '"dev": "vite --port 3000",'
+edit_file package.json --line 15 --replacement '"dev": "vite --port 3000",'
 ```
 
 #### Pour manipulation de i18n
@@ -49,7 +49,7 @@ json_query_jsonpath locales/fr.json "$.pages.home.title"
 json_query_search_keys locales/fr.json "pages.home"
 
 # 3. Ajouter les traductions manquantes
-fast_edit_block locales/fr.json --line 45 --replacement '"title": "Page d''accueil",'
+edit_file locales/fr.json --line 45 --replacement '"title": "Page d''accueil",'
 ```
 
 ## Production-safe patterns

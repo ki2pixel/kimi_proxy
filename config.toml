@@ -205,6 +205,27 @@ annotate_lines = true
 include_markers = true
 
 # ============================================
+# MCP PRUNER — Backend selection (env > toml)
+# ============================================
+
+[mcp_pruner]
+# Backend par défaut si KIMI_PRUNING_BACKEND n'est pas défini.
+# Valeurs: "heuristic" | "deepinfra"
+backend = "heuristic"
+
+# Paramètres DeepInfra (sans secrets). Les secrets restent en env:
+# - DEEPINFRA_API_KEY (obligatoire pour activer DeepInfra)
+# - DEEPINFRA_ENDPOINT_URL (optionnel)
+# - DEEPINFRA_TIMEOUT_MS (optionnel)
+# - DEEPINFRA_MAX_DOCS (optionnel)
+deepinfra_timeout_ms = 20000
+deepinfra_max_docs = 64
+
+# Cache TTL in-memory côté serveur MCP Pruner (fallback TOML)
+cache_ttl_s = 30
+cache_max_entries = 256
+
+# ============================================
 # PARAMÈTRES DE CONTRÔLE
 # ============================================
 

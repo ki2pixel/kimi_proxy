@@ -52,7 +52,7 @@ def test_valid_tools_count(client):
     assert "fast_read_file" in client.VALID_TOOLS
     assert "fast_write_file" in client.VALID_TOOLS
     assert "fast_search_code" in client.VALID_TOOLS
-    assert "fast_edit_block" in client.VALID_TOOLS
+    assert "edit_file" in client.VALID_TOOLS
     assert "fast_list_directory" in client.VALID_TOOLS
 
 
@@ -233,7 +233,7 @@ async def test_delete_file(client, mock_rpc):
 @pytest.mark.asyncio
 async def test_edit_block(client, mock_rpc):
     """Test édition bloc précis."""
-    await client.call_tool("fast_edit_block", {
+    await client.call_tool("edit_file", {
         "path": "/config.ini",
         "old_text": "old_value = 123",
         "new_text": "new_value = 456",

@@ -71,7 +71,7 @@ MCP_PATTERNS = {
     # 2. sequential-thinking (1 outil)
     "mcp_sequential_thinking": r"(sequentialthinking_tools|sequential_thinking)",
     # 3. fast-filesystem (25 outils)
-    "mcp_fast_filesystem": r"(fast_list_allowed_directories|fast_read_file|fast_read_multiple_files|fast_write_file|fast_large_write_file|fast_list_directory|fast_get_file_info|fast_create_directory|fast_search_files|fast_search_code|fast_get_directory_tree|fast_get_disk_usage|fast_find_large_files|fast_edit_block|fast_safe_edit|fast_edit_multiple_blocks|fast_edit_blocks|fast_extract_lines|fast_copy_file|fast_move_file|fast_delete_file|fast_batch_file_operations|fast_compress_files|fast_extract_archive|fast_sync_directories)",
+    "mcp_fast_filesystem": r"(fast_list_allowed_directories|fast_read_file|fast_read_multiple_files|fast_write_file|fast_large_write_file|fast_list_directory|fast_get_file_info|fast_create_directory|fast_search_files|fast_search_code|fast_get_directory_tree|fast_get_disk_usage|fast_find_large_files|edit_file|fast_safe_edit|fast_edit_multiple_blocks|fast_edit_blocks|fast_extract_lines|fast_copy_file|fast_move_file|fast_delete_file|fast_batch_file_operations|fast_compress_files|fast_extract_archive|fast_sync_directories)",
     # 4. json-query (3 outils)
     "mcp_json_query": r"(json_query_jsonpath|json_query_search_keys|json_query_search_values)",
 }
@@ -144,7 +144,7 @@ MCP_PHASE4_CONFIG = {
             "fast_list_allowed_directories", "fast_read_file", "fast_read_multiple_files",
             "fast_write_file", "fast_large_write_file", "fast_list_directory", "fast_get_file_info",
             "fast_create_directory", "fast_search_files", "fast_search_code", "fast_get_directory_tree",
-            "fast_get_disk_usage", "fast_find_large_files", "fast_edit_block", "fast_safe_edit",
+            "fast_get_disk_usage", "fast_find_large_files", "edit_file", "fast_safe_edit",
     "fast_edit_multiple_blocks", "fast_edit_blocks", "fast_extract_lines", "fast_copy_file",
             "fast_move_file", "fast_delete_file", "fast_batch_file_operations", "fast_compress_files",
             "fast_extract_archive", "fast_sync_directories"
