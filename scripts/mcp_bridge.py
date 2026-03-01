@@ -31,10 +31,34 @@ from datetime import datetime, timezone
 import json
 import os
 import sys
+import dataclasses
 from pathlib import Path
 from typing import Iterable, Literal
 
 import httpx
+
+
+def _ensure_project_src_on_syspath() -> None:
+    """Ajoute `project_root/src` à sys.path pour permettre l'import de `kimi_proxy`.
+
+    Rationale:
+    - Le bridge est un script exécuté en dehors du package Python.
+    - Les fonctionnalités Phase 2 (mcp_tool_pruning) vivent dans `src/kimi_proxy/...`.
+    - Fail-open: si le layout n'est pas celui attendu, on ne lève pas.
+    """
+
+    try:
+        project_root = Path(__file__).resolve().parents[1]
+        src_root = project_root / "src"
+        if src_root.exists() and src_root.is_dir():
+            src_str = str(src_root)
+            if src_str not in sys.path:
+                sys.path.insert(0, src_str)
+    except Exception:
+        return
+
+
+_ensure_project_src_on_syspath()
 
 
 GATEWAY_HTTP_SERVERS: frozenset[str] = frozenset(
@@ -159,7 +183,7 @@ class InflightTracker:
 
     def __init__(self, *, max_inflight: int = 2048) -> None:
         self._max_inflight = max(1, int(max_inflight))
-        self._inflight: set[str | int | float] = set()
+        self._inflight: dict[str | int | float, InflightRequestMeta] = {}
 
     def observe_client_message(self, obj: object) -> None:
         # Support minimal des batchs JSON-RPC (liste de requêtes).
@@ -178,27 +202,212 @@ class InflightTracker:
         if len(self._inflight) >= self._max_inflight:
             # Best-effort: si trop d'IDs, on reset pour éviter OOM.
             self._inflight.clear()
-        self._inflight.add(req_id)
 
-    def observe_server_message(self, obj: object) -> None:
+        method_obj = obj.get("method") if isinstance(obj, dict) else None
+        method = str(method_obj) if isinstance(method_obj, str) else ""
+        request_json: dict[str, object] = dict(obj) if isinstance(obj, dict) else {}
+
+        self._inflight[req_id] = InflightRequestMeta(method=method, request_json=request_json)
+
+    def consume_server_response(self, obj: object) -> InflightRequestMeta | None:
+        """Consume une réponse JSON-RPC et retourne la requête associée (si connue)."""
+
         if not isinstance(obj, dict):
-            return
+            return None
         if obj.get("jsonrpc") != "2.0":
-            return
-        # Réponse JSON-RPC: result ou error
+            return None
         if "result" not in obj and "error" not in obj:
-            return
+            return None
 
         resp_id = _safe_jsonrpc_id(obj.get("id"))
         if resp_id is None:
-            return
-        self._inflight.discard(resp_id)
+            return None
+        return self._inflight.pop(resp_id, None)
 
     def snapshot(self) -> list[str | int | float]:
-        return list(self._inflight)
+        return list(self._inflight.keys())
 
     def clear(self) -> None:
         self._inflight.clear()
+
+
+@dataclass(frozen=True)
+class InflightRequestMeta:
+    method: str
+    request_json: dict[str, object]
+
+
+class BridgeToolPruner:
+    """Wrapper best-effort pour pruner des réponses tools/call côté bridge stdio.
+
+    Design:
+    - Fail-open: si imports/config/pruner down -> no-op.
+    - Ne loggue jamais de payload.
+    """
+
+    def __init__(self, *, server_name: str) -> None:
+        self._server_name = server_name
+        self._available = False
+        self._http_client: httpx.AsyncClient | None = None
+
+        self._metrics = None
+        self._metrics_stderr_enabled = _env_flag("KIMI_MCP_TOOL_PRUNING_METRICS_STDERR", default=False)
+        self._metrics_stderr_interval_s = max(
+            1,
+            _env_int("KIMI_MCP_TOOL_PRUNING_METRICS_STDERR_INTERVAL_S", default=30),
+        )
+        self._metrics_task: asyncio.Task[None] | None = None
+        self._closing = False
+
+        # Lazy imports: le bridge doit rester utilisable même si le package n'est pas importable.
+        try:
+            from kimi_proxy.config.loader import get_config, get_mcp_tool_pruning_config  # type: ignore
+            from kimi_proxy.features.mcp_tool_pruning import (  # type: ignore
+                MCPToolPruningMetricsCollector,
+                maybe_prune_jsonrpc_response,
+                resolve_mcp_tool_pruning_config,
+            )
+            from kimi_proxy.features.mcp_tool_pruning.pruner_client import (  # type: ignore
+                build_prune_text_request_jsonrpc,
+                extract_prune_result_from_jsonrpc_response,
+            )
+            from kimi_proxy.features.mcp_pruner.spec import PruneOptionsDict, SourceType  # type: ignore
+
+            self._get_config = get_config
+            self._get_mcp_tool_pruning_config = get_mcp_tool_pruning_config
+            self._maybe_prune_jsonrpc_response = maybe_prune_jsonrpc_response
+            self._resolve_mcp_tool_pruning_config = resolve_mcp_tool_pruning_config
+            self._build_prune_text_request_jsonrpc = build_prune_text_request_jsonrpc
+            self._extract_prune_result_from_jsonrpc_response = extract_prune_result_from_jsonrpc_response
+            self._PruneOptionsDict = PruneOptionsDict
+            self._SourceType = SourceType
+
+            self._metrics = MCPToolPruningMetricsCollector()
+
+            self._available = True
+
+            # Reporting opt-in sur stderr (aucun payload).
+            if self._metrics_stderr_enabled:
+                try:
+                    _ = asyncio.get_running_loop()
+                    self._metrics_task = asyncio.create_task(self._metrics_stderr_loop())
+                except RuntimeError:
+                    # Pas de loop actif: ignore (fail-open).
+                    self._metrics_task = None
+        except Exception:
+            self._available = False
+
+    async def aclose(self) -> None:
+        self._closing = True
+
+        if self._metrics_task is not None:
+            self._metrics_task.cancel()
+            try:
+                await self._metrics_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+            self._metrics_task = None
+
+        # Dump final best-effort (une ligne JSON) si activé.
+        if self._metrics_stderr_enabled:
+            await self._dump_metrics_once_to_stderr(reason="final")
+
+        if self._http_client is not None and not self._http_client.is_closed:
+            await self._http_client.aclose()
+        self._http_client = None
+
+    async def maybe_prune(self, *, request_json: dict[str, object], response_json: dict[str, object]) -> dict[str, object]:
+        if not self._available:
+            return response_json
+
+        try:
+            toml_cfg = self._get_mcp_tool_pruning_config(self._get_config())
+            cfg = self._resolve_mcp_tool_pruning_config(toml_cfg)
+
+            async def _pruner_callable(
+                *,
+                request_id: int,
+                text: str,
+                goal_hint: str,
+                source_type: object,
+                options: object,
+                call_timeout_ms: int,
+            ):
+                req = self._build_prune_text_request_jsonrpc(
+                    request_id=request_id,
+                    text=text,
+                    goal_hint=goal_hint,
+                    source_type=source_type,
+                    options=options,
+                )
+
+                url = _get_pruner_rpc_url()
+                timeout_s = max(0.001, float(call_timeout_ms) / 1000.0)
+                timeout = httpx.Timeout(timeout_s, connect=min(5.0, timeout_s))
+
+                if self._http_client is None or self._http_client.is_closed:
+                    self._http_client = httpx.AsyncClient()
+
+                try:
+                    resp = await self._http_client.post(
+                        url,
+                        json=req,
+                        headers={"Content-Type": "application/json", "Accept": "application/json"},
+                        timeout=timeout,
+                    )
+                    if resp.status_code != 200:
+                        return None
+                    return self._extract_prune_result_from_jsonrpc_response(resp.json())
+                except Exception:
+                    return None
+
+            pruned = await self._maybe_prune_jsonrpc_response(
+                server_name=self._server_name,
+                request_json=request_json,
+                response_json=response_json,
+                cfg=cfg,
+                pruner=_pruner_callable,
+                metrics=self._metrics,
+            )
+            return pruned if isinstance(pruned, dict) else response_json
+        except Exception:
+            return response_json
+
+    async def _metrics_stderr_loop(self) -> None:
+        # Boucle de reporting simple. Ne jamais écrire sur stdout.
+        try:
+            while not self._closing:
+                await asyncio.sleep(float(self._metrics_stderr_interval_s))
+                await self._dump_metrics_once_to_stderr(reason="periodic")
+        except asyncio.CancelledError:
+            return
+
+    async def _dump_metrics_once_to_stderr(self, *, reason: str) -> None:
+        if self._metrics is None:
+            return
+        try:
+            snapshot = await self._metrics.snapshot()
+            payload: dict[str, object] = {
+                "ts": _now_utc_iso(),
+                "kind": "mcp_tool_pruning_metrics",
+                "reason": reason,
+                "server": self._server_name,
+                "metrics": dataclasses.asdict(snapshot),
+            }
+            sys.stderr.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            sys.stderr.flush()
+        except Exception:
+            return
+
+
+def _get_pruner_rpc_url() -> str:
+    # URL directe vers le serveur MCP pruner. Override possible via env.
+    raw = os.getenv("KIMI_MCP_PRUNER_RPC_URL")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return "http://127.0.0.1:8006/rpc"
 
 
 def _write_jsonrpc_payload(payload: dict[str, object]) -> None:
@@ -662,6 +871,7 @@ async def _pipe_child_stdout_jsonrpc_only(
     server_name: str,
     monitor: BridgeMonitor | None = None,
     inflight: InflightTracker | None = None,
+    tool_pruner: BridgeToolPruner | None = None,
 ) -> None:
     """Relaye uniquement les lignes JSON (objets) vers stdout.
 
@@ -717,8 +927,17 @@ async def _pipe_child_stdout_jsonrpc_only(
                 if isinstance(candidate, dict) and candidate.get("jsonrpc") == "2.0":
                     if monitor is not None:
                         monitor.observe_json_obj(direction="server_to_client", obj=candidate)
-                    if inflight is not None:
-                        inflight.observe_server_message(candidate)
+
+                    meta = inflight.consume_server_response(candidate) if inflight is not None else None
+                    if meta is not None and meta.method == "tools/call" and tool_pruner is not None:
+                        pruned_obj = await tool_pruner.maybe_prune(
+                            request_json=meta.request_json,
+                            response_json=candidate,
+                        )
+                        stdout_buffer.write((json.dumps(pruned_obj, ensure_ascii=False) + "\n").encode("utf-8"))
+                        stdout_buffer.flush()
+                        continue
+
                     stdout_buffer.write(line)
                     stdout_buffer.flush()
                     continue
@@ -752,6 +971,8 @@ async def _run_shrimp_task_manager_stdio_with_roots_shim() -> int:
     stdin_reader = await _connect_stdin_reader()
     monitor = BridgeMonitor.from_env(server_name="shrimp-task-manager")
     await monitor.start()
+    inflight = InflightTracker()
+    tool_pruner = BridgeToolPruner(server_name="shrimp-task-manager")
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -799,6 +1020,7 @@ async def _run_shrimp_task_manager_stdio_with_roots_shim() -> int:
             writer=proc.stdin,  # type: ignore[arg-type]
             monitor=monitor,
             direction="client_to_server",
+            inflight=inflight,
         )
 
     async def _pump_server_to_client_with_shim() -> None:
@@ -848,8 +1070,20 @@ async def _run_shrimp_task_manager_stdio_with_roots_shim() -> int:
                     # Default filtering policy: only forward JSON-RPC objects.
                     if isinstance(msg_obj, dict) and msg_obj.get("jsonrpc") == "2.0":
                         monitor.observe_json_obj(direction="server_to_client", obj=msg_obj)
-                        sys.stdout.buffer.write(line)
-                        sys.stdout.buffer.flush()
+
+                        meta = inflight.consume_server_response(msg_obj)
+                        if meta is not None and meta.method == "tools/call":
+                            pruned_obj = await tool_pruner.maybe_prune(
+                                request_json=meta.request_json,
+                                response_json=msg_obj,
+                            )
+                            sys.stdout.buffer.write(
+                                (json.dumps(pruned_obj, ensure_ascii=False) + "\n").encode("utf-8")
+                            )
+                            sys.stdout.buffer.flush()
+                        else:
+                            sys.stdout.buffer.write(line)
+                            sys.stdout.buffer.flush()
                         continue
 
                 # Anything else is considered logs/banners; redirect to stderr.
@@ -935,6 +1169,7 @@ async def _run_shrimp_task_manager_stdio_with_roots_shim() -> int:
             pass
 
     await monitor.stop()
+    await tool_pruner.aclose()
     return returncode
 
 
@@ -948,6 +1183,7 @@ async def _run_stdio_relay(server_name: str) -> int:
     monitor = BridgeMonitor.from_env(server_name=server_name)
     await monitor.start()
     inflight = InflightTracker()
+    tool_pruner = BridgeToolPruner(server_name=server_name)
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -1007,6 +1243,7 @@ async def _run_stdio_relay(server_name: str) -> int:
             server_name=server_name,
             monitor=monitor,
             inflight=inflight,
+            tool_pruner=tool_pruner,
         )
     )
     stderr_task = asyncio.create_task(
@@ -1096,6 +1333,7 @@ async def _run_stdio_relay(server_name: str) -> int:
             pass
 
     await monitor.stop()
+    await tool_pruner.aclose()
     return returncode
 
 

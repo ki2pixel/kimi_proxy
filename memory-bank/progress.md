@@ -1,5 +1,9 @@
 ## Tâche en cours
-Aucune
+Aucune tâche active.
+
+### [2026-03-02 00:25:31] **Clôture remédiations DeepInfra P1/P2/P3 — TERMINÉ** : Exécution complète du protocole Shrimp (plan_task/analyze/reflect/split/execute/verify) avec réflexion séquentielle avant T2/T3/T4. Livraisons validées: payload DeepInfra top-level (`query`/`documents`), durcissement `response_preview` (masqué hors debug, sanitizé/redacted/tronqué en debug), test anti-régression strict, documentation synchronisée. Validation finale: `./bin/kimi-proxy test ...` = **159 passed**. Invariants maintenus: contrat MCP JSON-RPC, fail-open, priorité `ENV > TOML`, aucun secret en dur. Aucune tâche active.
+
+### [2026-03-01 23:18:00] **Workflow Docs-Updater Terminé** : Audit structurel complet (10528 LOC Python, 76 fichiers, 5 couches), mise à jour métriques API (61 routes), frontend (703 fonctions JS, 685 éléments HTML), base de données (59 opérations SQL). Documentation principale mise à jour avec métriques actuelles et nouvelles features (MCP Pruner DeepInfra, Log Watcher).
 
 ### [2026-02-27 15:58:00] - Phase DeepInfra Pruner (Tasks 1→6) : implémentation + tests + documentation - TERMINÉ
 **Statut** : ✅ COMPLETÉ

@@ -407,24 +407,24 @@ rm sessions.db && ./bin/kimi-proxy start
 ## Métriques Projet
 
 ### Architecture 5 Couches
-- **63 fichiers Python** dans l'architecture complète
-- **7534 lignes de code** Python (core + features + services + api)
+- **76 fichiers Python** dans l'architecture complète
+- **10528 lignes de code** Python (core + features + services + api)
 - **47 répertoires** structurés par responsabilité
-- **124 fichiers projet** totaux (documentation + configuration + scripts)
+- **134 fichiers projet** totaux (documentation + configuration + scripts)
 
 ### API Layer
-- **60 routes REST/WebSocket** réparties sur 13 fichiers
+- **61 routes REST/WebSocket** réparties sur 13 fichiers
 - **Complexité moyenne** : C (17.42)
 - **Endpoints critiques** : 2 fonctions haute complexité (proxy_chat, _proxy_to_provider)
 
 ### Frontend Dashboard
 - **17 modules ES6** dans `static/js/modules/`
 - **703 fonctions/classes** JavaScript identifiées
-- **651 éléments HTML** avec IDs/classes structurés
+- **685 éléments HTML** avec IDs/classes structurés
 - **0 vulnérabilités XSS** (sécurité DOM appliquée)
 
 ### Base de Données
-- **58 opérations SQL** dans core/database.py et models.py
+- **59 opérations SQL** dans core/database.py et models.py
 - **Complexité schéma** : 7 tables principales + 4 tables MCP
 - **Performance** : VACUUM automatique et optimisation intégrée
 

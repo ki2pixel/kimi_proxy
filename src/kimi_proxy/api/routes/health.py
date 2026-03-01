@@ -25,6 +25,7 @@ def set_log_watcher(watcher: LogWatcher):
 async def health_check():
     """Health check avec infos sur la session et le log watcher."""
     import os
+    import dataclasses
     
     config = get_config()
     models = config.get("models", {})
@@ -37,8 +38,8 @@ async def health_check():
     log_file_exists = os.path.exists(_log_watcher.log_path) if _log_watcher else False
     
     rate_limiter = get_rate_limiter()
-    
-    return {
+
+    payload: dict[str, object] = {
         "status": "ok",
         "max_context": max_context,
         "active_session": session,
@@ -52,7 +53,32 @@ async def health_check():
             "max_rpm": rate_limiter.max_rpm,
             "percentage": round(rate_limiter.get_rpm_percentage(), 1)
         }
+
     }
+
+    # Phase 2D (observabilité): métriques pruning MCP tools/call.
+    # IMPORTANT: metadata-only; aucune fuite de payload.
+    # Exposition opt-in via env pour éviter de gonfler le /health en prod.
+    expose_mcp_tool_pruning = os.getenv("KIMI_MCP_TOOL_PRUNING_METRICS_HEALTH", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "y",
+        "on",
+    }
+    if expose_mcp_tool_pruning:
+        try:
+            from .mcp_gateway import get_mcp_tool_pruning_metrics_collector
+
+            collector = get_mcp_tool_pruning_metrics_collector()
+            snapshot = await collector.snapshot()
+            payload["mcp_tool_pruning_metrics"] = dataclasses.asdict(snapshot)
+        except Exception:
+            # Fail-open: le health check ne doit pas échouer si les métriques ne sont
+            # pas disponibles.
+            payload["mcp_tool_pruning_metrics"] = {"error": "unavailable"}
+
+    return payload
 
 
 @router.get("/api/rate-limit")

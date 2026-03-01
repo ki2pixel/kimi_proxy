@@ -757,3 +757,197 @@ export KIMI_PRUNING_BACKEND=heuristic
 ```
 
 Ou simplement unset la variable (et garder `backend=heuristic` côté TOML).
+
+---
+
+## 16) Wrapper hybride Phase 2 (bridge stdio + gateway HTTP)
+
+### TL;DR
+Le lot Phase 2 ajoute un **wrapper de pruning conditionnel** sur les sorties `tools/call` sans changer les contrats publics MCP: même JSON-RPC, mêmes tools, mêmes transports. La config runtime suit strictement **ENV > TOML**, et le pipeline reste **fail-open** (pas de casse fonctionnelle si le pruner est indisponible).
+
+### Problème
+Les réponses outils volumineuses (lecture fichiers, recherche, JSON long) saturent vite le contexte. On veut réduire ce bruit sans ajouter de nouveau serveur côté IDE ni casser les invariants JSON-RPC.
+
+### ✅ Architecture réellement en place
+
+- **Bridge stdio** (`scripts/mcp_bridge.py`):
+  - Interception en `server_to_client` sur réponses JSON-RPC.
+  - Pruning appliqué uniquement aux réponses associées à des requêtes `tools/call`.
+  - Sortie stdout strictement JSON-RPC (logs/bannières redirigés vers stderr).
+- **Gateway HTTP** (`/api/mcp-gateway/{server}/rpc`):
+  - Forward upstream JSON-RPC.
+  - Pruning conditionnel via `maybe_prune_jsonrpc_response`.
+  - Puis masking gateway (`mask_jsonrpc_response`) en garde-fou final.
+  - Ordre contractuel: **prune-then-mask**.
+
+### ❌ Ce que le wrapper ne fait pas
+
+- N’ajoute pas de nouveaux noms de tools.
+- Ne modifie pas la structure JSON-RPC (`jsonrpc`, `id`, `result`, `error`).
+- Ne prune pas `tools/list`, `initialize`, `notifications/*`.
+- Ne casse pas l’appel outil en cas d’erreur pruner.
+
+### Config runtime (ENV > TOML)
+
+Le resolver runtime lit d’abord l’environnement, puis retombe sur `config.toml`.
+
+#### Variables d’environnement supportées (Phase 2)
+
+- `KIMI_MCP_TOOL_PRUNING_ENABLED`
+- `KIMI_MCP_TOOL_PRUNING_MIN_CHARS`
+- `KIMI_MCP_TOOL_PRUNING_TIMEOUT_MS`
+- `KIMI_MCP_TOOL_PRUNING_MAX_CHARS_FALLBACK`
+- `KIMI_MCP_PRUNING_GOAL_HINT`
+- `KIMI_MCP_TOOL_PRUNING_MAX_PRUNE_RATIO`
+- `KIMI_MCP_TOOL_PRUNING_MIN_KEEP_LINES`
+- `KIMI_MCP_TOOL_PRUNING_ANNOTATE_LINES`
+- `KIMI_MCP_TOOL_PRUNING_INCLUDE_MARKERS`
+
+Bridge stdio uniquement:
+- `KIMI_MCP_PRUNER_RPC_URL` (override URL pruner HTTP)
+- `KIMI_MCP_TOOL_PRUNING_METRICS_STDERR`
+- `KIMI_MCP_TOOL_PRUNING_METRICS_STDERR_INTERVAL_S`
+
+Health API optionnel:
+- `KIMI_MCP_TOOL_PRUNING_METRICS_HEALTH`
+
+#### Fallback TOML
+
+```toml
+[mcp_tool_pruning]
+enabled = false
+min_chars = 4000
+timeout_ms = 1500
+max_chars_fallback = 0
+
+[mcp_tool_pruning.options]
+max_prune_ratio = 0.55
+min_keep_lines = 40
+annotate_lines = true
+include_markers = true
+```
+
+### Invariants techniques (non-régression)
+
+- Pruning uniquement si `request.method == "tools/call"`.
+- Si texte sous seuil (`min_chars`): no-op.
+- Si erreur/timeout pruner: **fail-open** (réponse utilisable conservée, fallback optionnel selon `max_chars_fallback`).
+- Côté gateway: exécution dans l’ordre **prune-then-mask**.
+- Côté bridge stdio: stdout reste JSON-only.
+
+### Observabilité
+
+- Collecteur in-memory `MCPToolPruningMetricsCollector` (metadata-only, pas de payload texte).
+- Export optionnel:
+  - en `stderr` côté bridge (lignes JSON périodiques/finales);
+  - via `/health` quand `KIMI_MCP_TOOL_PRUNING_METRICS_HEALTH=1`.
+
+### Troubleshooting Phase 2
+
+#### 1) Rien n’est pruné
+
+- Vérifier `KIMI_MCP_TOOL_PRUNING_ENABLED=1`.
+- Vérifier le seuil `KIMI_MCP_TOOL_PRUNING_MIN_CHARS` (trop élevé => no-op attendu).
+- Vérifier que la requête est bien un `tools/call`.
+
+#### 2) Le pruner est lent ou down
+
+- Réduire `KIMI_MCP_TOOL_PRUNING_TIMEOUT_MS` pour limiter la latence ajoutée.
+- Confirmer le comportement fail-open (résultat non cassé).
+- En bridge, vérifier `KIMI_MCP_PRUNER_RPC_URL`.
+
+#### 3) Trop de troncature en fallback
+
+- Vérifier `KIMI_MCP_TOOL_PRUNING_MAX_CHARS_FALLBACK`.
+- Mettre à `0` pour un no-op strict sur échec pruner.
+
+### Rollback
+
+Rollback instantané:
+
+```bash
+export KIMI_MCP_TOOL_PRUNING_ENABLED=0
+```
+
+Le gateway continue d’appliquer le masking standard, sans pruning conditionnel.
+
+## Golden Rule (Phase 2)
+Prunez uniquement les `tools/call` volumineux, gardez le contrat JSON-RPC intact, et privilégiez toujours le **fail-open** plutôt qu’une rupture de pipeline.
+
+---
+
+## 17) Audit de conformité DeepInfra (MCP SWE‑Pruner) — 2026-03-01
+
+### TL;DR
+L’intégration actuelle est **conforme avec réserves**. Le contrat MCP, la robustesse fail-open, la priorité `ENV > TOML` et la couverture de tests sont globalement alignés; en revanche, une divergence de payload subsiste avec la doc officielle reranker DeepInfra (payload imbriqué `input.query/documents` au lieu de `query/documents` top-level).
+
+### Problème audité
+Le backend cloud DeepInfra est utilisé comme option de pruning “task-aware”. L’audit vise à confirmer la conformité stricte à la documentation DeepInfra et aux invariants MCP internes, sans modifier la logique applicative.
+
+### Matrice de conformité traçable
+
+| Exigence officielle | Preuve implémentation/tests | Statut | Impact |
+| --- | --- | --- | --- |
+| Endpoint reranker `POST /v1/inference/{model_name}` | Doc: `docs/deepinfra/apis/reranker.mdx:14`; Implémentation: URL DeepInfra explicite dans `src/kimi_proxy/features/mcp_pruner/deepinfra_client.py:30,162` et surcharge via env `src/kimi_proxy/features/mcp_pruner/server.py:928` | ✅ Conforme (modèle fixé par défaut, surcharge possible) | Faible |
+| Auth Bearer token | Doc: `docs/deepinfra/account/authentication.mdx:14-18`; Implémentation: header `Authorization: Bearer ...` dans `src/kimi_proxy/features/mcp_pruner/deepinfra_client.py:164` | ✅ Conforme | Faible |
+| Payload reranker attendu: `{"query","documents"}` (top-level) | Doc: `docs/deepinfra/apis/reranker.mdx:34-35,54-55`; Implémentation: payload envoyé `{"input": {"query","documents"}}` dans `src/kimi_proxy/features/mcp_pruner/deepinfra_client.py:169-173`; Tests alignés sur ce format `tests/unit/features/test_mcp_pruner_deepinfra.py:84-86,183-185` | ⚠️ Réserve (écart de forme) | Élevé (risque compat API stricte) |
+| Réponse `scores` exploitable | Doc: `docs/deepinfra/apis/reranker.mdx:71-75`; Parsing robuste côté client `src/kimi_proxy/features/mcp_pruner/deepinfra_client.py:232-278`; test parse nominal `tests/mcp/test_mcp_pruner_deepinfra_client.py:14-29` | ✅ Conforme (avec tolérance best-effort) | Moyen positif (résilience) |
+| Erreurs HTTP/transport/parse + continuité de service | Exceptions typées `src/kimi_proxy/features/mcp_pruner/deepinfra_client.py:50-78`; fallback heuristique fail-open `src/kimi_proxy/features/mcp_pruner/server.py:840-869`; tests 401/429/timeout/invalid_json `tests/unit/features/test_mcp_pruner_deepinfra.py:123-174` | ✅ Conforme | Élevé positif |
+| Fail-open sur entrée trop volumineuse | Implémentation no-op `input_too_large` avec `used_fallback=true` dans `src/kimi_proxy/features/mcp_pruner/server.py:703-722` | ✅ Conforme | Élevé positif |
+| Priorité config runtime `ENV > TOML` | Règle documentée loader `src/kimi_proxy/config/loader.py:227-245`; backend env prioritaire `src/kimi_proxy/features/mcp_pruner/server.py:911-917`; fallback TOML `config.toml:236-251` | ✅ Conforme | Élevé positif |
+| Secrets non hardcodés (providers / DeepInfra) | Placeholders env dans `config.toml:117,122,127,132`; exigence clé DeepInfra via env `src/kimi_proxy/features/mcp_pruner/server.py:929-931` | ✅ Conforme | Élevé positif |
+| Compatibilité MCP (initialize, notifications, tools/list, tools/call, recover alias) | Contrat JSON-RPC et outils `src/kimi_proxy/features/mcp_pruner/server.py:578-663`; alias `recover_range` `src/kimi_proxy/features/mcp_pruner/server.py:620,658` | ✅ Conforme | Élevé positif |
+| Erreurs de domaine recovery (`prune_id_not_found`, `invalid_range`) | Implémentation codes JSON-RPC `src/kimi_proxy/features/mcp_pruner/server.py:1038-1062` | ✅ Conforme | Moyen positif |
+| Non-régression pipeline proxy en timeout pruning | Test intégration fallback no-op `tests/integration/test_proxy_context_pruning_c2.py:195-218` | ✅ Conforme | Élevé positif |
+| Source documentaire `api-reference` locale | Section template Mintlify/Plant Store `docs/deepinfra/api-reference/introduction.mdx:3,7-8,13,16-18` | ℹ️ Hors périmètre normatif produit | Faible |
+
+### Score global et verdict
+
+- **Score global**: **88/100**
+- **Verdict**: **Conforme avec réserves**
+
+#### Détail du scoring
+- Conformité exigences: **24/30** (réserve principale sur payload DeepInfra)
+- Qualité technique: **27/30** (fail-open, typage erreurs, cache, métriques)
+- Compatibilité intégration: **18/20** (MCP et fallback validés)
+- Performance/scalabilité: **19/20** (cache TTL + non-régression timeout)
+
+### Réserves et remédiations priorisées
+
+**TL;DR**: Les remédiations P1/P2/P3 sont implémentées. Le payload DeepInfra est désormais conforme au format top-level, `response_preview` est durci pour limiter les fuites en mode non-debug, et un test strict anti-régression verrouille la conformité.
+
+Vous aviez un risque de compatibilité API (payload imbriqué `input`) et un risque de fuite de contenu dans les erreurs HTTP. La correction a été appliquée en gardant les invariants non négociables: contrat MCP JSON-RPC inchangé, fail-open serveur préservé, et priorité config `ENV > TOML` inchangée.
+
+1. **P1 — Aligner le payload DeepInfra sur la doc officielle**
+   - **Statut**: ✅ Livré.
+   - **Implémentation**: `src/kimi_proxy/features/mcp_pruner/deepinfra_client.py` envoie `{"query": ..., "documents": [...]}` au top-level.
+   - **Validation**: tests unitaires/mcp mis à jour avec assertions strictes anti-retour au format `input.*`.
+
+2. **P2 — Durcir l’exposition des erreurs HTTP (`response_preview`)**
+   - **Statut**: ✅ Livré.
+   - **Implémentation**: `response_preview` est omis par défaut (niveau non-debug) et, en debug, sanitizé + tronqué avec redaction des motifs sensibles (`Authorization Bearer`, `api_key`, `token`).
+   - **Validation**: tests dédiés sur `DeepInfraHTTPError.details` (absence de preview en défaut, redaction en debug).
+
+3. **P3 — Ajouter un test de compatibilité payload “doc-strict”**
+   - **Statut**: ✅ Livré.
+   - **Implémentation**: test strict `test_deepinfra_client_payload_is_doc_strict_top_level` qui échoue si la forme exacte top-level n’est pas respectée.
+   - **Validation**: exécution des suites ciblées DeepInfra (client + serveur) avec non-régression fail-open.
+
+### ❌ Ancien état (risque)
+- Payload reranker envoyé sous `{"input": {"query", "documents"}}`.
+- `response_preview` exposé sur erreurs HTTP, potentiellement trop verbeux.
+
+### ✅ État actuel (corrigé)
+- Payload doc-strict top-level `{"query", "documents"}`.
+- `response_preview` contrôlé par politique de log avec redaction/suppression par défaut.
+- Test anti-régression strict verrouillant la conformité payload.
+
+### Trade-offs
+
+| Option | Compatibilité doc stricte | Résilience | Effort |
+| --- | --- | --- | --- |
+| Conserver payload `input.{query,documents}` | ⚠️ Incertaine selon modèle/provider | ✅ Bonne (best-effort actuel) | ✅ Nul |
+| Basculer vers payload top-level `query/documents` | ✅ Maximale vis-à-vis doc reranker | ✅ Bonne (avec fallback existant) | ⚠️ Faible à moyen |
+
+## Golden Rule (audit)
+Quand une doc officielle définit explicitement le schéma de payload, il faut **aligner le format réseau en priorité** et conserver la résilience via fail-open côté serveur.

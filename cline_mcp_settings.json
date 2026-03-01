@@ -155,6 +155,16 @@
       },
       "type": "sse",
       "disabled": true
+    },
+    "mcp-pruner": {
+      "timeout": 60,
+      "url": "http://localhost:8006/rpc",
+      "headers": {},
+      "type": "streamableHttp",
+      "autoApprove": [
+        "prune_text",
+        "recover_text"
+      ]
     }
   }
 }

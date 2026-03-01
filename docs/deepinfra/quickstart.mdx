@@ -1,0 +1,130 @@
+---
+title: Quickstart
+description: Make your first API call in 60 seconds — no installation required.
+icon: play
+---
+
+You don't need to install anything to do your first inference. You only need [your access token](https://deepinfra.com/dash/api_keys). DeepInfra gives you access to 100+ open-source models at the best prices available.
+
+## Step 1: Get your API key
+
+Go to the [Dashboard](https://deepinfra.com/dash/api_keys) and create an API key. If you're logged in, examples throughout the docs will have your token pre-filled.
+
+## Step 2: Make your first API call
+
+<CodeGroup>
+
+```bash cURL
+curl "https://api.deepinfra.com/v1/openai/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DEEPINFRA_TOKEN" \
+  -d '{
+      "model": "deepseek-ai/DeepSeek-V3",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello!"
+        }
+      ]
+    }'
+```
+
+```python Python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="$DEEPINFRA_TOKEN",
+    base_url="https://api.deepinfra.com/v1/openai",
+)
+
+response = client.chat.completions.create(
+    model="deepseek-ai/DeepSeek-V3",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(response.choices[0].message.content)
+```
+
+```javascript JavaScript
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: "$DEEPINFRA_TOKEN",
+  baseURL: "https://api.deepinfra.com/v1/openai",
+});
+
+const response = await openai.chat.completions.create({
+  model: "deepseek-ai/DeepSeek-V3",
+  messages: [{ role: "user", content: "Hello!" }],
+});
+console.log(response.choices[0].message.content);
+```
+
+</CodeGroup>
+
+The response looks like this:
+
+```json
+{
+    "id": "chatcmpl-guMTxWgpFf",
+    "object": "chat.completion",
+    "created": 1694623155,
+    "model": "deepseek-ai/DeepSeek-V3",
+    "choices": [
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "Hello! It's nice to meet you. Is there something I can help you with?"
+            },
+            "finish_reason": "stop"
+        }
+    ],
+    "usage": {
+        "prompt_tokens": 15,
+        "completion_tokens": 16,
+        "total_tokens": 31,
+        "estimated_cost": 0.0000268
+    }
+}
+```
+
+## That's it
+
+You're using the [OpenAI Chat Completions API](/chat/overview) — the same interface you already know. The only changes are:
+
+- **Base URL**: `https://api.deepinfra.com/v1/openai`
+- **API key**: your DeepInfra token
+- **Model**: any model from [our catalog](https://deepinfra.com/models)
+
+The official OpenAI Python and Node.js libraries work out of the box.
+
+## Install the SDK (optional)
+
+<CodeGroup>
+
+```bash Python
+pip install openai
+```
+
+```bash JavaScript
+npm install openai
+```
+
+</CodeGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Chat Completions" icon="comments" href="/chat/overview">
+    Learn about the full chat completions API.
+  </Card>
+  <Card title="Streaming" icon="wave-pulse" href="/chat/streaming">
+    Stream responses token by token.
+  </Card>
+  <Card title="Tool Calling" icon="wrench" href="/chat/tool-calling">
+    Give models access to external functions.
+  </Card>
+  <Card title="Model Catalog" icon="brain" href="/models">
+    Browse 100+ available models.
+  </Card>
+</CardGroup>

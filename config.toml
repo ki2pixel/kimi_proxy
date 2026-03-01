@@ -205,6 +205,31 @@ annotate_lines = true
 include_markers = true
 
 # ============================================
+# MCP TOOL PRUNING — Wrapper hybride (Phase 2)
+# ============================================
+
+[mcp_tool_pruning]
+# Feature flag global (rollback instantané)
+enabled = false
+
+# Seuil minimal (chars) pour déclencher un appel au pruner
+min_chars = 4000
+
+# Timeout appel pruner (ms)
+timeout_ms = 1500
+
+# Fallback heuristique (fail-open): si > 0, applique une troncature sûre
+# quand le pruner est indisponible (sinon: no-op total).
+max_chars_fallback = 0
+
+[mcp_tool_pruning.options]
+max_prune_ratio = 0.55
+min_keep_lines = 40
+timeout_ms = 1500
+annotate_lines = true
+include_markers = true
+
+# ============================================
 # MCP PRUNER — Backend selection (env > toml)
 # ============================================
 

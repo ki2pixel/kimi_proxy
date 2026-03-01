@@ -15,7 +15,9 @@ Notes:
 
 from __future__ import annotations
 
+import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 
@@ -28,6 +30,10 @@ JsonObject = dict[str, object]
 
 
 DEFAULT_DEEPINFRA_ENDPOINT_URL = "https://api.deepinfra.com/v1/inference/Qwen/Qwen3-Reranker-0.6B"
+RESPONSE_PREVIEW_MAX_CHARS = 256
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class DeepInfraError(KimiProxyError):
@@ -167,10 +173,8 @@ class DeepInfraClient:
         }
 
         payload: JsonObject = {
-            "input": {
-                "query": query,
-                "documents": list(documents),
-            }
+            "query": query,
+            "documents": list(documents),
         }
 
         started = time.perf_counter()
@@ -184,7 +188,7 @@ class DeepInfraClient:
         elapsed_ms = int((time.perf_counter() - started) * 1000)
 
         if resp.status_code != 200:
-            preview = _truncate_text(resp.text, 800)
+            preview = _build_response_preview(resp.text)
             raise DeepInfraHTTPError(
                 f"DeepInfra HTTP {resp.status_code}",
                 status_code=resp.status_code,
@@ -227,6 +231,45 @@ def _truncate_text(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
     return text[: max(0, max_chars - 3)] + "..."
+
+
+def _build_response_preview(response_text: str) -> str | None:
+    """Construit un preview d'erreur HTTP sans fuite sensible.
+
+    Politique:
+    - Niveau de log >= debug: preview sanitizé + tronqué.
+    - Sinon (warning/error par défaut): aucun preview.
+    """
+
+    if not LOGGER.isEnabledFor(logging.DEBUG):
+        return None
+
+    sanitized = _sanitize_preview_text(response_text)
+    return _truncate_text(sanitized, RESPONSE_PREVIEW_MAX_CHARS)
+
+
+def _sanitize_preview_text(text: str) -> str:
+    # Uniformiser pour éviter d'exposer des blocs multi-lignes bruts.
+    normalized = re.sub(r"[\x00-\x08\x0B-\x1F\x7F]", " ", text)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+
+    # Redaction best-effort des motifs sensibles fréquents.
+    redacted = re.sub(
+        r"(?i)(authorization\s*:\s*bearer\s+)[^\s\"']+",
+        r"\1[REDACTED]",
+        normalized,
+    )
+    redacted = re.sub(
+        r"(?i)(api[_-]?key\s*[=:]\s*)[^\s\"']+",
+        r"\1[REDACTED]",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?i)(token\s*[=:]\s*)[^\s\"']+",
+        r"\1[REDACTED]",
+        redacted,
+    )
+    return redacted
 
 
 def _parse_scores_best_effort(data: object, *, expected_docs: int, endpoint_url: str) -> dict[int, float]:

@@ -1,13 +1,14 @@
 ## Tâche en Cours
-Aucune
+Aucune tâche active.
 
 ## Dernière Session
+- [2026-03-02 00:24:45] **Clôture remédiations DeepInfra P1/P2/P3 — TERMINÉ** : Mission exécutée avec workflow Shrimp + réflexion séquentielle. Livré: payload DeepInfra top-level (`query`/`documents`), hardening `response_preview` (omis hors debug, sanitizé/redacted/tronqué en debug), test anti-régression strict, documentation `docs/features/mcp-pruner.md` synchronisée. Validation: suites ciblées exécutées avec succès (`159 passed`). Invariants conservés: contrat MCP JSON-RPC, fail-open, priorité `ENV > TOML`, aucun secret en dur. Session clôturée, aucune tâche active.
+- [2026-03-01 11:17:00] **Workflow Docs-Updater Terminé** : Audit structurel complet (10528 LOC Python, 76 fichiers, 5 couches), mise à jour métriques API (61 décorateurs HTTP), frontend (703 fonctions JS, 685 éléments HTML), base de données (59 opérations SQL). Workflow docs-updater finalisé avec succès.
 - [2026-02-27 15:58:00] - Phase DeepInfra Pruner (Tasks 1→6) finalisée et validée dans Shrimp.
 - Implémentation complète livrée: client DeepInfra async (`deepinfra_client.py`), moteur pruning top-K (`deepinfra_engine.py`), intégration serveur MCP (`server.py`) avec sélection backend `env > toml`, fail-open heuristique, cache TTL in-memory et métriques enrichies.
 - Validation qualité: tests Task 5 passés (`tests/unit/features/test_mcp_pruner_deepinfra.py` + `tests/integration/test_proxy_context_pruning_c2.py`) via `./bin/kimi-proxy test ... -q`; correction du patch `httpx.AsyncClient` en tests ASGI (référence client réel conservée).
 - Documentation Task 6 terminée: `docs/features/mcp-pruner.md` mis à jour (FR) avec TL;DR, problem-first, blocs ❌/✅, trade-offs, Golden Rule, troubleshooting DeepInfra (401/429/timeout/parse), rollback et alignement strict env vars/runtime.
 - [2026-02-27 00:58:00] - Incident démarrage MCP Pruner résolu: faux négatif readiness corrigé dans `scripts/start-mcp-servers.sh` (boucle 12s + `kill -0` + diagnostic log), wrapper `start.sh` corrigé vers `bin/kimi-proxy`, validations restart/global OK, tests `./bin/kimi-proxy test` = 134/134.
-- Vérifications opérationnelles: ports 8000/8001/8003/8004/8005/8006 LISTEN, `GET /health` pruner OK, JSON-RPC `initialize` OK.
 - Documentation enrichie: `docs/features/mcp-pruner.md` section troubleshooting (RCA, commandes, note log vide).
 
 ## Session Terminée
@@ -28,8 +29,6 @@ Aucune
 - [2026-02-25 10:58:40] - **MCP — Accès fichiers étendu à `/home/kidpixel/*` + stabilisation gateway — TERMINÉ** : Les serveurs MCP locaux **fast-filesystem** et **json-query** acceptent désormais tous les chemins sous `/home/kidpixel` via `MCP_ALLOWED_ROOT` (fallback `WORKSPACE_PATH`) avec validation robuste (`Path.resolve` + `relative_to`) contre le path traversal et l'évasion via symlink. Le MCP Gateway forwarde correctement les refus 403 upstream (plus de 502 faux-positifs). Tests E2E + unit relancés et OK.
 - [2026-02-25 02:13:16] - **Continue.dev MCP (serveurs locaux) — Méthodes optionnelles resources/prompts — TERMINÉ** : Ajout de stubs `resources/list`, `resources/templates/list`, `prompts/list` dans les serveurs MCP HTTP générés par `scripts/start-mcp-servers.sh` pour éviter les erreurs Continue.dev \"Method not found\". Compatibilité Cline préservée via `scripts/mcp_bridge.py` + gateway Phase 5.
 - [2026-02-25 01:55:05] - **Handshake MCP (Option 1A) — TERMINÉ** : Correction de l'erreur Cline \"Méthode inconnue: initialize\" en rendant les serveurs MCP locaux compatibles MCP minimal (`initialize`, `notifications/initialized`, `tools/list`, `tools/call`) via `scripts/start-mcp-servers.sh` (serveurs HTTP générés dans `/tmp` pour sequential-thinking, fast-filesystem, json-query). Validation : curls initialize/tools/* via `/api/mcp-gateway/.../rpc` + `./bin/kimi-proxy test -q tests/unit/featur
-... [KIMI_PROXY_OBSERVATION_MASKED original_chars=4586 head=2000 tail=2000] ...
-(12 assets) - ✅ Métriques validées : couverture étendue sans surcharge - Impact: Workflow optimisé pour détecter scripts manqués.
 - [2026-02-21 19:35:00] **Workflow Docs-Updater Exécuté [TERMINÉ]** : Audit structurel complet (9186 LOC Python, 5 couches), mise à jour documentation API (55 endpoints documentés), création documentation 11 modules frontend (ui, modals, sessions, api, charts, memory-service, utils, mcp, websocket, similarity-chart, auto-session). Workflow docs-updater finalisé avec succès.
 - [2026-02-21 19:57:00] **Workflow Docs-Updater Réexécuté [TERMINÉ]** : Mise à jour métriques API (53 endpoints, 15 fichiers, 2318 LOC), vérification cohérence documentation complète. Workflow docs-updater finalisé avec succès.
 - [2026-02-21 19:00:00] **Investigation Suppression Sessions et Optimisation Base de Données [TERMINÉ]** : Diagnostic complet persistance données après suppression 135 sessions. Implémentation VACUUM automatique et endpoints diagnostic. Données masked_content (68 entrées) identifiées comme utiles pour Phase 1 Sanitizer.

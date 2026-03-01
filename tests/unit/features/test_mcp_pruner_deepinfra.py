@@ -82,7 +82,9 @@ async def test_deepinfra_success_via_httpx_mocktransport(monkeypatch: pytest.Mon
     def handler(request: httpx.Request) -> httpx.Response:
         calls["count"] += 1
         body = json.loads(request.content.decode("utf-8"))
-        docs = body.get("input", {}).get("documents", []) if isinstance(body, dict) else []
+        assert isinstance(body, dict)
+        assert "input" not in body
+        docs = body.get("documents", [])
         n = len(docs) if isinstance(docs, list) else 0
         # Scores simples: plus haut au début/fin.
         scores = [0.0] * n
@@ -181,7 +183,9 @@ async def test_deepinfra_cache_hits_avoid_second_http_call(monkeypatch: pytest.M
     def handler(request: httpx.Request) -> httpx.Response:
         calls["count"] += 1
         body = json.loads(request.content.decode("utf-8"))
-        docs = body.get("input", {}).get("documents", []) if isinstance(body, dict) else []
+        assert isinstance(body, dict)
+        assert "input" not in body
+        docs = body.get("documents", [])
         n = len(docs) if isinstance(docs, list) else 0
         return httpx.Response(200, json={"scores": [1.0] * n})
 
@@ -222,7 +226,9 @@ async def test_deepinfra_cache_hits_avoid_second_http_call(monkeypatch: pytest.M
 async def test_health_endpoint_and_tool_health_include_metrics(monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content.decode("utf-8"))
-        docs = body.get("input", {}).get("documents", []) if isinstance(body, dict) else []
+        assert isinstance(body, dict)
+        assert "input" not in body
+        docs = body.get("documents", [])
         n = len(docs) if isinstance(docs, list) else 0
         return httpx.Response(200, json={"scores": [1.0] * n})
 

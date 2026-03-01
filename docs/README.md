@@ -177,8 +177,9 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 
 ## 📋 État du Projet
 
-### ✅ v2.0 - Architecture Modulaire (2026-02-15)
-- **Restructuration complète** : 52 fichiers modulaires
+### ✅ v2.0 - Architecture Modulaire (2026-03-01)
+- **Restructuration complète** : 76 fichiers modulaires (+24)
+- **Métriques actuelles** : 10,528 LOC Python (+1,342)
 - **Nouvelle CLI** : `./bin/kimi-proxy` avec sous-commandes
 - **Tests structurés** : Unit, integration, E2E
 - **Setup script** : Installation via `pip install -e .`
@@ -189,7 +190,10 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 - **MCP Phase 2** : Intégration mémoire standardisée
 - **Compression Phase 3** : Bouton d'urgence compression
 - **MCP Phase 4** : 4 serveurs MCP (Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query) - **Exécution locale dans Continue.dev**
-- **Monitoring temps réel** : WebSockets, Log Watcher, dashboard
+- **MCP Pruner DeepInfra** : Optimisation contextuelle avec moteur top-K
+- **Log Watcher** : Monitoring PyCharm/Continue en temps réel
+- **Métriques enrichies** : 304 points de surveillance METRICS/LOGGING/ALERT
+- **Monitoring temps réel** : WebSockets, dashboard
 - **Persistance** : SQLite avec historique complet
 
 ## 🆕 Nouveautés v2.0
@@ -222,5 +226,5 @@ Voir [Contributing](./development/contributing.md) pour les guidelines de contri
 
 ---
 
-*Dernière mise à jour : 2026-02-25*
-*Version: 2.0.3*
+*Dernière mise à jour : 2026-03-01*
+*Version: 2.0.4*

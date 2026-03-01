@@ -8,7 +8,7 @@ Note d'architecture:
   et de préserver l'isolation des couches.
 """
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Any, Optional, Literal
 
@@ -48,7 +48,7 @@ def _clear_config_cache():
     _config_cache = None
 
 
-def load_config(config_path: str = None) -> Dict[str, Any]:
+def load_config(config_path: str | None = None) -> Dict[str, Any]:
     """
     Charge la configuration depuis config.toml.
     
@@ -82,7 +82,7 @@ def load_config(config_path: str = None) -> Dict[str, Any]:
         )
     
     try:
-        import tomllib
+        import tomllib  # type: ignore[import-not-found]
         with open(path, "rb") as f:
             raw_config = tomllib.load(f)
             _config_cache = _expand_env_vars(raw_config)
@@ -101,7 +101,7 @@ def load_config(config_path: str = None) -> Dict[str, Any]:
     return _config_cache
 
 
-def reload_config(config_path: str = None) -> Dict[str, Any]:
+def reload_config(config_path: str | None = None) -> Dict[str, Any]:
     """
     Recharge la configuration depuis le fichier.
     
@@ -460,4 +460,116 @@ def get_context_pruning_config(config: Dict[str, Any]) -> ContextPruningConfig:
         timeout_ms=timeout_ms,
         annotate_lines=annotate_lines,
         include_markers=include_markers,
+    )
+
+
+@dataclass(frozen=True)
+class MCPToolPruningOptionsConfig:
+    """Options de pruning pour les outputs MCP tools/call (fallback TOML).
+
+    Important:
+    - Fallback TOML uniquement (la priorité env est gérée au point de consommation).
+    - Sans secrets.
+    """
+
+    max_prune_ratio: float = 0.55
+    min_keep_lines: int = 40
+    timeout_ms: int = 1500
+    annotate_lines: bool = True
+    include_markers: bool = True
+
+
+@dataclass(frozen=True)
+class MCPToolPruningConfig:
+    """Configuration de pruning des réponses MCP tools/call (fallback TOML).
+
+    Objectif:
+    - Permettre un wrapper hybride (bridge stdio + gateway HTTP) sans changer les
+      contrats publics des serveurs MCP.
+
+    Règles:
+    - defaults sûrs: disabled
+    - env > toml: appliqué au point de consommation (Features/Script)
+    """
+
+    enabled: bool = False
+    min_chars: int = 4000
+    timeout_ms: int = 1500
+    max_chars_fallback: int = 0
+    options: MCPToolPruningOptionsConfig = field(default_factory=MCPToolPruningOptionsConfig)
+
+
+def get_mcp_tool_pruning_config(config: Dict[str, Any]) -> MCPToolPruningConfig:
+    """Charge la configuration `[mcp_tool_pruning]` depuis le TOML avec fallback robuste.
+
+    Important:
+    - Ne doit pas dépendre de `features/*`.
+    - N'applique pas la priorité env.
+    """
+
+    defaults = MCPToolPruningConfig()
+    obj = config.get("mcp_tool_pruning")
+    if not isinstance(obj, dict):
+        return defaults
+
+    enabled = bool(obj.get("enabled", defaults.enabled))
+
+    min_chars_obj = obj.get("min_chars", defaults.min_chars)
+    if isinstance(min_chars_obj, int) and not isinstance(min_chars_obj, bool):
+        min_chars = max(0, min_chars_obj)
+    else:
+        min_chars = defaults.min_chars
+
+    timeout_ms_obj = obj.get("timeout_ms", defaults.timeout_ms)
+    if isinstance(timeout_ms_obj, int) and not isinstance(timeout_ms_obj, bool):
+        timeout_ms = max(1, timeout_ms_obj)
+    else:
+        timeout_ms = defaults.timeout_ms
+
+    max_chars_fallback_obj = obj.get("max_chars_fallback", defaults.max_chars_fallback)
+    if isinstance(max_chars_fallback_obj, int) and not isinstance(max_chars_fallback_obj, bool):
+        max_chars_fallback = max(0, max_chars_fallback_obj)
+    else:
+        max_chars_fallback = defaults.max_chars_fallback
+
+    options_obj = obj.get("options")
+    options = options_obj if isinstance(options_obj, dict) else {}
+
+    max_prune_ratio_obj = options.get("max_prune_ratio", defaults.options.max_prune_ratio)
+    if isinstance(max_prune_ratio_obj, (int, float)) and not isinstance(max_prune_ratio_obj, bool):
+        max_prune_ratio = float(max_prune_ratio_obj)
+        if max_prune_ratio < 0.0:
+            max_prune_ratio = 0.0
+        if max_prune_ratio > 1.0:
+            max_prune_ratio = 1.0
+    else:
+        max_prune_ratio = defaults.options.max_prune_ratio
+
+    min_keep_lines_obj = options.get("min_keep_lines", defaults.options.min_keep_lines)
+    if isinstance(min_keep_lines_obj, int) and not isinstance(min_keep_lines_obj, bool):
+        min_keep_lines = max(0, min_keep_lines_obj)
+    else:
+        min_keep_lines = defaults.options.min_keep_lines
+
+    options_timeout_ms_obj = options.get("timeout_ms", defaults.options.timeout_ms)
+    if isinstance(options_timeout_ms_obj, int) and not isinstance(options_timeout_ms_obj, bool):
+        options_timeout_ms = max(1, options_timeout_ms_obj)
+    else:
+        options_timeout_ms = defaults.options.timeout_ms
+
+    annotate_lines = bool(options.get("annotate_lines", defaults.options.annotate_lines))
+    include_markers = bool(options.get("include_markers", defaults.options.include_markers))
+
+    return MCPToolPruningConfig(
+        enabled=enabled,
+        min_chars=min_chars,
+        timeout_ms=timeout_ms,
+        max_chars_fallback=max_chars_fallback,
+        options=MCPToolPruningOptionsConfig(
+            max_prune_ratio=max_prune_ratio,
+            min_keep_lines=min_keep_lines,
+            timeout_ms=options_timeout_ms,
+            annotate_lines=annotate_lines,
+            include_markers=include_markers,
+        ),
     )

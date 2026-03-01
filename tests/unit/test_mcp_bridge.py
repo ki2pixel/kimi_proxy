@@ -217,6 +217,361 @@ async def test_pipe_child_stdout_jsonrpc_only_emits_jsonrpc_error_on_readline_li
     assert payload["id"] == 123
 
 
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_pipe_child_stdout_jsonrpc_only_prunes_tools_call_when_enabled(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+
+    class _FakeStream:
+        def __init__(self, lines: list[bytes]) -> None:
+            self._lines = lines
+
+        async def readline(self) -> bytes:
+            return self._lines.pop(0) if self._lines else b""
+
+    stdout_buf = bytearray()
+    stderr_buf = bytearray()
+
+    class _Buf:
+        def __init__(self, target: bytearray) -> None:
+            self._t = target
+
+        def write(self, b: bytes) -> None:
+            self._t.extend(b)
+
+        def flush(self) -> None:
+            return
+
+    # Force enable pruning in the bridge and set thresholds low.
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_ENABLED", "1")
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_MIN_CHARS", "1")
+    monkeypatch.setenv("KIMI_MCP_PRUNING_BACKEND", "heuristic")
+    monkeypatch.setenv("KIMI_MCP_PRUNER_RPC_URL", "http://127.0.0.1:8006/rpc")
+
+    # Mock HTTP call to pruner.
+    class _DummyResponse:
+        status_code = 200
+
+        def json(self) -> object:
+            payload = {
+                "prune_id": "p1",
+                "pruned_text": "PRUNED",
+                "warnings": [],
+                "stats": {"used_fallback": False},
+            }
+            return {
+                "jsonrpc": "2.0",
+                "id": 999,
+                "result": {"content": [{"type": "text", "text": json.dumps(payload)}]},
+            }
+
+    class _DummyClient:
+        def __init__(self) -> None:
+            self.is_closed = False
+
+        async def aclose(self) -> None:
+            self.is_closed = True
+
+        async def post(self, *_a, **_kw):
+            return _DummyResponse()
+
+    monkeypatch.setattr(mcp_bridge.httpx, "AsyncClient", lambda *a, **kw: _DummyClient())
+
+    inflight = mcp_bridge.InflightTracker()
+    inflight.observe_client_message({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "read_file", "arguments": {}}})
+
+    response = {"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": "ORIGINAL"}]}}
+    stream = _FakeStream([(json.dumps(response) + "\n").encode("utf-8")])
+
+    tool_pruner = mcp_bridge.BridgeToolPruner(server_name="filesystem-agent")
+    await mcp_bridge._pipe_child_stdout_jsonrpc_only(
+        stream=stream,
+        stdout_buffer=_Buf(stdout_buf),
+        stderr_buffer=_Buf(stderr_buf),
+        server_name="filesystem-agent",
+        inflight=inflight,
+        tool_pruner=tool_pruner,
+    )
+    await tool_pruner.aclose()
+
+    out_obj = json.loads(stdout_buf.decode("utf-8", errors="replace").splitlines()[0])
+    assert out_obj["jsonrpc"] == "2.0"
+    assert out_obj["id"] == 1
+    assert out_obj["result"]["content"][0]["text"] == "PRUNED"
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_bridge_tool_pruner_metrics_stderr_emits_json_metadata_only(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+
+    # Enable stderr metrics and force a final dump.
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_METRICS_STDERR", "1")
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_ENABLED", "1")
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_MIN_CHARS", "1")
+
+    # Capture stderr.
+    err = io.StringIO()
+    monkeypatch.setattr(mcp_bridge.sys, "stderr", err)
+
+    # Mock HTTP call to pruner.
+    class _DummyResponse:
+        status_code = 200
+
+        def json(self) -> object:
+            payload = {
+                "prune_id": "p1",
+                "pruned_text": "PRUNED",
+                "warnings": [],
+                "stats": {"used_fallback": False},
+            }
+            return {
+                "jsonrpc": "2.0",
+                "id": 999,
+                "result": {"content": [{"type": "text", "text": json.dumps(payload)}]},
+            }
+
+    class _DummyClient:
+        def __init__(self) -> None:
+            self.is_closed = False
+
+        async def aclose(self) -> None:
+            self.is_closed = True
+
+        async def post(self, *_a, **_kw):
+            return _DummyResponse()
+
+    monkeypatch.setattr(mcp_bridge.httpx, "AsyncClient", lambda *a, **kw: _DummyClient())
+
+    tool_pruner = mcp_bridge.BridgeToolPruner(server_name="filesystem-agent")
+    pruned = await tool_pruner.maybe_prune(
+        request_json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "read_file", "arguments": {}}},
+        response_json={"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": "ORIGINAL"}]}},
+    )
+    assert pruned["result"]["content"][0]["text"] == "PRUNED"
+
+    # Force close => emits final metrics to stderr.
+    await tool_pruner.aclose()
+
+    lines = [ln for ln in err.getvalue().splitlines() if ln.strip()]
+    assert lines, "expected at least one JSON metrics line on stderr"
+
+    last = json.loads(lines[-1])
+    assert last.get("kind") == "mcp_tool_pruning_metrics"
+    assert last.get("server") == "filesystem-agent"
+    metrics = last.get("metrics")
+    assert isinstance(metrics, dict)
+
+    # Ensure no payload keys are present.
+    forbidden = {"text", "params", "result", "arguments", "content"}
+    assert forbidden.isdisjoint(set(metrics.keys()))
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_pipe_child_stdout_jsonrpc_only_does_not_prune_non_tools_call(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+
+    class _FakeStream:
+        def __init__(self, lines: list[bytes]) -> None:
+            self._lines = lines
+
+        async def readline(self) -> bytes:
+            return self._lines.pop(0) if self._lines else b""
+
+    stdout_buf = bytearray()
+    stderr_buf = bytearray()
+
+    class _Buf:
+        def __init__(self, target: bytearray) -> None:
+            self._t = target
+
+        def write(self, b: bytes) -> None:
+            self._t.extend(b)
+
+        def flush(self) -> None:
+            return
+
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_ENABLED", "1")
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_MIN_CHARS", "1")
+
+    # If pruning wrongly triggers, this dummy client would be used; keep it failing.
+    class _DummyClient:
+        def __init__(self) -> None:
+            self.is_closed = False
+
+        async def aclose(self) -> None:
+            self.is_closed = True
+
+        async def post(self, *_a, **_kw):
+            raise AssertionError("pruner must not be called for non tools/call")
+
+    monkeypatch.setattr(mcp_bridge.httpx, "AsyncClient", lambda *a, **kw: _DummyClient())
+
+    inflight = mcp_bridge.InflightTracker()
+    inflight.observe_client_message({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
+
+    response = {"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}
+    stream = _FakeStream([(json.dumps(response) + "\n").encode("utf-8")])
+
+    tool_pruner = mcp_bridge.BridgeToolPruner(server_name="filesystem-agent")
+    await mcp_bridge._pipe_child_stdout_jsonrpc_only(
+        stream=stream,
+        stdout_buffer=_Buf(stdout_buf),
+        stderr_buffer=_Buf(stderr_buf),
+        server_name="filesystem-agent",
+        inflight=inflight,
+        tool_pruner=tool_pruner,
+    )
+    await tool_pruner.aclose()
+
+    out_obj = json.loads(stdout_buf.decode("utf-8", errors="replace").splitlines()[0])
+    assert out_obj == response
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_pipe_child_stdout_jsonrpc_only_does_not_prune_tools_call_under_threshold(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+
+    class _FakeStream:
+        def __init__(self, lines: list[bytes]) -> None:
+            self._lines = lines
+
+        async def readline(self) -> bytes:
+            return self._lines.pop(0) if self._lines else b""
+
+    stdout_buf = bytearray()
+    stderr_buf = bytearray()
+
+    class _Buf:
+        def __init__(self, target: bytearray) -> None:
+            self._t = target
+
+        def write(self, b: bytes) -> None:
+            self._t.extend(b)
+
+        def flush(self) -> None:
+            return
+
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_ENABLED", "1")
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_MIN_CHARS", "100")
+
+    # Si un appel pruner se produit malgré le seuil, ce test doit échouer.
+    class _DummyClient:
+        def __init__(self) -> None:
+            self.is_closed = False
+
+        async def aclose(self) -> None:
+            self.is_closed = True
+
+        async def post(self, *_a, **_kw):
+            raise AssertionError("pruner must not be called under threshold")
+
+    monkeypatch.setattr(mcp_bridge.httpx, "AsyncClient", lambda *a, **kw: _DummyClient())
+
+    inflight = mcp_bridge.InflightTracker()
+    inflight.observe_client_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {"name": "read_file", "arguments": {}},
+        }
+    )
+
+    response = {"jsonrpc": "2.0", "id": 7, "result": {"content": [{"type": "text", "text": "short"}]}}
+    stream = _FakeStream([(json.dumps(response) + "\n").encode("utf-8")])
+
+    tool_pruner = mcp_bridge.BridgeToolPruner(server_name="filesystem-agent")
+    await mcp_bridge._pipe_child_stdout_jsonrpc_only(
+        stream=stream,
+        stdout_buffer=_Buf(stdout_buf),
+        stderr_buffer=_Buf(stderr_buf),
+        server_name="filesystem-agent",
+        inflight=inflight,
+        tool_pruner=tool_pruner,
+    )
+    await tool_pruner.aclose()
+
+    out_obj = json.loads(stdout_buf.decode("utf-8", errors="replace").splitlines()[0])
+    assert out_obj == response
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_pipe_child_stdout_jsonrpc_only_fail_open_on_pruner_timeout(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+
+    class _FakeStream:
+        def __init__(self, lines: list[bytes]) -> None:
+            self._lines = lines
+
+        async def readline(self) -> bytes:
+            return self._lines.pop(0) if self._lines else b""
+
+    stdout_buf = bytearray()
+    stderr_buf = bytearray()
+
+    class _Buf:
+        def __init__(self, target: bytearray) -> None:
+            self._t = target
+
+        def write(self, b: bytes) -> None:
+            self._t.extend(b)
+
+        def flush(self) -> None:
+            return
+
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_ENABLED", "1")
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_MIN_CHARS", "1")
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_MAX_CHARS_FALLBACK", "0")
+
+    class _DummyClient:
+        def __init__(self) -> None:
+            self.is_closed = False
+
+        async def aclose(self) -> None:
+            self.is_closed = True
+
+        async def post(self, *_a, **_kw):
+            raise mcp_bridge.httpx.TimeoutException("timeout")
+
+    monkeypatch.setattr(mcp_bridge.httpx, "AsyncClient", lambda *a, **kw: _DummyClient())
+
+    inflight = mcp_bridge.InflightTracker()
+    inflight.observe_client_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "tools/call",
+            "params": {"name": "read_file", "arguments": {}},
+        }
+    )
+
+    response = {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "result": {"content": [{"type": "text", "text": "ORIGINAL_TIMEOUT_SAFE"}]},
+    }
+    stream = _FakeStream([(json.dumps(response) + "\n").encode("utf-8")])
+
+    tool_pruner = mcp_bridge.BridgeToolPruner(server_name="filesystem-agent")
+    await mcp_bridge._pipe_child_stdout_jsonrpc_only(
+        stream=stream,
+        stdout_buffer=_Buf(stdout_buf),
+        stderr_buffer=_Buf(stderr_buf),
+        server_name="filesystem-agent",
+        inflight=inflight,
+        tool_pruner=tool_pruner,
+    )
+    await tool_pruner.aclose()
+
+    out_obj = json.loads(stdout_buf.decode("utf-8", errors="replace").splitlines()[0])
+    # Fail-open: la réponse JSON-RPC reste valide et inchangée.
+    assert out_obj == response
+
+
 @pytest.mark.unit
 def test_get_stdio_stream_limit_bytes_clamps_env(monkeypatch):
     mcp_bridge = _import_mcp_bridge()

@@ -1,7 +1,7 @@
 # API Layer — Routes et Endpoints
 
 ## TL;DR
-La couche API expose aujourd’hui **58 routes HTTP effectives** pour **56 couples méthode+chemin uniques**. Le point d’entrée central reste `POST /chat/completions`, avec une compatibilité OpenAI minimale via `GET /models`.
+La couche API expose aujourd’hui **61 routes HTTP effectives** pour **59 couples méthode+chemin uniques**. Le point d’entrée central reste `POST /chat/completions`, avec une compatibilité OpenAI minimale via `GET /models`.
 
 ## Problème
 Le code source contient des doublons de décorateurs et des routes historiques. Sans inventaire runtime FastAPI, la documentation diverge rapidement des chemins réellement exposés.
@@ -115,11 +115,11 @@ API (FastAPI) ← Services (WebSocket) ← Features (MCP) ← Proxy (HTTPX) ← 
 **Documenter à partir des routes montées, puis signaler explicitement les doublons et routes non montées.**
 
 ## Métriques API
-- 60 décorateurs HTTP détectés dans les fichiers de routes
-- 58 routes HTTP effectives
-- 56 couples méthode+chemin uniques
+- 61 décorateurs HTTP détectés dans les fichiers de routes
+- 61 routes HTTP effectives (+3)
+- 59 couples méthode+chemin uniques (+3)
 - 13 fichiers avec décorateurs actifs (`api/routes` contient 15 fichiers avec `__init__.py` et `websocket.py`)
 
 ---
-*Dernière mise à jour: 2026-02-26*  
+*Dernière mise à jour: 2026-03-01*  
 *Conforme documentation/SKILL.md: TL;DR, problem-first, blocs ❌/✅, trade-offs, Golden Rule.*
