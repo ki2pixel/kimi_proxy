@@ -248,6 +248,44 @@ start_servers() {
     start_pruner_server
     
     # -------------------------------------------------------------------------
+    # 6c. Serveur Docs MCP Server (Docker)
+    # -------------------------------------------------------------------------
+    echo ""
+    log_info "Vérification Docs MCP Server..."
+    
+    # Vérifier si un conteneur utilise déjà le port 6280
+    if docker ps --filter "publish=6280" --format "{{.Names}}" | grep -q .; then
+        EXISTING_CONTAINER=$(docker ps --filter "publish=6280" --format "{{.Names}}" | head -1)
+        log_warning "Port 6280 déjà utilisé par le conteneur: $EXISTING_CONTAINER"
+        log_info "Arrêt du conteneur existant..."
+        docker stop "$EXISTING_CONTAINER" >/dev/null 2>&1
+        docker rm "$EXISTING_CONTAINER" >/dev/null 2>&1
+        log_success "Conteneur existant arrêté et supprimé"
+    fi
+    
+    # Démarrer le conteneur Docs MCP Server
+    log_info "Lancement du conteneur Docs MCP Server sur le port 6280..."
+    
+    docker run --rm -d \
+      --name docs-mcp-server \
+      -v docs-mcp-data:/data \
+      -v docs-mcp-config:/config \
+      -p 6280:6280 \
+      ghcr.io/arabold/docs-mcp-server:latest \
+      --protocol http --host 0.0.0.0 --port 6280
+    
+    # Attendre que le conteneur démarre et que le serveur réponde
+    sleep 3
+    
+    if docker ps --filter "name=docs-mcp-server" --filter "status=running" | grep -q "docs-mcp-server"; then
+        log_success "Docs MCP Server Docker démarré et disponible"
+    else
+        log_error "Échec du démarrage du conteneur Docs MCP Server"
+        echo "   Vérifiez: docker logs docs-mcp-server"
+        exit 1
+    fi
+    
+    # -------------------------------------------------------------------------
     # 7. Vérification des serveurs stdio (via bridge)
     # -------------------------------------------------------------------------
     echo ""
@@ -300,6 +338,11 @@ start_servers() {
     echo "  🔗 URL: http://localhost:$COMPRESSION_PORT"
     echo "  📋 Endpoint: /rpc (JSON-RPC 2.0)"
     echo ""
+    echo "Docs MCP Server:"
+    echo "  🐳 Mode: Docker"
+    echo "  🔗 URL: http://localhost:6280"
+    echo "  📋 Endpoint: /mcp (streamableHttp)"
+    echo ""
     echo "Serveurs MCP via Bridge:"
     echo "  📋 Filesystem Agent: Stdio (lancé à la demande)"
     echo "  📋 Ripgrep Agent: Stdio (lancé à la demande)"
@@ -325,6 +368,16 @@ start_pruner_server() {
     fi
 
     log_info "Lancement du serveur MCP Pruner sur le port $PRUNER_PORT..."
+
+    # Charger les variables d'environnement depuis .env
+    if [ -f ".env" ]; then
+        set -a
+        source .env
+        set +a
+        log_info "Variables d'environnement chargées depuis .env"
+    else
+        log_warning "Fichier .env non trouvé"
+    fi
 
     MCP_PRUNER_PORT="$PRUNER_PORT" PYTHONPATH="$(pwd)/src:${PYTHONPATH:-}" nohup \
         python3 -m kimi_proxy.features.mcp_pruner.server \

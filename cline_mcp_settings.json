@@ -14,7 +14,20 @@
         "MCP_BRIDGE_MONITORING_ENABLED": "1",
         "MCP_BRIDGE_MONITORING_LOG_PATH": "/tmp/kimi-proxy/mcp-bridge-filesystem.jsonl",
         "MCP_BRIDGE_MONITORING_QUEUE_MAX": "1000",
-        "MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT": "1"
+        "MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT": "1",
+        "KIMI_MCP_TOOL_PRUNING_ENABLED": "1",
+        "KIMI_MCP_TOOL_PRUNING_MIN_CHARS": "4000",
+        "KIMI_MCP_TOOL_PRUNING_TIMEOUT_MS": "1500",
+        "KIMI_MCP_TOOL_PRUNING_MAX_CHARS_FALLBACK": "0",
+        "KIMI_MCP_PRUNING_GOAL_HINT": "compress tool output",
+        "KIMI_MCP_TOOL_PRUNING_MAX_PRUNE_RATIO": "0.55",
+        "KIMI_MCP_TOOL_PRUNING_MIN_KEEP_LINES": "40",
+        "KIMI_MCP_TOOL_PRUNING_ANNOTATE_LINES": "true",
+        "KIMI_MCP_TOOL_PRUNING_INCLUDE_MARKERS": "true",
+        "KIMI_MCP_PRUNER_RPC_URL": "http://localhost:8006/rpc",
+        "KIMI_MCP_TOOL_PRUNING_METRICS_STDERR": "1",
+        "KIMI_MCP_TOOL_PRUNING_METRICS_STDERR_INTERVAL_S": "10",
+        "KIMI_MCP_TOOL_PRUNING_METRICS_HEALTH": "1"
       },
       "type": "stdio",
       "autoApprove": [
@@ -39,7 +52,20 @@
         "MCP_BRIDGE_MONITORING_ENABLED": "1",
         "MCP_BRIDGE_MONITORING_LOG_PATH": "/tmp/kimi-proxy/mcp-bridge-ripgrep.jsonl",
         "MCP_BRIDGE_MONITORING_QUEUE_MAX": "1000",
-        "MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT": "1"
+        "MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT": "1",
+        "KIMI_MCP_TOOL_PRUNING_ENABLED": "1",
+        "KIMI_MCP_TOOL_PRUNING_MIN_CHARS": "4000",
+        "KIMI_MCP_TOOL_PRUNING_TIMEOUT_MS": "1500",
+        "KIMI_MCP_TOOL_PRUNING_MAX_CHARS_FALLBACK": "0",
+        "KIMI_MCP_PRUNING_GOAL_HINT": "compress tool output",
+        "KIMI_MCP_TOOL_PRUNING_MAX_PRUNE_RATIO": "0.55",
+        "KIMI_MCP_TOOL_PRUNING_MIN_KEEP_LINES": "40",
+        "KIMI_MCP_TOOL_PRUNING_ANNOTATE_LINES": "true",
+        "KIMI_MCP_TOOL_PRUNING_INCLUDE_MARKERS": "true",
+        "KIMI_MCP_PRUNER_RPC_URL": "http://localhost:8006/rpc",
+        "KIMI_MCP_TOOL_PRUNING_METRICS_STDERR": "1",
+        "KIMI_MCP_TOOL_PRUNING_METRICS_STDERR_INTERVAL_S": "10",
+        "KIMI_MCP_TOOL_PRUNING_METRICS_HEALTH": "1"
       },
       "type": "stdio",
       "autoApprove": [
@@ -62,7 +88,20 @@
         "MCP_BRIDGE_MONITORING_ENABLED": "1",
         "MCP_BRIDGE_MONITORING_LOG_PATH": "/tmp/kimi-proxy/mcp-bridge-shrimp.jsonl",
         "MCP_BRIDGE_MONITORING_QUEUE_MAX": "1000",
-        "MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT": "1"
+        "MCP_BRIDGE_MONITORING_SUMMARY_ON_EXIT": "1",
+        "KIMI_MCP_TOOL_PRUNING_ENABLED": "1",
+        "KIMI_MCP_TOOL_PRUNING_MIN_CHARS": "4000",
+        "KIMI_MCP_TOOL_PRUNING_TIMEOUT_MS": "1500",
+        "KIMI_MCP_TOOL_PRUNING_MAX_CHARS_FALLBACK": "0",
+        "KIMI_MCP_PRUNING_GOAL_HINT": "compress tool output",
+        "KIMI_MCP_TOOL_PRUNING_MAX_PRUNE_RATIO": "0.55",
+        "KIMI_MCP_TOOL_PRUNING_MIN_KEEP_LINES": "40",
+        "KIMI_MCP_TOOL_PRUNING_ANNOTATE_LINES": "true",
+        "KIMI_MCP_TOOL_PRUNING_INCLUDE_MARKERS": "true",
+        "KIMI_MCP_PRUNER_RPC_URL": "http://localhost:8006/rpc",
+        "KIMI_MCP_TOOL_PRUNING_METRICS_STDERR": "1",
+        "KIMI_MCP_TOOL_PRUNING_METRICS_STDERR_INTERVAL_S": "10",
+        "KIMI_MCP_TOOL_PRUNING_METRICS_HEALTH": "1"
       },
       "type": "stdio",
       "autoApprove": [
@@ -147,14 +186,13 @@
       },
       "type": "stdio"
     },
-    "context7": {
-      "timeout": 60,
-      "url": "https://mcp.context7.com/mcp",
-      "headers": {
-        "Authorization": "hidden"
-      },
-      "type": "sse",
-      "disabled": true
+    "docs-mcp-server": {
+      "type": "streamableHttp",
+      "url": "http://localhost:6280/mcp",
+      "env": {
+        "GOOGLE_API_KEY": "hidden",
+        "DOCS_MCP_EMBEDDING_MODEL": "gemini:embedding-001"
+      }
     },
     "mcp-pruner": {
       "timeout": 60,

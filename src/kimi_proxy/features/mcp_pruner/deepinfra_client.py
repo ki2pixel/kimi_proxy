@@ -173,7 +173,7 @@ class DeepInfraClient:
         }
 
         payload: JsonObject = {
-            "query": query,
+            "queries": [query],
             "documents": list(documents),
         }
 
