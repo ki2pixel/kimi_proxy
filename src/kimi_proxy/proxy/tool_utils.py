@@ -30,6 +30,15 @@ JSON_FIX_METRICS = {
     "failure_reasons": []
 }
 
+
+def _try_validate_json_candidate(candidate: str) -> bool:
+    """Retourne True si `candidate` est un JSON valide."""
+    try:
+        json.loads(candidate)
+        return True
+    except json.JSONDecodeError:
+        return False
+
 def detect_and_merge_concatenated_json(json_str: str) -> str:
     """
     Détecte et fusionne les structures JSON concaténées/dupliquées.
@@ -185,13 +194,124 @@ def fix_tool_calls_in_request(body: Dict[str, Any]) -> Dict[str, Any]:
                     continue
                     
                 tool_call_id = tool_call.get('id')
-                if not tool_call_id or not validate_tool_call_id(tool_call_id):
+                if not tool_call_id:
                     # Génère un nouvel ID valide
                     new_id = generate_tool_call_id()
                     tool_call['id'] = new_id
                     print(f"   [TOOL CALL] ID généré: {new_id}")
     
     return body
+
+
+def normalize_tool_call_arguments(body: Dict[str, Any]) -> tuple[Dict[str, Any], int]:
+    """
+    Normalise les `function.arguments` des `assistant.tool_calls` avant envoi provider.
+
+    Pourquoi:
+    - certains clients IDE conservent dans l'historique des `arguments` JSON tronqués
+      ou malformés après une session/tool-call longue ;
+    - NVIDIA rejette alors toute la requête avec un 400 de parsing JSON
+      (`Unterminated string ...`).
+
+    Stratégie:
+    - ne touche qu'aux `assistant.tool_calls[*].function.arguments`
+    - si la chaîne est déjà un JSON valide, no-op
+    - sinon, applique la réparation existante `fix_malformed_json_arguments`
+      et n'adopte le résultat que s'il redevient un JSON valide.
+
+    Returns:
+        Tuple (body muté, nombre d'arguments corrigés)
+    """
+    if not isinstance(body, dict):
+        return body, 0
+
+    fixed_arguments_count = 0
+    messages = body.get("messages", [])
+    if not isinstance(messages, list):
+        return body, 0
+
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        if message.get("role") != "assistant":
+            continue
+
+        tool_calls = message.get("tool_calls")
+        if not isinstance(tool_calls, list):
+            continue
+
+        for tool_call in tool_calls:
+            if not isinstance(tool_call, dict):
+                continue
+
+            function_obj = tool_call.get("function")
+            if not isinstance(function_obj, dict):
+                continue
+
+            arguments = function_obj.get("arguments")
+
+            if isinstance(arguments, dict):
+                function_obj["arguments"] = json.dumps(arguments, ensure_ascii=False)
+                fixed_arguments_count += 1
+                continue
+
+            if not isinstance(arguments, str) or not arguments.strip():
+                continue
+
+            try:
+                json.loads(arguments)
+                continue
+            except json.JSONDecodeError:
+                fixed_arguments = fix_malformed_json_arguments(arguments)
+                if fixed_arguments == arguments:
+                    continue
+
+                try:
+                    json.loads(fixed_arguments)
+                except json.JSONDecodeError:
+                    continue
+
+                function_obj["arguments"] = fixed_arguments
+                fixed_arguments_count += 1
+
+    return body, fixed_arguments_count
+
+
+def reconstruct_from_corrupted_arguments(corrupted_str: str) -> Optional[str]:
+    """
+    Reconstruction conservatrice d'un objet JSON d'arguments corrompu.
+
+    Objectif:
+    - éviter les NameError dans le pipeline de réparation,
+    - fournir un fallback simple avant la reconstruction agressive.
+    """
+    if not corrupted_str or not corrupted_str.strip():
+        return None
+
+    property_pattern = re.compile(
+        r'"([^"]+)"\s*:\s*("(?:[^"\\]|\\.)*"|true|false|null|-?\d+(?:\.\d+)?)'
+    )
+    reconstructed: Dict[str, Any] = {}
+
+    for match in property_pattern.finditer(corrupted_str):
+        key = match.group(1)
+        raw_value = match.group(2)
+
+        if raw_value.startswith('"') and raw_value.endswith('"'):
+            reconstructed[key] = raw_value[1:-1]
+        elif raw_value == 'true':
+            reconstructed[key] = True
+        elif raw_value == 'false':
+            reconstructed[key] = False
+        elif raw_value == 'null':
+            reconstructed[key] = None
+        else:
+            reconstructed[key] = float(raw_value) if '.' in raw_value else int(raw_value)
+
+    if not reconstructed:
+        return None
+
+    return json.dumps(reconstructed, ensure_ascii=False)
 
 
 def reconstruct_complex_json(corrupted_str: str) -> str:
@@ -367,16 +487,28 @@ def fix_malformed_json_arguments(arguments_str: str, enable_circuit_breaker: boo
     attempt_count += 1
     fixed = re.sub(r'(\w+)"\s*"(\w+)":', r'\1","\2":', fixed)
     print(f"   After property comma fix: {fixed[:150]}...")
+    if _try_validate_json_candidate(fixed):
+        print(f"   ✅ JSON valide après correction virgule propriété")
+        JSON_FIX_METRICS["success_by_strategy"]["direct_fix"] += 1
+        return fixed
 
     # ÉTAPE 6: Pattern pour valeurs numériques sans virgule
     attempt_count += 1
     fixed = re.sub(r'(\d+)\s*"(\w+)":', r'\1, "\2":', fixed)
     print(f"   After numeric comma fix: {fixed[:150]}...")
+    if _try_validate_json_candidate(fixed):
+        print(f"   ✅ JSON valide après correction virgule numérique")
+        JSON_FIX_METRICS["success_by_strategy"]["direct_fix"] += 1
+        return fixed
 
     # ÉTAPE 7: Pattern pour true/false/null sans virgule
     attempt_count += 1
     fixed = re.sub(r'(true|false|null)\s*"(\w+)":', r'\1, "\2":', fixed)
     print(f"   After boolean comma fix: {fixed[:150]}...")
+    if _try_validate_json_candidate(fixed):
+        print(f"   ✅ JSON valide après correction virgule booléenne")
+        JSON_FIX_METRICS["success_by_strategy"]["direct_fix"] += 1
+        return fixed
 
     # ÉTAPE 8: Reconstruction spécifique pour le pattern observé
     attempt_count += 1

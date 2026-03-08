@@ -13,6 +13,7 @@ class Session:
     name: str
     provider: str = "managed:kimi-code"
     model: Optional[str] = None
+    external_session_id: Optional[str] = None
     created_at: Optional[str] = None
     is_active: bool = False
     # Phase 1 Context Compaction
@@ -27,6 +28,7 @@ class Session:
             "name": self.name,
             "provider": self.provider,
             "model": self.model,
+            "external_session_id": self.external_session_id,
             "created_at": self.created_at,
             "is_active": self.is_active,
             "reserved_tokens": self.reserved_tokens,
@@ -237,6 +239,60 @@ class TokenMetrics:
             "source": self.source,
             "is_compile_chat": self.is_compile_chat,
             "is_api_error": self.is_api_error
+        }
+
+
+@dataclass
+class AnalyticsSourceState:
+    """État runtime d'une source analytics multi-provider."""
+
+    source_id: str
+    source_kind: str
+    path: str
+    available: bool = False
+    healthy: bool = True
+    last_error: Optional[str] = None
+    last_event_at: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit l'état en dictionnaire sérialisable."""
+        return {
+            "source_id": self.source_id,
+            "source_kind": self.source_kind,
+            "path": self.path,
+            "available": self.available,
+            "healthy": self.healthy,
+            "last_error": self.last_error,
+            "last_event_at": self.last_event_at,
+        }
+
+
+@dataclass
+class AnalyticsEvent:
+    """Événement analytics normalisé entre découverte, parsing et diffusion."""
+
+    source_id: str
+    source_kind: str
+    timestamp: str
+    metrics: TokenMetrics
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    session_external_id: Optional[str] = None
+    preview: Optional[str] = None
+    severity: str = "info"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit l'événement en dictionnaire sérialisable."""
+        return {
+            "source_id": self.source_id,
+            "source_kind": self.source_kind,
+            "timestamp": self.timestamp,
+            "metrics": self.metrics.to_dict(),
+            "provider": self.provider,
+            "model": self.model,
+            "session_external_id": self.session_external_id,
+            "preview": self.preview,
+            "severity": self.severity,
         }
 
 

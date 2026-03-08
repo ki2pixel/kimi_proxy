@@ -571,12 +571,11 @@ export function mergeDataSources() {
     const now = Date.now();
     const TIME_THRESHOLD = 5000;  // 5 secondes
     
-    // Poids de priorité des sources (plus haut = plus prioritaire)
-    const SOURCE_PRIORITY = {
-        'compile_chat': 4,  // Données officielles de Continue
-        'api_error': 3,     // Information critique
-        'proxy': 2,         // Données en temps réel
-        'logs': 1           // Données secondaires
+    const getSourcePriority = (sourceName) => {
+        if (sourceName === 'compile_chat' || sourceName === 'continue_compile_chat') return 4;
+        if (sourceName === 'api_error' || sourceName === 'continue_api_error' || sourceName === 'kimi_global_error') return 3;
+        if (sourceName === 'proxy' || sourceName === 'kimi_global' || (sourceName && sourceName.startsWith('kimi_session'))) return 2;
+        return 1;
     };
     
     let bestData = null;
@@ -587,12 +586,12 @@ export function mergeDataSources() {
     const sources = [];
     
     if (lastProxyData && (now - lastProxyData.timestamp) < TIME_THRESHOLD) {
-        sources.push({ data: lastProxyData, name: 'proxy', priority: SOURCE_PRIORITY['proxy'] });
+        sources.push({ data: lastProxyData, name: 'proxy', priority: getSourcePriority('proxy') });
     }
     
     if (lastLogData && (now - lastLogData.timestamp) < TIME_THRESHOLD) {
         const logSourceName = lastLogData.source || 'logs';
-        const priority = SOURCE_PRIORITY[logSourceName] || SOURCE_PRIORITY['logs'];
+        const priority = getSourcePriority(logSourceName);
         sources.push({ data: lastLogData, name: logSourceName, priority: priority });
     }
     

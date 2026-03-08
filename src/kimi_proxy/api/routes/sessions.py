@@ -11,6 +11,7 @@ from ...core.database import (
     create_session,
     get_active_session,
     get_all_sessions,
+    get_session_by_id,
     get_session_stats,
     set_active_session,
     delete_session,
@@ -37,8 +38,9 @@ async def api_create_session(request: Request):
     name = data.get("name", f"Session {datetime.now().strftime('%H:%M:%S')}")
     provider = data.get("provider", "managed:kimi-code")
     model = data.get("model")
+    external_session_id = data.get("external_session_id") or data.get("session_external_id")
     
-    session = create_session(name, provider, model)
+    session = create_session(name, provider, model, external_session_id=external_session_id)
     
     # Récupère la config pour les modèles
     config = get_config()

@@ -70,6 +70,7 @@ class RateLimiter:
                     status["wait_time"] = max(0.1, wait_time)
                     status["throttled"] = True
                     self.total_throttled += 1
+                    return status
                 else:
                     status["allowed"] = False
                     return status

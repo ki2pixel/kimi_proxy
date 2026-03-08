@@ -68,6 +68,62 @@ except (ReadError, TimeoutException) as e:
 ### Règle d'Or : Extraction Avant Retry
 Toujours extraire les tokens disponibles avant de retenter, pour éviter la perte de métriques même en cas d'échec.
 
+## Authentification provider et diagnostic fidèle
+
+**TL;DR**: le proxy ne doit plus confondre une configuration manquante, une clé API absente et un vrai `401` upstream. **Le bon diagnostic dépend de l’endroit exact où l’échec se produit.**
+
+## Le problème
+
+Vous voyez `401 Invalid Authentication` côté client. La tentation est de conclure immédiatement que la clé est mauvaise.
+
+Mais dans une couche proxy multi-provider, trois pannes différentes peuvent se ressembler:
+
+- le provider n’existe pas dans `config.toml`;
+- le provider existe, mais la clé résolue est vide;
+- le provider répond réellement `401`.
+
+## ❌ Ancien comportement trompeur
+
+```python
+provider_config = providers.get(provider_key, {})
+provider_api_key = provider_config.get("api_key", "")
+
+if not provider_api_key:
+    print(f"Aucune clé API trouvée pour {provider_key}")
+```
+
+Cette logique signale bien un problème, mais elle mélange absence de config et absence de clé réelle.
+
+## ✅ Comportement actuel
+
+```python
+if not isinstance(provider_config, dict):
+    return JSONResponse(..., status_code=503)
+
+if provider_key == "managed:kimi-code" and not provider_api_key:
+    return JSONResponse(..., status_code=503)
+
+if response.status_code == 401:
+    return JSONResponse(..., status_code=401)
+```
+
+L’idée est simple:
+
+- `503` si le proxy n’est pas correctement configuré;
+- `401` si le provider a réellement refusé l’authentification.
+
+## Trade-offs
+
+| Choix | Avantage | Limite |
+| ----- | -------- | ------ |
+| Réponse 503 sur config absente | Diagnostic local immédiat | Plus strict qu’un fallback silencieux |
+| Réponse 401 seulement si le provider la renvoie | Fidélité au problème réel | Suppose que l’appel upstream a bien eu lieu |
+| Masquage de la clé en log | Sécurité | Moins d’information brute pour le debug |
+
+## Golden Rule
+
+**Dans la couche proxy, un `401` ne doit signifier qu’une seule chose: le provider a refusé l’authentification. Tout le reste relève d’un diagnostic de configuration locale.**
+
 ## Architecture Technique
 
 ### Flux de Requête

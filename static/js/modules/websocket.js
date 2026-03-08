@@ -290,30 +290,80 @@ export class WebSocketManager {
         }
     }
 
+    getLogSourcePresentation(data) {
+        const source = data.source || 'logs';
+
+        if (source === 'compile_chat' || source === 'continue_compile_chat') {
+            const parts = [];
+            if (data.metrics.tools_tokens > 0) parts.push(`${data.metrics.tools_tokens.toLocaleString()} tools`);
+            if (data.metrics.system_message_tokens > 0) parts.push(`${data.metrics.system_message_tokens.toLocaleString()} système`);
+            if (data.metrics.context_length > 0) parts.push(`contexte: ${data.metrics.context_length.toLocaleString()}`);
+            return {
+                previewText: `CompileChat Continue - ${parts.join(', ')}`,
+                source,
+                sourceFamily: 'continue_compile',
+                sourceLabel: data.source_label || 'CompileChat Continue'
+            };
+        }
+
+        if (source === 'api_error' || source === 'continue_api_error' || source === 'kimi_global_error') {
+            const errorLabel = source === 'kimi_global_error' ? 'Erreur Kimi' : 'Erreur API';
+            return {
+                previewText: `⚠️ ${errorLabel} - Limite atteinte: ${data.metrics.total_tokens.toLocaleString()} tokens`,
+                source,
+                sourceFamily: 'error',
+                sourceLabel: data.source_label || errorLabel
+            };
+        }
+
+        if (source === 'kimi_global') {
+            return {
+                previewText: `Kimi global - contexte: ${(data.metrics.context_length || 0).toLocaleString()}`,
+                source,
+                sourceFamily: 'kimi_global',
+                sourceLabel: data.source_label || 'Log global Kimi'
+            };
+        }
+
+        if (source.startsWith('kimi_session')) {
+            return {
+                previewText: `Session Kimi - usage: ${data.metrics.total_tokens.toLocaleString()} tokens`,
+                source,
+                sourceFamily: 'kimi_session',
+                sourceLabel: data.source_label || 'Session Kimi'
+            };
+        }
+
+        if (source === 'continue_logs' || source === 'logs') {
+            return {
+                previewText: `Logs Continue - ${data.metrics.prompt_tokens || 0} prompt / ${data.metrics.completion_tokens || 0} completion`,
+                source,
+                sourceFamily: 'continue_logs',
+                sourceLabel: data.source_label || 'Logs Continue'
+            };
+        }
+
+        return {
+            previewText: `Analytics - ${data.metrics.total_tokens.toLocaleString()} tokens`,
+            source,
+            sourceFamily: data.source_family || source,
+            sourceLabel: data.source_label || source
+        };
+    }
+
     handleLogMetricMessage(data, now) {
         // Données des logs PyCharm
         if (data.metrics) {
+            const presentation = this.getLogSourcePresentation(data);
             setLastLogData({
                 tokens: data.metrics.total_tokens,
                 percentage: data.metrics.percentage,
-                source: data.source || 'logs',
+                source: presentation.source,
+                source_family: presentation.sourceFamily,
+                source_label: presentation.sourceLabel,
                 timestamp: now,
                 max_context: data.metrics.max_context
             });
-            
-            // Construction du message de preview selon le type
-            let previewText = 'Détecté dans les logs Continue';
-            if (data.source === 'compile_chat') {
-                const parts = [];
-                if (data.metrics.tools_tokens > 0) parts.push(`${data.metrics.tools_tokens.toLocaleString()} tools`);
-                if (data.metrics.system_message_tokens > 0) parts.push(`${data.metrics.system_message_tokens.toLocaleString()} system`);
-                if (data.metrics.context_length > 0) parts.push(`context: ${data.metrics.context_length.toLocaleString()}`);
-                previewText = `CompileChat - ${parts.join(', ')}`;
-            } else if (data.source === 'api_error') {
-                previewText = `⚠️ Erreur API - Limite atteinte: ${data.metrics.total_tokens.toLocaleString()} tokens`;
-            } else {
-                previewText = `Logs - ${data.metrics.prompt_tokens || 0} prompt / ${data.metrics.completion_tokens || 0} completion`;
-            }
             
             // Crée une métrique log
             const logMetric = {
@@ -321,9 +371,9 @@ export class WebSocketManager {
                 timestamp: data.timestamp || new Date().toISOString(),
                 estimated_tokens: data.metrics.total_tokens,
                 percentage: data.metrics.percentage,
-                content_preview: previewText,
+                content_preview: presentation.previewText,
                 is_estimated: false,
-                source: data.source || 'logs',
+                source: presentation.source,
                 tools_tokens: data.metrics.tools_tokens || 0,
                 system_message_tokens: data.metrics.system_message_tokens || 0
             };

@@ -170,4 +170,9 @@ ALERT_THRESHOLDS = {
 # ============================================================================
 # CHEMINS
 # ============================================================================
-DEFAULT_LOG_PATH = "~/.continue/logs/core.log"
+DEFAULT_CONTINUE_LOG_PATH = "~/.continue/logs/core.log"
+DEFAULT_KIMI_LOG_PATH = "/home/kidpixel/.kimi/logs/kimi.log"
+DEFAULT_KIMI_SESSIONS_PATH = "/home/kidpixel/.kimi/sessions"
+
+# Backward compatibility: l'ancien watcher mono-source utilisait cette constante.
+DEFAULT_LOG_PATH = DEFAULT_CONTINUE_LOG_PATH

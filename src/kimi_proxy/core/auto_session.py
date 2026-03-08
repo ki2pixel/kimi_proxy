@@ -7,7 +7,7 @@ différent de la session active et crée une nouvelle session automatiquement.
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime
 
-from ..core.database import create_session, get_active_session
+from ..core.database import create_session, update_session_external_id
 from ..config.loader import get_config
 
 
@@ -68,10 +68,57 @@ def detect_provider_from_model(model: str, models_config: Dict[str, Any]) -> Opt
     return None
 
 
+def _normalize_optional_string(value: object) -> Optional[str]:
+    """Normalise une chaîne optionnelle en supprimant les blancs inutiles."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _extract_nested_string(payload: Dict[str, Any], *paths: tuple[str, ...]) -> Optional[str]:
+    """Extrait une chaîne depuis une liste de chemins explicites et sûrs."""
+    for path in paths:
+        current: object = payload
+        for segment in path:
+            if not isinstance(current, dict):
+                current = None
+                break
+            current = current.get(segment)
+        normalized = _normalize_optional_string(current)
+        if normalized:
+            return normalized
+    return None
+
+
+def extract_provider_from_request(request_body: Dict[str, Any]) -> Optional[str]:
+    """Extrait un provider explicite depuis le body entrant si disponible."""
+    return _extract_nested_string(
+        request_body,
+        ("provider",),
+        ("metadata", "provider"),
+        ("session", "provider"),
+    )
+
+
+def extract_external_session_id_from_request(request_body: Dict[str, Any]) -> Optional[str]:
+    """Extrait un identifiant de session externe si le client le fournit explicitement."""
+    return _extract_nested_string(
+        request_body,
+        ("external_session_id",),
+        ("session_external_id",),
+        ("metadata", "external_session_id"),
+        ("metadata", "session_external_id"),
+        ("session", "external_session_id"),
+        ("session", "session_external_id"),
+    )
+
+
 def should_auto_create_session(
     detected_provider: str,
     detected_model: str,
-    current_session: Optional[Dict[str, Any]]
+    current_session: Optional[Dict[str, Any]],
+    detected_external_session_id: Optional[str] = None,
 ) -> bool:
     """
     Détermine si une nouvelle session doit être créée automatiquement.
@@ -86,20 +133,40 @@ def should_auto_create_session(
     """
     if not current_session:
         return True  # Pas de session active, créer une nouvelle
-    
-    current_model = current_session.get("model")
-    
-    # Si les modèles sont différents, créer une nouvelle session
-    if detected_model != current_model:
+
+    current_provider = _normalize_optional_string(current_session.get("provider"))
+    current_model = _normalize_optional_string(current_session.get("model"))
+    current_external_session_id = _normalize_optional_string(current_session.get("external_session_id"))
+
+    normalized_detected_provider = _normalize_optional_string(detected_provider)
+    normalized_detected_model = _normalize_optional_string(detected_model)
+    normalized_detected_external_id = _normalize_optional_string(detected_external_session_id)
+
+    if (
+        normalized_detected_provider
+        and current_provider
+        and normalized_detected_provider != current_provider
+    ):
         return True
-    
+
+    if (
+        normalized_detected_external_id
+        and current_external_session_id
+        and normalized_detected_external_id != current_external_session_id
+    ):
+        return True
+
+    if normalized_detected_model != current_model:
+        return True
+
     return False
 
 
 def auto_create_session(
     detected_provider: str,
     detected_model: str,
-    models_config: Dict[str, Any]
+    models_config: Dict[str, Any],
+    detected_external_session_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Crée automatiquement une nouvelle session pour un provider donné.
@@ -122,7 +189,8 @@ def auto_create_session(
         new_session = create_session(
             name=session_name,
             provider=detected_provider,
-            model=detected_model
+            model=detected_model,
+            external_session_id=detected_external_session_id,
         )
         
         print(f"🔄 [AUTO SESSION] Nouvelle session créée: #{new_session['id']} "
@@ -137,7 +205,8 @@ def auto_create_session(
                 "type": "auto_session_created",
                 "session": new_session,
                 "provider": detected_provider,
-                "model": detected_model
+                "model": detected_model,
+                "external_session_id": detected_external_session_id,
             }))
         
         return new_session
@@ -170,16 +239,31 @@ def process_auto_session(
         return current_session, False
     
     # Détecter le provider depuis le modèle
-    detected_provider = detect_provider_from_model(model, models_config)
+    detected_provider = extract_provider_from_request(request_body) or detect_provider_from_model(model, models_config)
     if not detected_provider:
         return current_session, False
+
+    detected_external_session_id = extract_external_session_id_from_request(request_body)
     
     # Mapper le modèle pour le provider détecté
     from ..proxy.router import map_model_name
     mapped_model = map_model_name(model, models_config)
     
     # Vérifier si on doit créer une nouvelle session
-    if not should_auto_create_session(detected_provider, mapped_model, current_session):
+    if not should_auto_create_session(
+        detected_provider,
+        mapped_model,
+        current_session,
+        detected_external_session_id=detected_external_session_id,
+    ):
+        if (
+            current_session
+            and detected_external_session_id
+            and not _normalize_optional_string(current_session.get("external_session_id"))
+        ):
+            update_session_external_id(current_session.get("id", 0), detected_external_session_id)
+            current_session = dict(current_session)
+            current_session["external_session_id"] = detected_external_session_id
         return current_session, False
     
     # Vérifier si l'auto-session est activée pour cette session
@@ -189,7 +273,12 @@ def process_auto_session(
             return current_session, False  # Mode auto désactivé
     
     # Créer la nouvelle session avec le modèle mappé
-    new_session = auto_create_session(detected_provider, mapped_model, models_config)
+    new_session = auto_create_session(
+        detected_provider,
+        mapped_model,
+        models_config,
+        detected_external_session_id=detected_external_session_id,
+    )
     if new_session:
         return new_session, True
     

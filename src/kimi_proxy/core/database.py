@@ -80,6 +80,7 @@ def init_database():
             name TEXT NOT NULL,
             provider TEXT DEFAULT 'managed:kimi-code',
             model TEXT,
+            external_session_id TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             is_active BOOLEAN DEFAULT 0
         )
@@ -297,6 +298,14 @@ def _run_migrations(cursor: sqlite3.Cursor, conn: sqlite3.Connection):
         print("   Migration: colonne 'model' ajoutée à sessions")
     except sqlite3.OperationalError:
         pass
+
+    # Migration: ajoute la colonne external_session_id dans sessions
+    try:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN external_session_id TEXT")
+        conn.commit()
+        print("   Migration: colonne 'external_session_id' ajoutée à sessions")
+    except sqlite3.OperationalError:
+        pass
     
     # Migration: ajoute les colonnes tags et token_count dans masked_content
     try:
@@ -412,7 +421,12 @@ def get_all_sessions() -> List[Dict[str, Any]]:
         return [dict(row) for row in cursor.fetchall()]
 
 
-def create_session(name: str, provider: str = "managed:kimi-code", model: str = None) -> Dict[str, Any]:
+def create_session(
+    name: str,
+    provider: str = "managed:kimi-code",
+    model: str = None,
+    external_session_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """Crée une nouvelle session et la rend active."""
     with get_db() as conn:
         cursor = conn.cursor()
@@ -423,13 +437,15 @@ def create_session(name: str, provider: str = "managed:kimi-code", model: str = 
         # Insère la nouvelle session
         if model:
             cursor.execute(
-                "INSERT INTO sessions (name, provider, model, is_active) VALUES (?, ?, ?, 1)",
-                (name, provider, model)
+                """INSERT INTO sessions (name, provider, model, external_session_id, is_active)
+                   VALUES (?, ?, ?, ?, 1)""",
+                (name, provider, model, external_session_id)
             )
         else:
             cursor.execute(
-                "INSERT INTO sessions (name, provider, is_active) VALUES (?, ?, 1)",
-                (name, provider)
+                """INSERT INTO sessions (name, provider, external_session_id, is_active)
+                   VALUES (?, ?, ?, 1)""",
+                (name, provider, external_session_id)
             )
         
         session_id = cursor.lastrowid
@@ -452,6 +468,26 @@ def update_session_model(session_id: int, model: str) -> bool:
             return cursor.rowcount > 0
         except Exception as e:
             print(f"⚠️ Erreur mise à jour modèle session: {e}")
+            return False
+
+
+def update_session_external_id(session_id: int, external_session_id: Optional[str]) -> bool:
+    """Met à jour l'identifiant de session externe d'une session."""
+    normalized_external_id = external_session_id.strip() if isinstance(external_session_id, str) else None
+    if normalized_external_id == "":
+        normalized_external_id = None
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE sessions SET external_session_id = ? WHERE id = ?",
+                (normalized_external_id, session_id)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"⚠️ Erreur mise à jour external_session_id session: {e}")
             return False
 
 

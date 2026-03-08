@@ -29,11 +29,38 @@ from ...services.alerts import check_threshold_alert, create_context_limit_alert
 from ...proxy.router import get_target_url_for_session, get_provider_host_header, map_model_name
 from ...proxy.stream import stream_generator, extract_usage_from_response
 from ...proxy.client import create_proxy_client
+from ...proxy.tool_utils import fix_tool_calls_in_request, normalize_tool_call_arguments
 from ...features.observation_masking import MaskPolicy, mask_old_tool_results
 from ...features.pruner_goal_hint import derive_goal_hint
 from ...proxy.context_pruning import prune_tool_messages_best_effort
 
 router = APIRouter()
+
+
+def _build_provider_rate_limit_response(
+    *,
+    provider_key: str,
+    error_text: str,
+    retry_after: Optional[str] = None,
+) -> JSONResponse:
+    response_headers: Dict[str, str] = {}
+    if retry_after:
+        response_headers["Retry-After"] = retry_after
+
+    return JSONResponse(
+        content={
+            "error": "Provider rate limit exceeded",
+            "message": (
+                f"Le provider {provider_key} a temporairement refusé la requête pour cause de rate limit. "
+                "Réessayez après un court délai."
+            ),
+            "provider": provider_key,
+            "retry_after": retry_after,
+            "details": error_text,
+        },
+        status_code=429,
+        headers=response_headers,
+    )
 
 
 def check_context_limit_violation(
@@ -114,6 +141,13 @@ async def proxy_chat(request: Request):
 
     messages_obj = json_body.get("messages") if isinstance(json_body, dict) else None
     messages = messages_obj if isinstance(messages_obj, list) else []
+    sanitized_body_json = dict(json_body) if isinstance(json_body, dict) else {}
+    sanitized_body_json = fix_tool_calls_in_request(sanitized_body_json)
+    sanitized_body_json, fixed_arguments_count = normalize_tool_call_arguments(sanitized_body_json)
+    if fixed_arguments_count > 0:
+        print(f"🛠️ [PROXY] Arguments tool_calls normalisés: {fixed_arguments_count}")
+    messages_obj = sanitized_body_json.get("messages") if isinstance(sanitized_body_json, dict) else None
+    messages = messages_obj if isinstance(messages_obj, list) else []
 
     # Schéma 1: observation masking conversationnel (tool results) avant tokens/provider send
     schema1_cfg = get_observation_masking_schema1_config(config)
@@ -125,17 +159,17 @@ async def proxy_chat(request: Request):
         placeholder_template=schema1_cfg.placeholder_template,
     )
     effective_messages = messages
-    body_for_provider = body
+    body_for_provider = json.dumps(sanitized_body_json).encode("utf-8") if sanitized_body_json else body
     if schema1_policy.enabled:
         try:
             effective_messages = mask_old_tool_results(messages, schema1_policy)
-            masked_body_json = dict(json_body)
+            masked_body_json = dict(sanitized_body_json)
             masked_body_json["messages"] = effective_messages
             body_for_provider = json.dumps(masked_body_json).encode("utf-8")
         except Exception as e:
             print(f"⚠️ [OBSERVATION MASKING] Échec schema1 (no-op): {e}")
             effective_messages = messages
-            body_for_provider = body
+            body_for_provider = json.dumps(sanitized_body_json).encode("utf-8") if sanitized_body_json else body
 
     # Lot C2: Context Pruning (MCP Pruner) — prune uniquement `role="tool"` pour
     # préserver les invariants tool-calling.
@@ -150,7 +184,7 @@ async def proxy_chat(request: Request):
                 source_type="logs",
             )
 
-            pruned_body_json = dict(json_body)
+            pruned_body_json = dict(sanitized_body_json)
             pruned_body_json["messages"] = effective_messages
             body_for_provider = json.dumps(pruned_body_json).encode("utf-8")
 
@@ -226,6 +260,10 @@ async def proxy_chat(request: Request):
             print(f"✅ [AUTO-COMPACTION] Exécutée pour session {session['id']}: {compaction_result.tokens_saved} tokens économisés")
     
     print(f"📊 [PROXY] {estimated_tokens:,} tokens → {provider_key}")
+
+    if provider_key == "nvidia":
+        rate_limiter = get_rate_limiter()
+        await rate_limiter.throttle_if_needed()
     
     # Proxy direct
     return await _proxy_to_provider(
@@ -257,9 +295,38 @@ async def _proxy_to_provider(
     """
     Effectue le proxy vers le provider IA avec gestion d'erreurs robuste et métriques temps réel.
     """
-    provider_config = providers.get(provider_key, {})
-    provider_api_key = provider_config.get("api_key", "")
+    provider_config = providers.get(provider_key)
+    if not isinstance(provider_config, dict):
+        print(f"⚠️ Configuration provider introuvable pour {provider_key}")
+        return JSONResponse(
+            content={
+                "error": "Provider configuration missing",
+                "message": (
+                    f"Le provider {provider_key} n'est pas configuré dans config.toml. "
+                    "Vérifiez la section providers avant de relancer la session."
+                ),
+                "provider": provider_key,
+            },
+            status_code=503,
+        )
+
+    raw_provider_api_key = provider_config.get("api_key", "")
+    provider_api_key = raw_provider_api_key.strip() if isinstance(raw_provider_api_key, str) else ""
     provider_type = provider_config.get("type", "openai")
+
+    if provider_key == "managed:kimi-code" and not provider_api_key:
+        print(f"⚠️ Configuration API absente pour {provider_key}")
+        return JSONResponse(
+            content={
+                "error": "Provider API key missing",
+                "message": (
+                    "La clé API Kimi Code est absente. Vérifiez la variable d'environnement "
+                    "KIMI_API_KEY et son expansion dans config.toml."
+                ),
+                "provider": provider_key,
+            },
+            status_code=503,
+        )
     
     # Construction des headers
     proxy_headers = {
@@ -275,7 +342,7 @@ async def _proxy_to_provider(
         masked_key = provider_api_key[:10] + "..." if len(provider_api_key) > 10 else "***"
         print(f"🔑 Clé API {provider_key} injectée: {masked_key}")
     else:
-        print(f"⚠️ ATTENTION: Aucune clé API trouvée pour {provider_key}")
+        print(f"⚠️ Aucune clé API configurée pour {provider_key}")
     
     # Mise à jour du Host header
     host_header = get_provider_host_header(target_url)
@@ -293,6 +360,11 @@ async def _proxy_to_provider(
         body_json = json.loads(body)
         model_name = body_json.get('model', '')
         original_model = model_name
+
+        body_json = fix_tool_calls_in_request(body_json)
+        body_json, fixed_arguments_count = normalize_tool_call_arguments(body_json)
+        if fixed_arguments_count > 0:
+            print(f"🛠️ [PROXY] Arguments tool_calls normalisés: {fixed_arguments_count}")
         
         # Mappe le modèle
         mapped_model = map_model_name(model_name, models)
@@ -355,6 +427,27 @@ async def _proxy_to_provider(
                         error_body = await response.aread()
                         error_text = error_body.decode('utf-8', errors='ignore')[:500]
                         print(f"❌ [PROXY] Erreur {response.status_code}: {error_text}")
+
+                        if response.status_code == 429:
+                            retry_after = response.headers.get("retry-after")
+                            return _build_provider_rate_limit_response(
+                                provider_key=provider_key,
+                                error_text=error_text,
+                                retry_after=retry_after,
+                            )
+
+                        if response.status_code == 401:
+                            return JSONResponse(
+                                content={
+                                    "error": "Invalid Authentication",
+                                    "message": (
+                                        f"Authentification refusée par le provider {provider_key}. "
+                                        "Vérifiez la clé API et la configuration du provider."
+                                    ),
+                                    "provider": provider_key,
+                                },
+                                status_code=401,
+                            )
                         
                         # Gestion spécifique de l'erreur "Message exceeds context limit"
                         if "message exceeds context limit" in error_text.lower() or "context length" in error_text.lower():
@@ -469,6 +562,27 @@ async def _proxy_to_provider(
                 
                 if response.status_code >= 400:
                     print(f"❌ [PROXY] Erreur {response.status_code}: {response.text[:500]}")
+
+                    if response.status_code == 429:
+                        retry_after = response.headers.get("retry-after")
+                        return _build_provider_rate_limit_response(
+                            provider_key=provider_key,
+                            error_text=response.text[:500],
+                            retry_after=retry_after,
+                        )
+
+                    if response.status_code == 401:
+                        return JSONResponse(
+                            content={
+                                "error": "Invalid Authentication",
+                                "message": (
+                                    f"Authentification refusée par le provider {provider_key}. "
+                                    "Vérifiez la clé API et la configuration du provider."
+                                ),
+                                "provider": provider_key,
+                            },
+                            status_code=401,
+                        )
                     
                     # Gestion spécifique de l'erreur "Message exceeds context limit"
                     if "message exceeds context limit" in response.text.lower() or "context length" in response.text.lower():
@@ -539,6 +653,11 @@ async def _proxy_to_provider(
                     },
                     status_code=500
                 )
+
+            return JSONResponse(
+                content={"error": response.text},
+                status_code=response.status_code
+            )
 
 
 # ============================================================================

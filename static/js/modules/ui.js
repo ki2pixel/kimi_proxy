@@ -529,9 +529,10 @@ function createLogEntryElement(metric) {
     
     // Détermine la source et les styles
     const source = metric.source || 'proxy';
-    const isLogSource = source === 'logs';
-    const isCompileChat = source === 'compile_chat';
-    const isApiError = source === 'api_error';
+    const descriptor = resolveSourceDescriptor(source);
+    const isLogSource = descriptor.cssSource === 'logs';
+    const isCompileChat = descriptor.key === 'continue_compile';
+    const isApiError = descriptor.key === 'error';
     const isMcpMemory = source === 'mcp_memory';
     const isCompression = source === 'compression';
     const isAlert = source === 'alert';
@@ -550,11 +551,8 @@ function createLogEntryElement(metric) {
     let badgeInfo = getBadgeInfo(source, metric);
     
     // Icône selon la source
-    let iconName = 'arrow-right-circle';
-    if (isCompileChat) iconName = 'layers';
-    else if (isApiError) iconName = 'alert-triangle';
-    else if (isLogSource) iconName = 'file-text';
-    else if (isMcpMemory) iconName = 'brain';
+    let iconName = descriptor.iconName;
+    if (isMcpMemory) iconName = 'brain';
     else if (isCompression) iconName = 'minimize-2';
     else if (isAlert) iconName = 'alert-circle';
     
@@ -663,6 +661,7 @@ function createLogEntryElement(metric) {
 
 function getBadgeInfo(source, metric) {
     const isEstimated = metric.is_estimated !== false;
+    const descriptor = resolveSourceDescriptor(source);
     
     // Détection automatique des patterns MCP/Memory
     // Si le type commence par 'mcp_' ou contient 'memory_', affiche 'MCP MEMORY' en violet
@@ -674,24 +673,36 @@ function getBadgeInfo(source, metric) {
         };
     }
     
-    switch (source) {
-        case 'compile_chat':
+    switch (descriptor.key) {
+        case 'continue_compile':
             return {
                 class: 'source-indicator source-logs text-[9px]',
                 text: 'COMPILE',
-                title: 'Bloc CompileChat (Continue)'
+                title: 'Bloc CompileChat Continue'
             };
-        case 'api_error':
+        case 'error':
             return {
                 class: 'bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded text-[10px]',
                 text: 'ERROR',
-                title: 'Erreur API (quota/limit)'
+                title: descriptor.title
             };
-        case 'logs':
+        case 'continue_logs':
             return {
                 class: 'source-indicator source-logs text-[9px]',
                 text: 'LOGS',
-                title: 'Depuis les logs PyCharm'
+                title: 'Depuis les logs Continue'
+            };
+        case 'kimi_global':
+            return {
+                class: 'source-indicator source-logs text-[9px]',
+                text: 'KIMI',
+                title: 'Log global Kimi Code'
+            };
+        case 'kimi_session':
+            return {
+                class: 'source-indicator source-logs text-[9px]',
+                text: 'SESSION',
+                title: 'Artefact de session Kimi Code'
             };
         case 'mcp_memory':
             return {
@@ -720,6 +731,30 @@ function getBadgeInfo(source, metric) {
                 title: isEstimated ? 'Estimé' : 'Tokens réels'
             };
     }
+}
+
+function resolveSourceDescriptor(source) {
+    const normalized = source || 'proxy';
+
+    if (normalized === 'compile_chat' || normalized === 'continue_compile_chat') {
+        return { key: 'continue_compile', cssSource: 'logs', label: 'CompileChat Continue', gaugeLabel: 'COMPILE', title: 'Bloc CompileChat Continue', iconName: 'layers' };
+    }
+    if (normalized === 'api_error' || normalized === 'continue_api_error' || normalized === 'kimi_global_error') {
+        return { key: 'error', cssSource: 'logs', label: 'Erreur analytics', gaugeLabel: 'ERROR', title: normalized === 'kimi_global_error' ? 'Erreur Kimi globale' : 'Erreur analytics', iconName: 'alert-triangle' };
+    }
+    if (normalized === 'logs' || normalized === 'continue_logs') {
+        return { key: 'continue_logs', cssSource: 'logs', label: 'Logs Continue', gaugeLabel: 'LOGS', title: 'Logs Continue', iconName: 'file-text' };
+    }
+    if (normalized === 'kimi_global') {
+        return { key: 'kimi_global', cssSource: 'logs', label: 'Kimi global', gaugeLabel: 'KIMI', title: 'Log global Kimi Code', iconName: 'file-text' };
+    }
+    if (normalized.startsWith('kimi_session')) {
+        return { key: 'kimi_session', cssSource: 'logs', label: 'Session Kimi', gaugeLabel: 'SESSION', title: 'Artefact de session Kimi Code', iconName: 'messages-square' };
+    }
+    if (normalized === 'hybrid') {
+        return { key: 'hybrid', cssSource: 'hybrid', label: 'Hybride', gaugeLabel: 'HYBRID', title: 'Fusion proxy + analytics', iconName: 'arrow-right-circle' };
+    }
+    return { key: normalized, cssSource: normalized, label: normalized, gaugeLabel: 'PROXY', title: normalized, iconName: 'arrow-right-circle' };
 }
 
 function scrollToBottom() {
@@ -766,11 +801,8 @@ export function updateSourceIndicator(source, tokens, percentage) {
     if (container) container.classList.remove('hidden');
     if (gaugeIndicator) gaugeIndicator.classList.remove('hidden');
     
-    // Détermine la classe CSS selon la source
-    let cssSource = source;
-    if (source === 'compile_chat' || source === 'api_error') {
-        cssSource = 'logs';
-    }
+    const descriptor = resolveSourceDescriptor(source);
+    const cssSource = descriptor.cssSource;
     
     // Met à jour les classes
     if (badge) {
@@ -778,15 +810,7 @@ export function updateSourceIndicator(source, tokens, percentage) {
     }
     
     // Texte selon la source
-    const sourceLabels = {
-        'proxy': 'Proxy Live',
-        'logs': 'Logs PyCharm',
-        'compile_chat': 'CompileChat',
-        'api_error': 'API Error',
-        'hybrid': 'Hybride'
-    };
-    
-    const label = sourceLabels[source] || source;
+    const label = descriptor.label;
     
     if (badge) {
         // Met à jour le badge de manière sécurisée (sans innerHTML)
@@ -802,14 +826,7 @@ export function updateSourceIndicator(source, tokens, percentage) {
     
     // Abréviation pour la jauge
     if (gaugeIndicator) {
-        const gaugeLabels = {
-            'proxy': 'PROXY',
-            'logs': 'LOGS',
-            'compile_chat': 'COMPILE',
-            'api_error': 'ERROR',
-            'hybrid': 'HYBRID'
-        };
-        gaugeIndicator.textContent = gaugeLabels[source] || 'LOGS';
+        gaugeIndicator.textContent = descriptor.gaugeLabel || 'LOGS';
     }
 }
 

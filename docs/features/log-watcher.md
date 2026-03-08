@@ -1,203 +1,178 @@
-# Log Watcher : Monitoring Temps Réel PyCharm
+# Log watcher : Continue + Kimi, sans casser l’existant
 
-**TL;DR**: Le log watcher parse les logs PyCharm en temps réel, extrait métriques compilation/execution, et met à jour le dashboard via WebSocket. Complexité D justifiée par parsing robuste blocs CompileChat.
+## TL;DR
+Le log watcher n’est plus mono-source. **Il surveille maintenant les logs Continue, le fichier global `kimi.log` et les artefacts de session Kimi (`context.jsonl` + `metadata.json`) avec un parsing incrémental et fail-open.**
 
-## Le Problème des Logs Développeur
+## Le problème
+Vous voulez une vue temps réel cohérente du dashboard, mais les signaux n’arrivent plus d’un seul endroit.
 
-Vous codez. PyCharm génère des logs verbeux. Vous voulez métriques utiles sans parsing manuel.
+Continue produit encore ses logs historiques. Kimi, lui, sépare les informations entre:
 
-## ❌ Parsing Regex Simpliste (Avant)
+- un log global;
+- des sessions par workspace;
+- des fichiers JSON/JSONL qui peuvent être partiels, invalides ou en cours d’écriture.
 
-```python
-# Regex fragile
-metrics = re.findall(r"(\d+)ms", log_line)
-if metrics:
-    return int(metrics[0])
-return 0  # Erreur silencieuse
-```
+Si le watcher reste centré sur un seul fichier, vous perdez soit la compatibilité Continue, soit la granularité Kimi.
 
-## ✅ Parser Structuré (Actuel)
+## ❌ L’ancien monde: une seule source, un seul format
 
 ```python
-class LogParser:
-    def _extract_standard_metrics(self, block: str) -> dict:
-        """Extrait métriques standard avec validation"""
-        return {
-            "compile_time": self._parse_time(block),
-            "memory_usage": self._parse_memory(block),
-            "error_count": len(self._find_errors(block))
-        }
-    
-    def _parse_compile_chat_block(self, block: str) -> CompileMetrics:
-        """Parse blocs CompileChat avec patterns connus"""
-        # Logique robuste avec fallbacks
+watcher = LogWatcher(log_path="core.log")
+events = await watcher.poll()
 ```
 
-## Architecture Technique
+Cette approche fonctionne pour un pipeline homogène. Elle devient trop pauvre dès qu’il faut distinguer:
 
-### Flux de Parsing
+- `continue_compile_chat`;
+- `kimi_global`;
+- `kimi_session_user`, `kimi_session_usage`, `kimi_session_tool`, etc.
 
-```
-PyCharm Logs → FileWatcher → LogParser
-                              ↓
-                         _extract_standard_metrics()
-                              ↓
-                         _parse_compile_chat_block()
-                              ↓
-                         WebSocketManager
-                              ↓
-                         Dashboard (temps réel)
-```
-
-### Patterns de Logs Supportés
-
-| Type Log | Pattern | Métriques Extraites |
-| -------- | ------- | ------------------- |
-| Compilation | `CompileChat: 1500ms` | temps, fichiers |
-| Execution | `Run: 200ms` | durée, statut |
-| Erreurs | `ERROR: line 42` | compte, sévérité |
-| Tests | `pytest: 45s` | durée, succès/échec |
-
-## Parsing Métriques Log (Pattern 6)
-
-**TL;DR**: Le parser analyse les blocs CompileChat avec complexité D pour extraire métriques précises sans perdre de données.
-
-### Défis Parsing
-Les logs PyCharm mélangent métriques standard et blocs CompileChat. Une erreur de parsing peut invalider toute la session.
-
-### ✅ Logique Interne
-```python
-# Dans parser.py:_extract_standard_metrics
-def _extract_standard_metrics(self, log_line: str) -> dict:
-    # Pattern matching hiérarchique
-    if 'tokens:' in log_line:
-        # Validation numérique
-        tokens = int(re.search(r'tokens:(\d+)', log_line).group(1))
-        # Bounds checking
-        if tokens > 0 and tokens < 100000:
-            return {'tokens': tokens}
-    return {}
-```
-
-### Gestion Erreurs Parsing
-- **Validation stricte** : rejet automatique des valeurs invalides
-- **Fallback partiel** : extraction des métriques valides même si une ligne échoue
-- **Logging détaillé** : traçabilité des rejets pour debug
-
-### Règle d'Or : Validation Plutôt Que Silence
-Préférer rejeter une métrique invalide que de corrompre les statistiques globales.
-
-### Extraction Métriques
+## ✅ Le monde actuel: plusieurs sources, un format normalisé
 
 ```python
-def _extract_standard_metrics(self, block: str) -> dict:
-    """Extrait métriques avec validation et fallbacks"""
-    metrics = {
-        "compile_time": self._safe_extract_time(block),
-        "memory_peak": self._safe_extract_memory(block),
-        "file_count": self._count_files(block),
-        "error_count": len(self._find_errors(block))
-    }
-    
-    # Validation cohérence
-    if metrics["compile_time"] > 30000:  # 30s+
-        metrics["compile_time"] = None  # Anomalie
-    
-    return metrics
+default_sources = [
+    ContinueLogSource(log_path=log_path),
+    KimiGlobalLogSource(),
+    KimiSessionSource(),
+]
 ```
 
-### Parsing Blocs CompileChat
+Chaque source produit ensuite le même type d’événement normalisé:
 
 ```python
-def _parse_compile_chat_block(self, block: str) -> CompileMetrics:
-    """Parse spécialisé pour blocs PyCharm"""
-    lines = block.split('\n')
-    
-    # Pattern: "CompileChat: 1500ms, 42 files"
-    compile_match = re.search(r'CompileChat:\s*(\d+)ms', block)
-    files_match = re.search(r'(\d+)\s+files', block)
-    
-    return CompileMetrics(
-        compile_time=int(compile_match.group(1)) if compile_match else 0,
-        files_processed=int(files_match.group(1)) if files_match else 0,
-        timestamp=datetime.now(),
-        success=self._check_success_indicators(block)
-    )
+AnalyticsEvent(
+    source_id="kimi_sessions",
+    source_kind="kimi_session",
+    metrics=metrics,
+    provider=provider,
+    model=model,
+    session_external_id=session_external_id,
+    preview=preview,
+)
 ```
 
-## Patterns Système Appliqués
+## Les trois flux réellement surveillés
 
-- **Pattern 2** : Injection dépendances parser
-- **Pattern 6** : Gestion erreurs parsing avec fallbacks
-- **Pattern 15** : Mise à jour temps réel dashboard via WebSocket
+### Continue
 
-## Points Chauds Complexité
+Le watcher conserve la compatibilité historique avec les logs Continue.
 
-### _extract_standard_metrics() - Score D
-- **Raison** : 57 LOC de parsing robuste avec validation
-- **Solution** : Décomposition en extracteurs spécialisés
+Il continue de produire:
 
-### _parse_compile_chat_block() - Score C
-- **Raison** : 142 LOC de parsing complexe PyCharm
-- **Solution** : Séparation patterns regex par type
+- `continue_logs`
+- `continue_compile_chat`
+- `continue_api_error`
 
-## Performance Optimisation
+### Kimi global
 
-### File Watching Efficace
+Le watcher lit `~/.kimi/logs/kimi.log` pour détecter notamment:
+
+- le provider actif;
+- le modèle actif;
+- le `max_context` observé;
+- les erreurs runtime Kimi.
+
+### Kimi sessions
+
+Le watcher lit les artefacts par session sous `~/.kimi/sessions/<workdir-hash>/<session-id>/`.
+
+Les fichiers utiles sont:
+
+- `context.jsonl`
+- `metadata.json`
+
+Les rôles actuellement interprétés sont:
+
+- `_checkpoint`
+- `_usage`
+- `user`
+- `assistant`
+- `tool`
+
+## JSON partiel: la vraie difficulté
+
+Le problème n’est pas seulement de parser du JSON. Le problème est de parser du JSON qui peut être:
+
+- invalide temporairement;
+- écrit pendant qu’on le lit;
+- absent pour certaines sessions;
+- incomplet au moment du polling.
+
+## ✅ Le choix fait ici: fail-open et incrémental
+
+### Pour `context.jsonl`
+
+Chaque ligne est traitée indépendamment. Une ligne invalide est ignorée sans casser le reste du flux.
 
 ```python
-class LogWatcher:
-    def __init__(self):
-        self.observer = Observer()
-        self.parser = LogParser()
-        self.last_position = 0
-        
-    def on_modified(self, event):
-        """Lit uniquement les nouvelles lignes"""
-        with open(event.src_path, 'r') as f:
-            f.seek(self.last_position)
-            new_content = f.read()
-            self.last_position = f.tell()
-            
-        if new_content.strip():
-            self.process_new_content(new_content)
+try:
+    payload = json.loads(line)
+except json.JSONDecodeError:
+    return None
 ```
 
-### Batch Processing
+### Pour `metadata.json`
+
+Si le metadata est invalide, le watcher retombe sur un état vide et continue de produire des événements à partir du nom du dossier de session.
 
 ```python
-def process_batch(self, lines: List[str]) -> List[Metrics]:
-    """Traite les logs par batch pour éviter surcharge"""
-    batch_size = 100
-    results = []
-    
-    for i in range(0, len(lines), batch_size):
-        batch = lines[i:i+batch_size]
-        block = '\n'.join(batch)
-        metrics = self.parser._extract_standard_metrics(block)
-        results.append(metrics)
-        
-    return results
+except (OSError, json.JSONDecodeError):
+    state.metadata = {}
+    state.metadata_mtime = metadata_mtime
+    return
 ```
 
-## Integration Dashboard
+Cette règle évite le pire scénario: perdre toute une session parce qu’un fichier auxiliaire a été écrit au mauvais moment.
 
-### WebSocket Updates
+## Ce que le dashboard reçoit maintenant
 
-```python
-async def send_metrics_update(self, metrics: dict):
-    """Envoie métriques au dashboard en temps réel"""
-    await self.websocket_manager.broadcast({
-        "type": "log_metrics",
-        "data": {
-            "compile_time": metrics["compile_time"],
-            "memory_usage": metrics["memory_peak"],
-            "timestamp": datetime.now().isoformat(),
-            "errors": metrics["error_count"]
-        }
-    })
-```
+Le backend diffuse toujours un événement `log_metric`, mais avec une normalisation enrichie:
 
-## Golden Rule : Parse Avec Contexte, Jamais Ligne par Ligne
+- `source`
+- `source_family`
+- `source_label`
 
-Le parsing doit considérer le bloc complet pour la cohérence des métriques; le parsing ligne par ligne perd le contexte temporel et structural des logs PyCharm.
+Cela permet au frontend de distinguer proprement:
+
+- Continue compile;
+- erreurs analytics;
+- log global Kimi;
+- événements de session Kimi.
+
+## Pourquoi le parsing est borné
+
+Le watcher Kimi ne rescane pas tout l’arbre de sessions à chaque tick.
+
+Il applique plusieurs garde-fous:
+
+- découverte par batch de roots;
+- nombre maximum de sessions par poll;
+- lecture uniquement depuis la dernière position connue;
+- tail initial borné pour éviter de relire tout l’historique.
+
+Ce n’est pas seulement une optimisation. C’est ce qui rend le watcher viable quand le répertoire `.kimi/sessions/` grossit.
+
+## Continue n’a pas été sacrifié
+
+La migration n’a pas remplacé Continue par Kimi. Elle a transformé le watcher en orchestrateur multi-source.
+
+Autrement dit:
+
+- Continue reste pris en charge;
+- Kimi ajoute des sources plus fines;
+- le dashboard parle maintenant un vocabulaire commun.
+
+## Trade-offs
+
+| Approche | Avantage | Limite |
+| -------- | -------- | ------ |
+| Une seule source Continue | Très simple | Impossible de représenter correctement Kimi |
+| Parsing strict des JSON Kimi | Plus rigoureux | Trop fragile sur des fichiers en cours d’écriture |
+| Parsing fail-open + incrémental | Robuste et compatible temps réel | Demande plus de normalisation côté backend/frontend |
+
+## Golden Rule
+
+**Quand un artefact Kimi est invalide, on doit perdre l’événement fautif, pas toute la chaîne analytics.**
+
+---
+Dernière mise à jour : 2026-03-07

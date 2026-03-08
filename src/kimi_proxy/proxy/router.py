@@ -147,8 +147,21 @@ def map_model_name(
     if client_model in models:
         logger.debug(f"Clé exacte trouvée: {client_model}")
         return models[client_model].get("model", client_model)
+
+    # 2. Si le client envoie déjà l'identifiant provider final, le conserver tel quel.
+    # Cela couvre notamment les clients/IDE qui remplacent la clé configurée
+    # (`nvidia/glm-5`) par le nom upstream exact (`z-ai/glm5`).
+    for model_key, model_data in models.items():
+        configured_model = model_data.get("model")
+        if configured_model == client_model:
+            logger.debug(
+                "Modèle provider exact trouvé via config interne: %s (clé=%s)",
+                client_model,
+                model_key,
+            )
+            return client_model
     
-    # 2. Sinon, split sur le slash pour retourner le suffixe
+    # 3. Sinon, split sur le slash pour retourner le suffixe
     if "/" in client_model:
         fallback = client_model.split("/", 1)[1]
         logger.debug(f"Fallback provider split: {client_model} → {fallback}")

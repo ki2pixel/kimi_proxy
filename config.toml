@@ -13,6 +13,20 @@ model = "moonshotai/kimi-k2.5"
 max_context_size = 262144
 capabilities = ["thinking", "video_in", "image_in", "tool_use"]
 
+# --- Kimi Code - Kimi for Coding ---
+[models."kimi-code/kimi-for-coding"]
+provider = "managed:kimi-code"
+model = "kimi-for-coding"
+max_context_size = 262144
+capabilities = ["coding", "tool_use", "thinking"]
+
+# Alias exact pour compatibilité clients/tests existants
+[models."managed:kimi-code/kimi-for-coding"]
+provider = "managed:kimi-code"
+model = "kimi-for-coding"
+max_context_size = 262144
+capabilities = ["coding", "tool_use", "thinking"]
+
 # --- NVIDIA - Kimi K2 Thinking ---
 [models."nvidia/kimi-k2-thinking"]
 provider = "nvidia"
@@ -36,6 +50,13 @@ capabilities = ["reasoning", "tool_use"]
 
 # --- NVIDIA - DeepSeek V3.2 ---
 [models."nvidia/deepseek-v3.2"]
+provider = "nvidia"
+model = "deepseek-ai/deepseek-v3.2"
+max_context_size = 164000
+capabilities = ["tool_use", "thinking"]
+
+# Alias exact pour les clients qui envoient déjà l'identifiant provider final
+[models."deepseek-ai/deepseek-v3.2"]
 provider = "nvidia"
 model = "deepseek-ai/deepseek-v3.2"
 max_context_size = 164000
@@ -130,6 +151,11 @@ api_key = "${GEMINI_API_KEY}"
 type = "openai"
 base_url = "https://nano-gpt.com/api/v1"
 api_key = "${NANO_GPT_API_KEY}"
+
+[providers."managed:kimi-code"]
+type = "kimi"
+base_url = "https://api.kimi.com/coding/v1"
+api_key = "${KIMI_API_KEY}"
 
 # ============================================
 # SANITIZER - GESTION ACTIVE DU CONTEXTE (Phase 1)

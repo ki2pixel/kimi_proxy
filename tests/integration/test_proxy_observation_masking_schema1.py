@@ -159,3 +159,45 @@ async def test_schema1_enabled_masks_old_tool_results(monkeypatch, async_client:
 
     # call_2 in window => kept
     assert messages[5]["content"] == "OK"
+
+
+@pytest.mark.asyncio
+async def test_proxy_normalizes_tool_call_arguments_before_upstream(monkeypatch, async_client: httpx.AsyncClient):
+    captured: list[bytes] = []
+    body = {
+        "model": "nvidia/kimi-k2.5",
+        "stream": False,
+        "messages": [
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "bad-id",
+                        "type": "function",
+                        "function": {
+                            "name": "fast_read_file",
+                            "arguments": '{"query":"abc" "limit":3}',
+                        },
+                    }
+                ],
+            },
+            {"role": "user", "content": "continue"},
+        ],
+    }
+
+    config: dict[str, object] = {
+        "providers": {"managed:kimi-code": {"type": "openai", "base_url": "http://unused", "api_key": ""}},
+        "models": {"nvidia/kimi-k2.5": {"provider": "nvidia", "model": "moonshotai/kimi-k2.5", "max_context_size": 262144}},
+        "observation_masking": {"schema1": {"enabled": False}},
+    }
+    _patch_proxy_for_test(monkeypatch, config=config, captured_bodies=captured)
+
+    resp = await async_client.post("/chat/completions", json=body)
+    assert resp.status_code == 200
+
+    assert len(captured) == 1
+    sent = json.loads(captured[0].decode("utf-8"))
+    tool_call = sent["messages"][0]["tool_calls"][0]
+    assert tool_call["id"] == "bad-id"
+    assert json.loads(tool_call["function"]["arguments"]) == {"query": "abc", "limit": 3}
