@@ -215,6 +215,43 @@ async def test_gateway_tools_call_under_threshold_does_not_call_pruner(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_gateway_tools_call_excluded_path_skips_pruner_but_still_masks(monkeypatch, async_client: httpx.AsyncClient):
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_ENABLED", "1")
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_MIN_CHARS", "1")
+
+    upstream_text = "O" * 12_000
+
+    async def _fake_forward_jsonrpc(server_name: str, request_json: object, *, timeout_s: float = 30.0) -> object:
+        _ = request_json
+        _ = timeout_s
+        if server_name == "pruner":
+            raise AssertionError("pruner must not be called for excluded paths")
+        return {
+            "jsonrpc": "2.0",
+            "id": "req-excluded-path",
+            "result": {"content": [{"type": "text", "text": upstream_text}]},
+        }
+
+    monkeypatch.setattr(mcp_gateway, "forward_jsonrpc", _fake_forward_jsonrpc)
+
+    req = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {"name": "read_text_file", "arguments": {"path": "/repo/.clinerules/rules.md"}},
+        "id": "req-excluded-path",
+    }
+    resp = await async_client.post("/api/mcp-gateway/fast-filesystem/rpc", json=req)
+    assert resp.status_code == 200
+
+    body = resp.json()
+    final_text = body["result"]["content"][0]["text"]
+    assert body["jsonrpc"] == "2.0"
+    assert body["id"] == "req-excluded-path"
+    assert "KIMI_PROXY_OBSERVATION_MASKED" in final_text
+    assert final_text.startswith("O" * 2000)
+
+
+@pytest.mark.asyncio
 async def test_gateway_non_tools_call_is_not_pruned(monkeypatch, async_client: httpx.AsyncClient):
     monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_ENABLED", "1")
     monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_MIN_CHARS", "1")

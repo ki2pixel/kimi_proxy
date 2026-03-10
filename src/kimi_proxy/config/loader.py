@@ -496,6 +496,7 @@ class MCPToolPruningConfig:
     min_chars: int = 4000
     timeout_ms: int = 1500
     max_chars_fallback: int = 0
+    excluded_dirs: tuple[str, ...] = (".agents", ".cline", ".clinerules", ".windsurf")
     options: MCPToolPruningOptionsConfig = field(default_factory=MCPToolPruningOptionsConfig)
 
 
@@ -532,6 +533,23 @@ def get_mcp_tool_pruning_config(config: Dict[str, Any]) -> MCPToolPruningConfig:
     else:
         max_chars_fallback = defaults.max_chars_fallback
 
+    excluded_dirs_obj = obj.get("excluded_dirs", defaults.excluded_dirs)
+    excluded_dirs: tuple[str, ...]
+    if isinstance(excluded_dirs_obj, list):
+        seen: set[str] = set()
+        parsed_dirs: list[str] = []
+        for item in excluded_dirs_obj:
+            if not isinstance(item, str):
+                continue
+            normalized = item.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            parsed_dirs.append(normalized)
+        excluded_dirs = tuple(parsed_dirs) if parsed_dirs else defaults.excluded_dirs
+    else:
+        excluded_dirs = defaults.excluded_dirs
+
     options_obj = obj.get("options")
     options = options_obj if isinstance(options_obj, dict) else {}
 
@@ -565,6 +583,7 @@ def get_mcp_tool_pruning_config(config: Dict[str, Any]) -> MCPToolPruningConfig:
         min_chars=min_chars,
         timeout_ms=timeout_ms,
         max_chars_fallback=max_chars_fallback,
+        excluded_dirs=excluded_dirs,
         options=MCPToolPruningOptionsConfig(
             max_prune_ratio=max_prune_ratio,
             min_keep_lines=min_keep_lines,

@@ -23,6 +23,7 @@ class MCPToolPruningMetricsSnapshot:
     calls_total: int
 
     skipped_disabled: int
+    skipped_excluded_path: int
     skipped_invalid_request: int
     skipped_non_tools_call: int
     skipped_server_pruner: int
@@ -66,6 +67,7 @@ class MCPToolPruningMetricsCollector:
         self._calls_total = 0
 
         self._skipped_disabled = 0
+        self._skipped_excluded_path = 0
         self._skipped_invalid_request = 0
         self._skipped_non_tools_call = 0
         self._skipped_server_pruner = 0
@@ -104,6 +106,8 @@ class MCPToolPruningMetricsCollector:
         async with self._lock:
             if reason == "disabled":
                 self._skipped_disabled += 1
+            elif reason == "excluded_path":
+                self._skipped_excluded_path += 1
             elif reason == "invalid_request":
                 self._skipped_invalid_request += 1
             elif reason == "non_tools_call":
@@ -172,6 +176,7 @@ class MCPToolPruningMetricsCollector:
             return MCPToolPruningMetricsSnapshot(
                 calls_total=int(self._calls_total),
                 skipped_disabled=int(self._skipped_disabled),
+                skipped_excluded_path=int(self._skipped_excluded_path),
                 skipped_invalid_request=int(self._skipped_invalid_request),
                 skipped_non_tools_call=int(self._skipped_non_tools_call),
                 skipped_server_pruner=int(self._skipped_server_pruner),

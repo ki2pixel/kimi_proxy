@@ -248,6 +248,9 @@ timeout_ms = 1500
 # quand le pruner est indisponible (sinon: no-op total).
 max_chars_fallback = 0
 
+# Répertoires critiques exclus récursivement du pruning (fallback TOML, env prioritaire)
+excluded_dirs = [".agents", ".cline", ".clinerules", ".windsurf"]
+
 [mcp_tool_pruning.options]
 max_prune_ratio = 0.55
 min_keep_lines = 40

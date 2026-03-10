@@ -302,6 +302,74 @@ async def test_pipe_child_stdout_jsonrpc_only_prunes_tools_call_when_enabled(mon
 
 @pytest.mark.asyncio
 @pytest.mark.unit
+async def test_pipe_child_stdout_jsonrpc_only_skips_pruner_for_excluded_path(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+
+    class _FakeStream:
+        def __init__(self, lines: list[bytes]) -> None:
+            self._lines = lines
+
+        async def readline(self) -> bytes:
+            return self._lines.pop(0) if self._lines else b""
+
+    stdout_buf = bytearray()
+    stderr_buf = bytearray()
+
+    class _Buf:
+        def __init__(self, target: bytearray) -> None:
+            self._t = target
+
+        def write(self, b: bytes) -> None:
+            self._t.extend(b)
+
+        def flush(self) -> None:
+            return
+
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_ENABLED", "1")
+    monkeypatch.setenv("KIMI_MCP_TOOL_PRUNING_MIN_CHARS", "1")
+
+    class _DummyClient:
+        def __init__(self) -> None:
+            self.is_closed = False
+
+        async def aclose(self) -> None:
+            self.is_closed = True
+
+        async def post(self, *_a, **_kw):
+            raise AssertionError("pruner must not be called for excluded paths")
+
+    monkeypatch.setattr(mcp_bridge.httpx, "AsyncClient", lambda *a, **kw: _DummyClient())
+
+    inflight = mcp_bridge.InflightTracker()
+    inflight.observe_client_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "tools/call",
+            "params": {"name": "read_file", "arguments": {"path": "/repo/.windsurf/state.json"}},
+        }
+    )
+
+    response = {"jsonrpc": "2.0", "id": 11, "result": {"content": [{"type": "text", "text": "ORIGINAL"}]}}
+    stream = _FakeStream([(json.dumps(response) + "\n").encode("utf-8")])
+
+    tool_pruner = mcp_bridge.BridgeToolPruner(server_name="filesystem-agent")
+    await mcp_bridge._pipe_child_stdout_jsonrpc_only(
+        stream=stream,
+        stdout_buffer=_Buf(stdout_buf),
+        stderr_buffer=_Buf(stderr_buf),
+        server_name="filesystem-agent",
+        inflight=inflight,
+        tool_pruner=tool_pruner,
+    )
+    await tool_pruner.aclose()
+
+    out_obj = json.loads(stdout_buf.decode("utf-8", errors="replace").splitlines()[0])
+    assert out_obj == response
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
 async def test_bridge_tool_pruner_metrics_stderr_emits_json_metadata_only(monkeypatch):
     mcp_bridge = _import_mcp_bridge()
 
@@ -361,6 +429,7 @@ async def test_bridge_tool_pruner_metrics_stderr_emits_json_metadata_only(monkey
     assert last.get("server") == "filesystem-agent"
     metrics = last.get("metrics")
     assert isinstance(metrics, dict)
+    assert "skipped_excluded_path" in metrics
 
     # Ensure no payload keys are present.
     forbidden = {"text", "params", "result", "arguments", "content"}

@@ -6,201 +6,129 @@ license: Complete terms in LICENSE.txt
 
 # Kimi Proxy Streaming Debug
 
-This skill provides systematic debugging for streaming-related issues in Kimi Proxy Dashboard.
+**TL;DR**: The current streaming layer is designed for best effort, not perfect resume. `proxy/stream.py` normalizes known streaming failures, still tries to extract partial usage from buffered SSE data in `finally`, and broadcasts `streaming_error` plus `metric_updated` events when possible.
 
-## Quick Diagnosis
+## Source of Truth
 
-### Common Streaming Errors
+Primary files:
 
-**ReadError**: Connection interrupted by provider
-```bash
-# Check provider status
-./bin/kimi-proxy logs | grep "STREAM_ERROR"
+- `src/kimi_proxy/proxy/stream.py`
+- `src/kimi_proxy/proxy/client.py`
+- `src/kimi_proxy/api/routes/proxy.py`
+- `src/kimi_proxy/core/exceptions.py`
+- `tests/e2e/test_streaming_errors.py`
 
-# Verify timeouts in config.toml
-[proxy.timeouts]
-kimi = 120.0
-nvidia = 150.0
-```
+## Known Streaming Error Types
 
-**TimeoutException**: Response taking too long
+`src/kimi_proxy/proxy/stream.py` defines the canonical streaming error map:
+
 ```python
-# Check current timeout configuration
-from kimi_proxy.config.loader import get_config
-config = get_config()
-timeouts = config.get("proxy", {}).get("timeouts", {})
+STREAMING_ERROR_TYPES = {
+    "read_error": "Connexion interrompue par le provider",
+    "connect_error": "Impossible de se connecter au provider",
+    "timeout_error": "Timeout lors de la lecture du stream",
+    "decode_error": "Erreur de décodage des données",
+    "unknown": "Erreur streaming inconnue",
+}
 ```
 
-**ConnectError**: Cannot reach provider
-```bash
-# Test provider connectivity
-curl -I https://api.kimi.com/coding/v1/models
-curl -I https://integrate.api.nvidia.com/v1/models
-```
+These are the labels that should appear in docs and dashboards.
 
-## Systematic Troubleshooting
+## What the Current Stream Layer Actually Does
 
-### Step 1: Identify the Error Pattern
+### 1. Iterate the upstream stream
 
-Check logs for error patterns:
-```bash
-# Recent streaming errors
-./bin/kimi-proxy logs | tail -50 | grep -E "(ReadError|Timeout|ConnectError|STREAM_ERROR)"
+`stream_generator(...)` yields chunks as they arrive.
 
-# Provider-specific issues
-./bin/kimi-proxy logs | grep -E "(kimi|nvidia|mistral)" | tail -20
-```
+### 2. Capture known network failures
 
-### Step 2: Verify Configuration
+It handles at least:
 
-Check timeout settings:
+- `httpx.ReadError`
+- `httpx.ConnectError`
+- `httpx.TimeoutException`
+- unexpected generic exceptions
+
+### 3. Extract partial usage even after failure
+
+This is a critical current behavior.
+
 ```python
-# In config.toml
-[proxy]
-stream_timeout = 120.0
-max_retries = 2
-retry_delay = 1.0
-
-[proxy.timeouts]
-gemini = 180.0  # Slower provider
-kimi = 120.0
-nvidia = 150.0
-cerebras = 60.0
-groq = 60.0
+usage_data = extract_usage_from_stream(buffer, provider_type)
 ```
 
-### Step 3: Test Individual Providers
+The code does this in `finally`, which means partial buffered SSE data can still update token metrics even if the stream ended badly.
 
-```bash
-# Test each provider independently
-curl -X POST http://localhost:8000/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model": "kimi-code/kimi-for-coding", "messages": [{"role": "user", "content": "test"}], "stream": true}'
-```
+### 4. Broadcast to the dashboard
 
-### Step 4: Check Token Extraction
+When enough context is available, the backend can emit:
 
-Verify token counting works:
+- `metric_updated`
+- `streaming_error`
+
+## WebSocket Error Broadcast
+
+### ✅ Real event shape
+
 ```python
-# Test token extraction
-from kimi_proxy.core.tokens import count_tokens_tiktoken
-tokens = count_tokens_tiktoken("Test message")
-print(f"Token count: {tokens}")
+await manager.broadcast({
+    "type": "streaming_error",
+    "session_id": session_id,
+    "metric_id": metric_id,
+    "error_type": error_type,
+    "error_message": STREAMING_ERROR_TYPES.get(error_type, STREAMING_ERROR_TYPES["unknown"]),
+    "timestamp": datetime.now().isoformat(),
+})
 ```
 
-## Advanced Debugging
+If you update frontend or monitoring docs, use this structure.
 
-### WebSocket Issues
+## Provider Timeouts
 
-Check WebSocket connections:
-```javascript
-// In browser console
-ws = new WebSocket('ws://localhost:8000/ws');
-ws.onmessage = (event) => console.log(JSON.parse(event.data));
-```
+The stream layer currently keeps provider-specific timeout labels for chunk reads:
 
-### Database Corruption
+- `gemini`: `60.0`
+- `kimi`: `30.0`
+- `default`: `30.0`
 
-Reset database if needed:
-```bash
-# Backup first
-./scripts/backup.sh
+Important nuance: these values are used by the stream helper for diagnostics and timeout messaging. Effective network behavior also depends on the surrounding HTTPX client configuration in the proxy layer.
 
-# Reset database
-rm sessions.db && ./bin/kimi-proxy start
-```
+## Request-Layer Retry vs Stream-Layer Recovery
 
-### Memory Leaks
+### ✅ Real current behavior
 
-Check for memory issues:
-```bash
-# Monitor memory usage
-ps aux | grep kimi-proxy
+- `proxy/client.py` retries request-level `ReadError`, `ConnectError`, and `TimeoutException`
+- `proxy/stream.py` performs best-effort extraction and error broadcast after a stream has started
 
-# Check for growing session count
-./bin/kimi-proxy status
-```
+### ❌ Not the current behavior
 
-## Prevention Strategies
+- full stream resume with chunk replay
+- transparent mid-stream reconnection that preserves the exact SSE session
 
-### Optimize Timeouts
+Do not document full resume support unless it is actually added.
 
-Adjust timeouts based on provider characteristics:
-```toml
-[proxy.timeouts]
-# Fast providers
-groq = 30.0
-cerebras = 30.0
+## Practical Debug Flow
 
-# Medium providers  
-kimi = 120.0
-nvidia = 150.0
-
-# Slow providers
-gemini = 180.0
-```
-
-### Monitor Health
-
-Set up health monitoring:
-```bash
-# Continuous health check
-watch -n 5 curl http://localhost:8000/health
-
-# Monitor active sessions
-watch -n 10 curl http://localhost:8000/api/sessions/active
-```
-
-### Rate Limiting
-
-Configure rate limiting to prevent overwhelming providers:
-```toml
-[rate_limiting]
-enabled = true
-requests_per_minute = 60
-burst_size = 10
-```
-
-## Recovery Procedures
-
-### Automatic Recovery
-
-The proxy automatically retries on network errors:
-- 4xx errors: No retry (client error)
-- 5xx errors: Retry with exponential backoff
-- Network errors: Retry up to 2 times
-
-### Manual Recovery
+### Inspect recent stream errors
 
 ```bash
-# Restart proxy service
-./bin/kimi-proxy restart
-
-# Clear stuck sessions
-curl -X DELETE http://localhost:8000/api/sessions/stale
-
-# Reset MCP servers if needed
-./scripts/start-mcp-servers.sh restart
+./bin/kimi-proxy logs | grep "STREAM_ERROR" | tail -20
 ```
 
-## Performance Monitoring
-
-### Key Metrics to Watch
-
-- **Stream latency**: Time to first chunk
-- **Token extraction accuracy**: Tokens counted vs actual
-- **Error rate**: Percentage of failed streams
-- **Recovery time**: Time to recover from errors
-
-### Monitoring Commands
+### Run the focused regression suite
 
 ```bash
-# Stream performance
-./bin/kimi-proxy logs | grep "stream_latency" | tail -20
-
-# Token accuracy
-curl http://localhost:8000/api/sessions/active | jq '.token_accuracy'
-
-# Error rates
-./bin/kimi-proxy logs | grep -c "STREAM_ERROR"
+PYTHONPATH=src python -m pytest tests/e2e/test_streaming_errors.py -q
 ```
+
+### Check route-level proxy handling
+
+Inspect `src/kimi_proxy/api/routes/proxy.py` for the JSON responses returned on `ReadError` / `TimeoutException` and for additional broadcasted provider-context alerts.
+
+## `StreamingError` Exception
+
+`src/kimi_proxy/core/exceptions.py` defines `StreamingError`, but the dominant runtime behavior currently relies on HTTPX exception handling plus normalized broadcast helpers in `proxy/stream.py`. Document both, but prioritize the actual code path the proxy uses today.
+
+## Golden Rule
+
+**For streaming docs, be explicit about best-effort behavior: partial tokens may still be recovered, errors are normalized, and dashboards are updated via WebSocket when possible.** Avoid promising resume semantics the code does not implement.

@@ -1,6 +1,26 @@
 ## Tâche en cours
 Aucune tâche active.
 
+### [2026-03-09 20:11:53] **MCP Tool Pruning — exclusion récursive des répertoires critiques TERMINÉE** : Implémentation d’un filtrage récursif excluant `.agents`, `.cline`, `.clinerules` et `.windsurf` du pruning dans `src/kimi_proxy/features/mcp_tool_pruning/engine.py`, avec détection request-first sur `params.arguments` puis response-aware best-effort sur les JSON textuels de `result.content[*].text`. Extension de configuration via `excluded_dirs` dans `config.toml` et `src/kimi_proxy/config/loader.py`, résolution runtime `KIMI_MCP_TOOL_PRUNING_EXCLUDED_DIRS` respectant `ENV > TOML > défaut interne`, et ajout de la métrique metadata-only `skipped_excluded_path` dans `src/kimi_proxy/features/mcp_tool_pruning/metrics.py`.
+
+**Livrables** :
+- `src/kimi_proxy/features/mcp_tool_pruning/engine.py` : helpers purs de normalisation/split/détection, skip pruning sur chemin exclu, conservation fail-open et JSON-RPC.
+- `src/kimi_proxy/config/loader.py` : support TOML `excluded_dirs` avec parsing robuste.
+- `src/kimi_proxy/features/mcp_tool_pruning/metrics.py` : compteur `skipped_excluded_path`.
+- `config.toml` : fallback `excluded_dirs = [".agents", ".cline", ".clinerules", ".windsurf"]`.
+- `tests/unit/features/test_mcp_tool_pruning_engine.py` : couverture request-side, traversal, Windows, response JSON, JSON malformé, env override.
+- `tests/unit/features/test_mcp_gateway.py` et `tests/unit/test_mcp_bridge.py` : non-régression skip pruner + masking/relay inchangés.
+
+**Validation** :
+- `python3 -m pytest tests/unit/features/test_mcp_tool_pruning_engine.py tests/unit/features/test_mcp_gateway.py tests/unit/test_mcp_bridge.py -q` → **40 passed**.
+
+**Invariants confirmés** :
+- contrat JSON-RPC inchangé,
+- fail-open conservé,
+- ordre gateway prune-then-mask préservé,
+- métriques strictement metadata-only,
+- priorité `ENV > TOML` respectée.
+
 ### [2026-03-07 15:10:00] **Migration analytics Continue/Kimi + auto-session — TERMINÉ** : Finalisation de la migration multi-source Continue/Kimi. Livré: support `external_session_id` persisté dans `sessions`, décision auto-session corrélée par `provider` + `model` + `external_session_id` avec fallback historique, validation fail-open des artefacts Kimi (`context.jsonl`, `metadata.json`) documentée et testée, documentation FR mise à jour (`docs/features/auto-session.md`, `docs/features/log-watcher.md`). Validation: `python3 -m py_compile ...` OK + `python3 -m pytest tests/test_auto_session_model.py tests/unit/features/test_log_watcher_sources.py -q` = **17 passed**.
 
 ### [2026-03-02 00:25:31] **Clôture remédiations DeepInfra P1/P2/P3 — TERMINÉ** : Exécution complète du protocole Shrimp (plan_task/analyze/reflect/split/execute/verify) avec réflexion séquentielle avant T2/T3/T4. Livraisons validées: payload DeepInfra top-level (`query`/`documents`), durcissement `response_preview` (masqué hors debug, sanitizé/redacted/tronqué en debug), test anti-régression strict, documentation synchronisée. Validation finale: `./bin/kimi-proxy test ...` = **159 passed**. Invariants maintenus: contrat MCP JSON-RPC, fail-open, priorité `ENV > TOML`, aucun secret en dur. Aucune tâche active.

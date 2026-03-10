@@ -16,9 +16,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Protocol
+from urllib.parse import unquote, urlparse
 
 from ...config.loader import MCPToolPruningConfig
 from ..mcp_pruner.spec import PruneOptionsDict, SourceType
@@ -28,6 +30,22 @@ from .metrics import MCPToolPruningMetricsCollector
 
 
 JsonObject = dict[str, object]
+_DEFAULT_EXCLUDED_DIRS: tuple[str, ...] = (".agents", ".cline", ".clinerules", ".windsurf")
+_PATH_LIKE_ARGUMENT_KEYS: frozenset[str] = frozenset(
+    {
+        "path",
+        "file_path",
+        "filepath",
+        "paths",
+        "directory",
+        "dir",
+        "cwd",
+        "root",
+        "roots",
+        "uri",
+        "uris",
+    }
+)
 
 
 class PrunerCallable(Protocol):
@@ -50,6 +68,7 @@ class MCPToolPruningResolvedConfig:
     call_timeout_ms: int
     max_chars_fallback: int
     goal_hint_override: str | None
+    excluded_dirs: frozenset[str]
     options: PruneOptionsDict
 
     # Garde-fous locaux (anti over-design, mais protège contre des JSON énormes)
@@ -79,6 +98,7 @@ def resolve_mcp_tool_pruning_config(toml_cfg: MCPToolPruningConfig) -> MCPToolPr
 
     goal_hint_override_raw = os.getenv("KIMI_MCP_PRUNING_GOAL_HINT")
     goal_hint_override = goal_hint_override_raw.strip() if isinstance(goal_hint_override_raw, str) and goal_hint_override_raw.strip() else None
+    excluded_dirs = _resolve_excluded_dirs(toml_cfg.excluded_dirs)
 
     # Options (env > toml)
     max_prune_ratio = _env_float(
@@ -117,6 +137,7 @@ def resolve_mcp_tool_pruning_config(toml_cfg: MCPToolPruningConfig) -> MCPToolPr
         call_timeout_ms=call_timeout_ms,
         max_chars_fallback=max_chars_fallback,
         goal_hint_override=goal_hint_override,
+        excluded_dirs=excluded_dirs,
         options=options,
     )
 
@@ -190,6 +211,28 @@ async def maybe_prune_jsonrpc_response(
     if not isinstance(content_obj, list) or not content_obj:
         if metrics is not None:
             await metrics.record_skip("no_content")
+            await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
+        return response_json
+
+    request_paths = _extract_candidate_paths_from_arguments(
+        _extract_tool_call_arguments(request_json),
+        max_depth=cfg.max_depth,
+        max_nodes=cfg.max_nodes,
+    )
+    if _contains_excluded_path(request_paths, cfg.excluded_dirs):
+        if metrics is not None:
+            await metrics.record_skip("excluded_path")
+            await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
+        return response_json
+
+    if _response_content_contains_excluded_path(
+        content_obj,
+        excluded_dirs=cfg.excluded_dirs,
+        max_depth=cfg.max_depth,
+        max_nodes=cfg.max_nodes,
+    ):
+        if metrics is not None:
+            await metrics.record_skip("excluded_path")
             await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
         return response_json
 
@@ -507,6 +550,13 @@ def _extract_tool_call_name(request_json: JsonObject) -> str | None:
     return None
 
 
+def _extract_tool_call_arguments(request_json: JsonObject) -> object:
+    params = request_json.get("params")
+    if not isinstance(params, dict):
+        return None
+    return params.get("arguments")
+
+
 def _derive_goal_hint_from_tool_call(server_name: str, tool_name: str | None, request_json: JsonObject) -> str:
     # Heuristique minimale et stable (pas d'I/O):
     # - inclure le serveur, le tool, et quelques arguments structurants.
@@ -622,3 +672,160 @@ def _env_float(name: str, *, default: float, min_value: float, max_value: float)
     if v > max_value:
         return max_value
     return v
+
+
+def _resolve_excluded_dirs(toml_dirs: tuple[str, ...]) -> frozenset[str]:
+    env_raw = os.getenv("KIMI_MCP_TOOL_PRUNING_EXCLUDED_DIRS")
+    if isinstance(env_raw, str):
+        env_dirs = _parse_excluded_dirs_csv(env_raw)
+        if env_dirs:
+            return frozenset(env_dirs)
+
+    toml_values = [item.strip() for item in toml_dirs if isinstance(item, str) and item.strip()]
+    if toml_values:
+        return frozenset(toml_values)
+
+    return frozenset(_DEFAULT_EXCLUDED_DIRS)
+
+
+def _parse_excluded_dirs_csv(value: str) -> tuple[str, ...]:
+    seen: set[str] = set()
+    parsed: list[str] = []
+    for raw in value.split(","):
+        item = raw.strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        parsed.append(item)
+    return tuple(parsed)
+
+
+def _normalize_path_like(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        return ""
+
+    if normalized.startswith("file://"):
+        try:
+            parsed = urlparse(normalized)
+            candidate = unquote(parsed.path or "")
+            if parsed.netloc and not candidate.startswith("/"):
+                candidate = f"/{candidate}"
+            normalized = candidate or normalized
+        except Exception:
+            normalized = normalized
+
+    normalized = normalized.replace("\\", "/")
+    normalized = re.sub(r"/{2,}", "/", normalized)
+    return normalized.strip()
+
+
+def _split_path_segments(path: str) -> list[str]:
+    normalized = _normalize_path_like(path)
+    if not normalized:
+        return []
+    return [segment for segment in normalized.split("/") if segment and segment != "."]
+
+
+def _looks_like_path(value: str) -> bool:
+    stripped = value.strip()
+    if not stripped:
+        return False
+    if stripped.startswith("file://"):
+        return True
+    if stripped.startswith(("/", "./", "../", ".\\", "..\\")):
+        return True
+    if "\\" in stripped or "/" in stripped:
+        return True
+    return bool(re.match(r"^[A-Za-z]:[/\\]", stripped))
+
+
+def _is_excluded_path_recursive(path: str, excluded_dirs: frozenset[str]) -> bool:
+    if not excluded_dirs:
+        return False
+    segments = _split_path_segments(path)
+    return any(segment in excluded_dirs for segment in segments)
+
+
+def _contains_excluded_path(paths: list[str], excluded_dirs: frozenset[str]) -> bool:
+    return any(_is_excluded_path_recursive(path, excluded_dirs) for path in paths)
+
+
+def _extract_candidate_paths_from_arguments(args: object, *, max_depth: int, max_nodes: int) -> list[str]:
+    budget = _NodeBudget(max_nodes=max(1, max_nodes))
+    collected: list[str] = []
+
+    def _walk(value: object, *, active: bool, depth: int) -> None:
+        if depth > max_depth or not budget.tick():
+            return
+
+        if isinstance(value, str):
+            normalized = _normalize_path_like(value)
+            if active and normalized:
+                collected.append(normalized)
+            return
+
+        if isinstance(value, list):
+            for item in value:
+                _walk(item, active=active, depth=depth + 1)
+            return
+
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if not isinstance(key, str):
+                    continue
+                key_active = active or key.strip().lower() in _PATH_LIKE_ARGUMENT_KEYS
+                _walk(item, active=key_active, depth=depth + 1)
+
+    _walk(args, active=False, depth=0)
+    return collected
+
+
+def _extract_candidate_paths_from_json(value: object, *, max_depth: int, max_nodes: int) -> list[str]:
+    budget = _NodeBudget(max_nodes=max(1, max_nodes))
+    collected: list[str] = []
+
+    def _walk(current: object, *, depth: int) -> None:
+        if depth > max_depth or not budget.tick():
+            return
+
+        if isinstance(current, str):
+            normalized = _normalize_path_like(current)
+            if normalized and _looks_like_path(normalized):
+                collected.append(normalized)
+            return
+
+        if isinstance(current, list):
+            for item in current:
+                _walk(item, depth=depth + 1)
+            return
+
+        if isinstance(current, dict):
+            for item in current.values():
+                _walk(item, depth=depth + 1)
+
+    _walk(value, depth=0)
+    return collected
+
+
+def _response_content_contains_excluded_path(
+    content_obj: list[object],
+    *,
+    excluded_dirs: frozenset[str],
+    max_depth: int,
+    max_nodes: int,
+) -> bool:
+    for item in content_obj:
+        if not isinstance(item, dict):
+            continue
+        text_obj = item.get("text")
+        if not isinstance(text_obj, str) or not _looks_like_json_string(text_obj):
+            continue
+        try:
+            parsed = json.loads(text_obj)
+        except Exception:
+            continue
+        paths = _extract_candidate_paths_from_json(parsed, max_depth=max_depth, max_nodes=max_nodes)
+        if _contains_excluded_path(paths, excluded_dirs):
+            return True
+    return False

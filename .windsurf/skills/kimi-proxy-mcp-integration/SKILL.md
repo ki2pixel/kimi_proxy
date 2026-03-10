@@ -6,370 +6,174 @@ license: Complete terms in LICENSE.txt
 
 # Kimi Proxy MCP Integration
 
-This skill provides comprehensive MCP integration guidance for Kimi Proxy Dashboard.
+**TL;DR**: The MCP stack combines standardized memory storage, Qdrant/compression clients, gateway-based external server access, and newer context-management features such as compaction and auto-memory. Document the real façade, DB tables, and error classes first; treat server-specific tool lists as runtime contracts that must be verified against the current bridge/gateway configuration.
 
-## MCP Architecture Overview
+## Source of Truth
 
-### MCP Phases
+Primary backend files:
 
-**Phase 2**: Memory detection and standardization
-- Detects `<mcp-memory>`, `@memory[]`, `@recall()` tags
-- Distinguishes frequent/episodic/semantic memory types
+- `src/kimi_proxy/features/mcp/client.py`
+- `src/kimi_proxy/features/mcp/base/config.py`
+- `src/kimi_proxy/features/mcp/base/rpc.py`
+- `src/kimi_proxy/features/mcp/memory.py`
+- `src/kimi_proxy/core/database.py`
+- `src/kimi_proxy/api/routes/mcp.py`
+- `src/kimi_proxy/api/routes/mcp_gateway.py`
+- `src/kimi_proxy/features/log_watcher/*`
+- `src/kimi_proxy/features/compaction/*`
 
-**Phase 3**: External MCP servers
-- Qdrant MCP: Semantic search (<50ms)
-- Context Compression MCP: Advanced compression
+## Phase Alignment
 
-**Phase 4**: Extended MCP ecosystem
-- Shrimp Task Manager MCP (14 tools): Task management
-- Sequential Thinking MCP (1 tool): Structured reasoning
-- Fast Filesystem MCP (25 tools): File operations
-- JSON Query MCP (3 tools): JSON querying
+### Phase 1: Context compaction
 
-**Phase 5**: Gateway and extended local servers
-- MCP Gateway: Robust error forwarding (403 refusals upstream, no more 502 false positives)
-- Extended local servers: fast-filesystem, json-query, shrimp_task_manager with stdio bridge
-- MCP Bridge: Relay stdio + JSON-RPC filtering for compatibility
+- `compaction_history` table in SQLite
+- `features/compaction/simple_compaction.py`
+- `features/compaction/auto_trigger.py`
+- WebSocket compaction events broadcast from storage / API routes
 
-## MCP Server Management
+### Phase 2: Auto-memory and session-aware memory metrics
 
-### Starting MCP Servers
+- memory metrics in `metrics`, `memory_metrics`, `memory_segments`
+- auto-memory broadcasts such as `auto_memory_stored`
+- advanced memory stats surfaced in API and dashboard modules
 
-```bash
-# Start all MCP servers automatically
-./scripts/start-mcp-servers.sh start
+### Phase 3: Standardized MCP persistence
 
-# Start individual servers
-./scripts/start-mcp-servers.sh start-shrimp-task-manager
-./scripts/start-mcp-servers.sh start-sequential-thinking
-./scripts/start-mcp-servers.sh start-filesystem
-./scripts/start-mcp-servers.sh start-json-query
+Current schema extensions include:
 
-# Check server status
-./scripts/start-mcp-servers.sh status
-```
+- `mcp_memory_entries`
+- `mcp_compression_results`
+- `mcp_routing_decisions`
+- `compaction_history`
 
-### Server Configuration
+### Phase 4–5: External MCP ecosystem and gateway
 
-```toml
-# config.toml MCP configuration
-[mcp.shrimp_task_manager]
-enabled = true
-url = "http://localhost:8002"
-timeout_ms = 30000
+- gateway route: `/api/mcp-gateway/{server_name}/rpc`
+- configured server families include `shrimp-task-manager`, `sequential-thinking`, `fast-filesystem`, `json-query`
+- stdio / bridge compatibility is part of the operational model
 
-[mcp.sequential_thinking]
-enabled = true
-url = "http://localhost:8003"
-timeout_ms = 60000
+## Current Backend Capabilities
 
-[mcp.fast_filesystem]
-enabled = true
-url = "http://localhost:8004"
-timeout_ms = 10000
-workspace_path = "/home/kidpixel/kimi-proxy"
+### Specialized façade
 
-[mcp.json_query]
-enabled = true
-url = "http://localhost:8005"
-timeout_ms = 5000
-```
+`MCPExternalClient` currently provides first-class wrappers for:
 
-### Server Health Monitoring
+- Qdrant semantic search
+- compression server operations
+- chunking / caching helpers for large MCP responses
 
-```bash
-# Check all MCP servers
-curl http://localhost:8000/api/memory/all-servers
+It also exposes generic compatibility surfaces, but you should not assume every high-level helper method exists for every external server unless you verify the current code or gateway behavior.
 
-# Check Phase 4 servers specifically
-curl http://localhost:8000/api/memory/servers/phase4
-
-# Monitor server status
-watch -n 5 'curl -s http://localhost:8000/api/memory/all-servers | jq ".servers[].status"'
-```
-
-## Shrimp Task Manager MCP Integration
-
-### Task Management Workflow
+### ✅ Real low-level RPC pattern
 
 ```python
-# Initialize Shrimp Task Manager project
-from kimi_proxy.features.mcp.client import get_mcp_client
+from kimi_proxy.features.mcp.base.rpc import MCPRPCClient
 
-client = get_mcp_client("shrimp_task_manager")
-await client.call("initialize_project", {
-    "projectRoot": "/home/kidpixel/kimi-proxy",
-    "skipInstall": False,
-    "addAliases": True,
-    "initGit": True,
-    "storeTasksInGit": True,
-    "yes": True
-})
+client = MCPRPCClient()
+result = await client.make_rpc_call(
+    "http://localhost:8004",
+    "tools/list",
+    {},
+    timeout_ms=5000.0,
+)
 ```
 
-### Common Shrimp Task Manager Operations
+## Error Handling
 
-```bash
-# Parse PRD to generate tasks
-curl -X POST http://localhost:8000/api/memory/shrimp-task-manager/parse-prd \
-  -H "Content-Type: application/json" \
-  -d '{"input": "/home/kidpixel/kimi-proxy/.shrimp-task-manager/plan/prd.txt", "projectRoot": "/home/kidpixel/kimi-proxy", "force": true}'
+The current canonical MCP exceptions are defined in `src/kimi_proxy/features/mcp/base/rpc.py`:
 
-# Get all tasks
-curl http://localhost:8000/api/memory/shrimp-task-manager/tasks
+- `MCPClientError`
+- `MCPConnectionError`
+- `MCPTimeoutError`
 
-# Analyze project complexity
-curl -X POST http://localhost:8000/api/memory/shrimp-task-manager/analyze-complexity \
-  -H "Content-Type: application/json" \
-  -d '{"projectRoot": "/home/kidpixel/kimi-proxy", "threshold": 5, "research": true}'
-```
-
-### Task Expansion
+### ✅ Current handling pattern
 
 ```python
-# Expand a task into subtasks
-await client.call("expand_task", {
-    "id": "1",
-    "research": true,
-    "projectRoot": "/home/kidpixel/kimi-proxy",
-    "force": False,
-    "num": "5"
-})
-```
+from kimi_proxy.features.mcp.base.rpc import (
+    MCPRPCClient,
+    MCPClientError,
+    MCPConnectionError,
+    MCPTimeoutError,
+)
 
-## Sequential Thinking MCP
-
-### Structured Reasoning
-
-```python
-# Use sequential thinking for complex problems
-client = get_mcp_client("sequential_thinking")
-
-result = await client.call("sequentialthinking_tools", {
-    "available_mcp_tools": ["shrimp-task-manager", "filesystem", "json-query"],
-    "thought": "I need to debug a streaming error in the proxy. Let me analyze the error patterns systematically.",
-    "next_thought_needed": True,
-    "thought_number": 1,
-    "total_thoughts": 5
-})
-```
-
-### Problem-Solving Pattern
-
-```bash
-# Example: Debug streaming issues
-curl -X POST http://localhost:8000/api/memory/sequential-thinking/call \
-  -H "Content-Type: application/json" \
-  -d '{
-    "available_mcp_tools": ["shrimp-task-manager", "filesystem"],
-    "thought": "I need to investigate the ReadError in streaming. First, I should check the logs for error patterns.",
-    "next_thought_needed": true,
-    "thought_number": 1,
-    "total_thoughts": 4
-  }'
-```
-
-## Fast Filesystem MCP
-
-### File Operations
-
-```python
-# High-performance file operations
-client = get_mcp_client("fast_filesystem")
-
-# Read multiple files efficiently
-files = await client.call("read_multiple_files", {
-    "paths": [
-        "/home/kidpixel/kimi-proxy/config.toml",
-        "/home/kidpixel/kimi-proxy/README.md",
-        "/home/kidpixel/kimi-proxy/src/kimi_proxy/main.py"
-    ]
-})
-
-# Search files with patterns
-results = await client.call("search_files", {
-    "path": "/home/kidpixel/kimi-proxy/src",
-    "pattern": "*.py",
-    "content_search": True,
-    "max_results": 50
-})
-```
-
-### Directory Management
-
-```python
-# Get directory tree
-tree = await client.call("get_directory_tree", {
-    "path": "/home/kidpixel/kimi-proxy",
-    "max_depth": 3,
-    "include_files": True
-})
-
-# Create directories
-await client.call("create_directory", {
-    "path": "/home/kidpixel/kimi-proxy/new-feature",
-    "recursive": True
-})
-```
-
-## JSON Query MCP
-
-### Advanced JSON Operations
-
-```python
-# Query JSON files with JSONPath
-client = get_mcp_client("json_query")
-
-# Extract specific data
-result = await client.call("json_query_jsonpath", {
-    "file_path": "/home/kidpixel/kimi-proxy/config.toml",
-    "jsonpath": "$.providers.*.api_key"
-})
-
-# Search for keys
-keys = await client.call("json_query_search_keys", {
-    "file_path": "/home/kidpixel/kimi-proxy/sessions.db",
-    "query": "token",
-    "limit": 10
-})
+try:
+    result = await client.make_rpc_call(server_url, method, params)
+except MCPTimeoutError:
+    ...
+except MCPConnectionError:
+    ...
+except MCPClientError:
+    ...
 ```
 
 ## Memory Management
 
-### Memory Types and Storage
+`src/kimi_proxy/features/mcp/memory.py` is the real standardized memory manager.
+
+It supports:
+
+- storing episodic / frequent / semantic memories
+- de-duplication via content hash
+- Qdrant-backed semantic storage when available
+- promotion of frequent patterns
+- cleanup of old episodic memories
+- optional compression of large memories when beneficial
+
+### ✅ Real storage pattern
 
 ```python
-# Memory type detection
-from kimi_proxy.features.mcp.detector import MCPDetector
+from kimi_proxy.features.mcp.memory import get_memory_manager
 
-detector = MCPDetector()
-memory_type = detector.detect_memory_type(message_content)
-# Returns: "frequent", "episodic", or "semantic"
-
-# Store memory metrics
-from kimi_proxy.features.mcp.storage import save_memory_metrics
-
-await save_memory_metrics(session_id, {
-    "type": memory_type,
-    "tokens": token_count,
-    "timestamp": datetime.now(),
-    "content_hash": content_hash
-})
+manager = get_memory_manager()
+entry = await manager.store_memory(
+    session_id=123,
+    content="Important context",
+    memory_type="episodic",
+    metadata={"source": "manual"},
+)
 ```
 
-### Memory Analysis
+## Gateway and External Servers
 
-```python
-# Analyze memory patterns
-from kimi_proxy.features.mcp.analyzer import analyze_mcp_memory_in_messages
+The project exposes gateway-backed MCP access through `/api/mcp-gateway/.../rpc` and server-status APIs under `/api/memory/*`.
 
-analysis = await analyze_mcp_memory_in_messages(messages)
-print(f"Memory distribution: {analysis['memory_types']}")
-print(f"Total memory tokens: {analysis['total_memory_tokens']}")
-```
+Documented external server families should stay limited to the ones already recognized by the codebase:
 
-## MCP Integration Patterns
+- `shrimp-task-manager`
+- `sequential-thinking`
+- `fast-filesystem`
+- `json-query`
 
-### Workflow Integration
+### Important caution
 
-```python
-# Combine multiple MCP tools
-async def debug_with_mcp():
-    # 1. Use filesystem to read logs
-    fs_client = get_mcp_client("fast_filesystem")
-    logs = await fs_client.call("read_file", {
-        "path": "/home/kidpixel/kimi-proxy/logs/proxy.log"
-    })
-    
-    # 2. Use sequential thinking to analyze
-    st_client = get_mcp_client("sequential_thinking")
-    analysis = await st_client.call("sequentialthinking_tools", {
-        "available_mcp_tools": ["filesystem", "json-query"],
-        "thought": f"Analyzing logs: {logs[:500]}...",
-        "next_thought_needed": True,
-        "thought_number": 1,
-        "total_thoughts": 3
-    })
-    
-    # 3. Use shrimp task manager to create debugging tasks
-    tm_client = get_mcp_client("shrimp_task_manager")
-    await tm_client.call("add_task", {
-        "projectRoot": "/home/kidpixel/kimi-proxy",
-        "prompt": "Fix streaming ReadError based on log analysis",
-        "research": True
-    })
-```
+Do not hardcode tool-specific examples such as `initialize_project`, `expand_task`, `batch_file_operations`, or `json_query_jsonpath` as guaranteed Python façade methods unless you have revalidated them against the current gateway/bridge/server contract. Prefer gateway- or RPC-level examples when writing durable docs.
 
-### Error Handling
+## Log Watcher Integration
 
-```python
-# Robust MCP error handling
-from kimi_proxy.features.mcp.client import MCPConnectionError, MCPClientError
+MCP-related context features now coexist with a richer analytics pipeline.
 
-try:
-    result = await client.call("tool_name", params)
-except MCPConnectionError:
-    # Server disconnected, try restart
-    await restart_mcp_server("shrimp_task_manager")
-    result = await client.call("tool_name", params)
-except MCPClientError as e:
-    # Tool-specific error
-    logger.error(f"MCP tool error: {e}")
-    raise
-```
+`src/kimi_proxy/main.py` starts `create_log_watcher(...)` and broadcasts normalized log-derived metrics to the dashboard. This is relevant for MCP documentation because:
 
-## Troubleshooting MCP Issues
+- auto-session decisions may correlate provider/model/session metadata
+- memory and compaction UI receive live updates alongside proxy metrics
+- health endpoints surface log watcher state and sources
 
-### Common Problems
+## Database Schema Notes
 
-**Server not responding:**
-```bash
-# Check if server is running
-netstat -tlnp | grep -E ':(8002|8003|8004|8005)'
+When touching MCP documentation, keep these schema facts synchronized:
 
-# Restart specific server
-./scripts/start-mcp-servers.sh restart-shrimp-task-manager
-```
+- `mcp_memory_entries`: canonical SQLite store for frequent/episodic memory payloads and metadata
+- `mcp_compression_results`: persisted compression results
+- `mcp_routing_decisions`: routing or fallback reasoning metadata
+- `compaction_history`: context compaction history, including trigger reason and savings
 
-**Workspace permissions:**
-```python
-# Validate workspace access
-from kimi_proxy.features.mcp.client import validate_workspace_access
+## ❌ Outdated Documentation Patterns to Avoid
 
-if not validate_workspace_access("/home/kidpixel/kimi-proxy"):
-    raise ValueError("Workspace access denied")
-```
+- Presenting Phase 4 external tools as fully wrapped Python helper methods if only gateway/RPC access is guaranteed
+- Omitting current SQLite schema tables introduced after the original Phase 3 write-up
+- Ignoring `MCPClientError` / `MCPConnectionError` / `MCPTimeoutError`
+- Treating log watcher analytics as unrelated to the current MCP/auto-session ecosystem
 
-**JSON-RPC errors:**
-```bash
-# Test MCP server directly
-curl -X POST http://localhost:8002/rpc \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"initialize","params":{},"id":1}'
-```
+## Golden Rule
 
-## Performance Optimization
-
-### Caching Strategies
-
-```python
-# Cache MCP responses
-from functools import lru_cache
-
-@lru_cache(maxsize=128)
-async def cached_mcp_call(server_name: str, method: str, params_hash: str):
-    client = get_mcp_client(server_name)
-    return await client.call(method, params)
-```
-
-### Batch Operations
-
-```python
-# Batch file operations
-async def batch_file_operations(operations):
-    client = get_mcp_client("fast_filesystem")
-    return await client.call("batch_file_operations", {
-        "operations": operations,
-        "stop_on_error": False
-    })
-```
+**Document MCP features at the level the code actually guarantees today: schema, RPC, façade, gateway, and error handling.** Treat individual external-tool verbs as runtime-validated contracts, not timeless static APIs.
