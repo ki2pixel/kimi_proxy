@@ -331,6 +331,28 @@ models:
       maxTokens: 32768
       contextLength: 262144
 
+  # === Cloudflare ===
+  - name: ☁️ Cloudflare - Kimi K2.6 (256K)
+    provider: openai
+    model: cloudflare/@cf/moonshotai/kimi-k2.6
+    apiBase: http://127.0.0.1:8000
+    apiKey: dummy-key
+    contextLength: 262144
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    capabilities:
+      - tool_use
+      - thinking
+      - video_in
+      - image_in
+    defaultCompletionOptions:
+      temperature: 0.6
+      maxTokens: 32768
+      contextLength: 262144
+
 # ============================================
 # CONTEXT PROVIDERS
 # ============================================

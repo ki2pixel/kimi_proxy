@@ -128,6 +128,13 @@ model = "moonshotai/kimi-k2.5:thinking"
 max_context_size = 262144
 capabilities = ["thinking", "video_in", "image_in", "tool_use"]
 
+# --- Cloudflare - Kimi K2.6 ---
+[models."cloudflare/@cf/moonshotai/kimi-k2.6"]
+provider = "cloudflare"
+model = "@cf/moonshotai/kimi-k2.6"
+max_context_size = 262144
+capabilities = ["thinking", "tool_use", "video_in", "image_in"]
+
 # ============================================
 # PROVIDERS
 # ============================================
@@ -156,6 +163,11 @@ api_key = "${NANO_GPT_API_KEY}"
 type = "kimi"
 base_url = "https://api.kimi.com/coding/v1"
 api_key = "${KIMI_API_KEY}"
+
+[providers.cloudflare]
+type = "openai"
+base_url = "https://api.cloudflare.com/client/v4/accounts/b505fbaa3bf0708e1478a478cb1cafae/ai/v1"
+api_key = "${CLOUDFLARE_API_KEY}"
 
 # ============================================
 # SANITIZER - GESTION ACTIVE DU CONTEXTE (Phase 1)
