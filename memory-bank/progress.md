@@ -1,4 +1,29 @@
 ## Tâche en cours
+### [2026-05-12 03:02:00] **Réécriture README.md root — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Réconcilier le README root (encore centré sur le Dashboard frontend obsolète) avec la nouvelle réalité architecturelle : Kimi Proxy = Pure Middleware MCP, passthrough session-less, et deprecation totale du frontend Dashboard.
+
+**Actions réalisées** :
+- Audit complet du README actuel : classification de chaque section en OBSOLETE / A_CONSERVER_MAIS_REFORMULER / A_AJOUTER.
+- Réécriture totale selon `documentation/SKILL.md` : TL;DR first, Problem-First Opening, blocs ❌/✅, analogie unique (filtre à eau), trade-offs table, Golden Rule.
+- Suppression de toutes les mentions du Dashboard frontend, WebSocket, jauges visuelles, sessions SQLite, métriques JS/CSS.
+- Intégration des concepts MCP : Passthrough Session-Less, X-Target-Base-URL, MCP Tool Fixing, Context Sanitizer, Intelligent Compression.
+- Mise à jour des métriques : 78 fichiers Python, 12 049 LOC, 61 routes API, 47 répertoires (pas de métriques frontend).
+- Conservation du ton personnel et de la section "Pourquoi je partage ça".
+- Section "Démarrage rapide" réécrite pour Cline (Base URL + X-Target-Base-URL) au lieu du navigateur.
+
+**Conformité documentation/SKILL.md** :
+- TL;DR ✔ (1 phrase bold en tête)
+- Problem-First ✔ (la douleur du dev Cline avec différents providers)
+- Blocs ❌/✅ ✔
+- Analogie unique ✔ (filtre à eau, cohérente du début à la fin)
+- Concepts nommés ✔ (Passthrough Session-Less, MCP Tool Fixing, etc.)
+- Trade-offs table ✔ (direct vs session-based vs middleware)
+- Golden Rule ✔ (transparence totale des transformations)
+- French UI text ✔ (100% français)
+- Pas de mention frontend/Dashboard ✔
+
 ### [2026-05-12 02:54:00] **Workflow Docs-Updater — TERMINÉ**
 **Statut** : ✅ COMPLETÉ
 

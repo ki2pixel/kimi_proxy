@@ -1,4 +1,9 @@
 ## Tâche en Cours
+- [2026-05-12 03:02:00] **Réécriture README.md root — TERMINÉ** : Réconciliation complète du README root avec l'architecture Pure Middleware MCP. Suppression de toutes les mentions du Dashboard frontend, WebSocket, jauges visuelles, sessions SQLite. Intégration du passthrough session-less, X-Target-Base-URL, MCP Tool Fixing, Context Sanitizer, Intelligent Compression. Mise à jour des métriques (78 fichiers Python, 12049 LOC, 61 routes API). Conforme documentation/SKILL.md : TL;DR first, Problem-First, blocs ❌/✅, analogie unique (filtre à eau), trade-offs table, Golden Rule. Ton personnel et section "Pourquoi je partage ça" conservés. 100% français.
+
+**Fichiers modifiés** :
+- `README.md` (root) : Réécriture totale — 246 lignes (vs 439 anciennes). Aucune mention frontend/Dashboard.
+
 - [2026-05-12 02:54:00] **Workflow Docs-Updater — TERMINÉ** : Audit structurel (78 fichiers Python, 12049 LOC, 61 endpoints API, 93 opérations SQL), création de 3 docs manquantes et mise à jour de 3 docs existantes. Conforme documentation/SKILL.md appliqué.
 
 **Fichiers créés** :
