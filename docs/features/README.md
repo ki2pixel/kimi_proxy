@@ -27,6 +27,8 @@ Pensez à votre conversation comme à un restaurant. Le sanitizer, c'est le serv
 
 **Résultat** : 20-40% d'économie de tokens sans perte d'information.
 
+Voir : [Sanitizer - Tri Automatique Intelligent](./sanitizer.md)
+
 ### Phase 2 : MCP - La mémoire à long terme
 **Le problème** : Je voulais distinguer ce qui est stocké à long terme vs ce qui fait partie de la conversation actuelle.
 
@@ -38,6 +40,8 @@ Pensez à votre conversation comme à un restaurant. Le sanitizer, c'est le serv
 **La solution** : Compression intelligente qui préserve les messages système, garde les 5 derniers échanges, et résume le reste avec le LLM actuel.
 
 **Résultat** : 60% de réduction instantanée sans perdre l'essentiel.
+
+Voir : [Compression Intelligente - Le Bouton d'Urgence](./compression.md)
 
 ## Les fonctionnalités essentielles
 

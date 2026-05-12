@@ -33,6 +33,7 @@ API (FastAPI) ← Services (WebSocket) ← Features (MCP) ← Proxy (HTTPX) ← 
 
 ### Proxy, santé, monitoring
 - `POST /chat/completions`
+- `POST /v1/chat/completions` (passthrough MCP session-less)
 - `GET /health`
 - `GET /api/rate-limit`
 - `WS /ws`
@@ -121,5 +122,5 @@ API (FastAPI) ← Services (WebSocket) ← Features (MCP) ← Proxy (HTTPX) ← 
 - 13 fichiers avec décorateurs actifs (`api/routes` contient 15 fichiers avec `__init__.py` et `websocket.py`)
 
 ---
-*Dernière mise à jour: 2026-03-01*  
+*Dernière mise à jour: 2026-05-12*  
 *Conforme documentation/SKILL.md: TL;DR, problem-first, blocs ❌/✅, trade-offs, Golden Rule.*

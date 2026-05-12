@@ -1,5 +1,124 @@
 ## Tâche en cours
-Aucune tâche active.
+### [2026-05-12 02:54:00] **Workflow Docs-Updater — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Synchroniser la documentation avec l'état actuel du code après l'architecture radicale et le pivot MCP-first.
+
+**Audit structurel** :
+- 78 fichiers Python, 12,049 LOC, 2,945 commentaires
+- 61 endpoints API répartis sur 14 fichiers
+- 93 opérations SQL (principalement `core/database.py`)
+- 223 matches de configuration dans 36 fichiers
+
+**Livrables** :
+- `docs/features/compression.md` : Feature compression Phase 3 (endpoints `/api/compress/*`, configuration, trade-offs vs compaction, Golden Rule).
+- `docs/features/sanitizer.md` : Feature sanitizer Phase 1 (masking automatique, récupération par hash, routing avancé, endpoints `/api/mask/*` et `/api/sanitizer/*`).
+- `docs/proxy/passthrough.md` : Architecture radicale passthrough session-less (`/v1/chat/completions`, features MCP appliquées: tool fixing + observation masking + context pruning, fallback legacy).
+- `docs/api/README.md` : Ajout route `POST /v1/chat/completions` (passthrough MCP session-less).
+- `docs/README.md` : Features passthrough + MCP tool pruning ajoutées, version 2.0.5, date 2026-05-12.
+- `docs/features/README.md` : Liens vers compression.md et sanitizer.md.
+
+**Conformité documentation/SKILL.md** :
+- TL;DR ✔ sur tous les nouveaux fichiers
+- Problem-First ✔
+- Blocs ❌/✅ ✔
+- Trade-offs ✔
+- Golden Rule ✔
+
+**Manques identifiés mais non bloquants** :
+- `docs/core/README.md` : métriques migrations obsolètes ("13 migrations" vs 59+ opérations SQL réelles).
+- `docs/proxy/README.md` : date 2026-02-20, ne mentionne pas le passthrough.
+
+### [2026-05-12 02:45:00] **Architecture radicale — Kimi Proxy = Pure Middleware MCP — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Transformer Kimi Proxy en middleware MCP universel, completement agnostique des providers. Cline controle totalement le provider, le modele et la cle API.
+
+**Architecture** :
+```
+Cline → POST /v1/chat/completions
+  Headers: X-Target-Base-URL + Authorization (cle API)
+Kimi Proxy → Applique tool fixing + observation masking + pruning
+  Forward vers X-Target-Base-URL/v1/chat/completions
+Provider
+```
+
+**Livrables** :
+- `proxy/passthrough.py` : `resolve_target()` utilise X-Target-Base-URL (radical) avec fallback legacy. `forward()` transmet la cle API du client (Authorization header).
+- `api/routes/mcp_passthrough.py` : route POST /v1/chat/complements, docstring mise a jour.
+- `config.toml.minimal` : ~80 lignes, uniquement configs MCP internes (sans [models], sans [providers], sans api_key).
+
+**Validation** :
+- Test RADICAL (X-Target-Base-URL) → cule atteinte, cle transmise, erreur 404 provider = preuve de connexion ✅
+- Test LEGACY sans providers → 503 "Cible manquante" avec message explicite ✅
+- Retro-compatibilite : config.toml original restaure, fallback legacy fonctionnel ✅
+
+### [2026-05-12 02:20:00] **Endpoint /v1/chat/completions session-less MCP Passthrough — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Permettre a n'importe quel modele de transiter via le proxy sans session pre-configuree dans config.toml.
+
+**Livrables** :
+- `src/kimi_proxy/proxy/passthrough.py` : module core avec resolve_provider() (cascade header/body/split/default), PassthroughProcessor.apply_features() (tool fixing + observation masking schema1 + context pruning), et forward() (streaming/non-streaming avec injection cle API).
+- `src/kimi_proxy/api/routes/mcp_passthrough.py` : route FastAPI POST /v1/chat/completions, independante de /chat/completions existante.
+- `src/kimi_proxy/api/router.py` : integration du router mcp_passthrough.
+
+**Validation** :
+- `curl /v1/chat/completions` avec modele `nvidia/gpt-4.1` → provider resolu (nvidia), modele mappe (gpt-4.1), requete forwardee ✅
+- `curl /chat/completions` existant fonctionne toujours ✅
+- `pytest` MCP → **40 passed** ✅
+- `py_compile` OK sur les deux nouveaux fichiers ✅
+
+### [2026-05-12 02:05:00] **Pivot MCP-first de Kimi Proxy — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Recentrer Kimi Proxy sur ses features MCP en dépréciant le frontend Dashboard obsolète. L'utilisateur a migré vers Cline qui gère automatiquement la fenêtre de contexte.
+
+**Tâches Shrimp** :
+- T1 Audit et Inventaire Frontend vs MCP : ✅ TERMINÉ
+- T2 Déprécier Routes UI dans main.py : ✅ TERMINÉ
+- T3 Supprimer Assets Frontend Non-MCP : ✅ TERMINÉ
+- T4 Vérifier Stabilité MCP Gateway et Healthchecks : ✅ TERMINÉ
+- T5 Mettre à jour Documentation et Memory-Bank : ✅ TERMINÉ
+
+**Livrables** :
+- `src/kimi_proxy/main.py` : route `/` retourne JSON MCP (status opérationnel, service Kimi Proxy MCP, version 2.0.0-mcp). Mount `/static` et `/favicon.ico` retirés. Imports HTMLResponse/StaticFiles supprimés.
+- `static/` : dossier entièrement supprimé (~370KB de fichiers frontend pur).
+- Architecture 5 couches intacte (API <- Services <- Features <- Proxy <- Core).
+- WebSocket manager conservé (broadcast générique backend).
+- Routes `/api/*` et `/api/mcp-gateway/*` inchangées.
+
+**Validation** :
+- `curl /` → JSON MCP ✅
+- `curl /health` → status ok ✅
+- `curl /api/models` → 19 modèles ✅
+- `pytest tests/unit/features/test_mcp_tool_pruning_engine.py test_mcp_gateway.py test_mcp_bridge.py -q` → **40 passed** ✅
+- `create_app()` démarrage sans erreur ✅
+
+### [2026-05-11 21:00:00] **Service systemd utilisateur pour Kimi Proxy Dashboard — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Permettre le démarrage automatique du Kimi Proxy Dashboard (incluant les serveurs MCP externes) au lancement de la session utilisateur Ubuntu via un service systemd user.
+
+**Livrables** :
+- Wrapper systemd : `scripts/start-systemd.sh`
+  - Activation du venv, chargement de `.env`, démarrage des MCP (best-effort via `|| true`), lancement du dashboard en foreground avec `exec`.
+  - Correction initiale : `PYTHONPATH=src exec python` invalide en bash → séparé en `export PYTHONPATH=src` puis `exec python -m kimi_proxy`.
+- Unit systemd user : `~/.config/systemd/user/kimi-proxy.service`
+  - `Type=simple`, `Restart=on-failure`, `RestartSec=5`.
+  - `WantedBy=default.target` pour activation au démarrage de session.
+
+**Validation** :
+- `systemctl --user daemon-reload` OK.
+- `systemctl --user enable kimi-proxy.service` OK (symlink créé).
+- `systemctl --user start kimi-proxy.service` OK → **active (running)** (PID 228517, python).
+- Healthcheck `curl http://localhost:8000/health` → réponse JSON OK.
+- MCP démarrés conjointement (ports 8001/8003/8004/8005/8006).
+
+**Invariants confirmés** :
+- Aucune modification du code applicatif.
+- Aucun secret en dur.
+- Logs dirigés vers journal utilisateur (`journalctl --user -u kimi-proxy.service`).
 
 ### [2026-03-09 20:11:53] **MCP Tool Pruning — exclusion récursive des répertoires critiques TERMINÉE** : Implémentation d’un filtrage récursif excluant `.agents`, `.cline`, `.clinerules` et `.windsurf` du pruning dans `src/kimi_proxy/features/mcp_tool_pruning/engine.py`, avec détection request-first sur `params.arguments` puis response-aware best-effort sur les JSON textuels de `result.content[*].text`. Extension de configuration via `excluded_dirs` dans `config.toml` et `src/kimi_proxy/config/loader.py`, résolution runtime `KIMI_MCP_TOOL_PRUNING_EXCLUDED_DIRS` respectant `ENV > TOML > défaut interne`, et ajout de la métrique metadata-only `skipped_excluded_path` dans `src/kimi_proxy/features/mcp_tool_pruning/metrics.py`.
 

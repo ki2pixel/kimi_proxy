@@ -18,6 +18,7 @@ from .routes import (
     memory,
     cline,
     mcp_gateway,
+    mcp_passthrough,
 )
 
 # Router principal
@@ -45,3 +46,4 @@ api_router.include_router(cline.router, prefix="", tags=["cline"])
 api_router.include_router(models.router, prefix="/api/models", tags=["models"])
 api_router.include_router(models.openai_router, prefix="", tags=["models-openai"])
 api_router.include_router(proxy.router, prefix="", tags=["proxy"])
+api_router.include_router(mcp_passthrough.router, prefix="", tags=["mcp-passthrough"])

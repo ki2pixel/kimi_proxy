@@ -1,5 +1,20 @@
 ## Décisions Techniques Récentes
 
+### [2026-05-12 02:00:00] - Pivot MCP-first : dépréciation du frontend Dashboard et recentrage sur les features MCP
+**Contexte** : L'utilisateur a migré son usage quotidien vers Cline, qui gère automatiquement la fenêtre de contexte avec ses modèles. Le frontend Dashboard (UI vanilla JS, Chart.js, WebSocket visuel, sessions visuelles) est devenu obsolète pour son flux de travail. Son usage passe exclusivement par `scripts/start-mcp-servers.sh` pour orchestrer les serveurs MCP (Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query, Redis, Postgres, Pruner, etc.).
+**Décision** : Recentrer le cœur de Kimi Proxy sur ses features MCP en dépréciant/allégeant le frontend, tout en conservant l'intégrité de l'architecture 5 couches.
+**Alternatives considérées** :
+- Conserver le frontend tel quel (rejeté : maintenance inutile, ~356KB d'assets statiques non utilisés)
+- Extraire le frontend dans un projet séparé (rejeté : sur-ingenierie, pas de valeur ajoutée)
+- **Choix** : Déprécier progressivement le frontend (routes UI retirées de main.py, assets statiques supprimés, documentation mise à jour)
+**Implémentation** :
+- `src/kimi_proxy/main.py` : route `/` remplacée par JSONResponse MCP (status opérationnel, version 2.0.0-mcp). Mount `/static` et `/favicon.ico` retirés. Endpoint `/ws` conservé (broadcast générique backend + clients MCP).
+- `static/` : suppression de ~356KB de fichiers frontend pur (index.html, ui.js, modals.js, charts.js, similarity-chart.js, sessions.js, cline.js, auto-session.js, compaction.js, accessibility/, css/). Assets MCP génériques conservés (api.js, mcp.js, memory-service.js, utils.js, websocket.js, favicon.ico).
+- Architecture 5 couches intacte : API <- Services <- Features <- Proxy <- Core.
+- WebSocket manager conservé car utilisé par 12+ modules backend pour broadcast d'événements.
+**Résultat** : Kimi Proxy est désormais orienté MCP-first. Le point d'entrée principal reste `scripts/start-mcp-servers.sh`. L'API FastAPI continue de servir les routes `/api/*` et `/api/mcp-gateway/*`.
+**Leçons apprises** : Quand un composant (frontend) devient obsolète pour l'usage réel, il faut le marquer comme déprécié rapidement pour réduire la dette technique. Le websocket manager est un service générique indépendant du frontend — sa conservation était critique.
+
 ### [2026-02-26 16:52:00] - Synchronisation docs/code: parité runtime API + clarification MCP/Gateway + alignement Pruner A2
 **Contexte** : Les documents API/MCP présentaient un décalage avec l’exécution réelle (routes montées vs décorateurs, endpoints compaction renommés, distinction frontend phase grouping vs backend status réel). Le scope utilisateur validé incluait 3 fichiers docs + synchronisation memory-bank.
 **Décision** : Documenter la vérité d’exécution comme source canonique, tout en conservant la traçabilité des écarts statiques (décorateurs) pour audit.

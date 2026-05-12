@@ -1,7 +1,8 @@
 """
-Kimi Proxy Dashboard - Application FastAPI Factory.
+Kimi Proxy MCP - Application FastAPI Factory.
 Proxy streaming + SQLite + WebSockets pour monitoring temps réel.
 Intégration Log Watcher pour PyCharm/Continue.
+Frontend Dashboard déprécié — utiliser les serveurs MCP via scripts/start-mcp-servers.sh.
 """
 import os
 import time
@@ -9,8 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.database import init_database, create_session, get_active_session
@@ -23,7 +23,7 @@ from .api.routes.health import set_log_watcher
 
 
 def _get_log_source_family(source_type: str, metrics) -> str:
-    """Normalise une source analytics pour le backend et le dashboard."""
+    """Normalise une source analytics pour le backend."""
     if source_type in {"compile_chat", "continue_compile_chat"} or metrics.is_compile_chat:
         return "continue_compile"
     if source_type in {
@@ -47,7 +47,7 @@ def _get_log_source_family(source_type: str, metrics) -> str:
 
 
 def _get_log_source_label(source_type: str, source_family: str) -> str:
-    """Retourne un libellé frontend rétrocompatible pour la source."""
+    """Retourne un libellé rétrocompatible pour la source."""
     if source_family == "continue_compile":
         return "CompileChat Continue"
     if source_family == "error":
@@ -170,34 +170,18 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
-    # Mount fichiers statiques
-    static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static")
-    os.makedirs(static_dir, exist_ok=True)
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
-    
     # Inclusion des routes API
     app.include_router(api_router)
     
-    # Route favicon.ico pour éviter les erreurs 404
-    @app.get("/favicon.ico")
-    async def favicon():
-        favicon_path = os.path.join(static_dir, "favicon.ico")
-        if os.path.exists(favicon_path):
-            from fastapi.responses import FileResponse
-            return FileResponse(favicon_path)
-        
-        # Fallback: répondre 204 No Content pour éviter l'erreur
-        from fastapi.responses import Response
-        return Response(status_code=204)
-    
-    # Route principale (dashboard)
-    @app.get("/", response_class=HTMLResponse)
-    async def get_dashboard():
-        html_file = os.path.join(static_dir, "index.html")
-        if os.path.exists(html_file):
-            with open(html_file, "r", encoding="utf-8") as f:
-                return f.read()
-        return HTMLResponse(content="<h1>Dashboard non trouvé</h1>", status_code=404)
+    # Route racine MCP (frontend déprécié)
+    @app.get("/")
+    async def root():
+        return JSONResponse({
+            "status": "opérationnel",
+            "service": "Kimi Proxy MCP",
+            "message": "Frontend Dashboard déprécié. Utilisez /api/* ou les serveurs MCP via scripts/start-mcp-servers.sh.",
+            "version": "2.0.0-mcp"
+        })
     
     # WebSocket endpoint
     @app.websocket("/ws")
@@ -262,21 +246,26 @@ def create_app() -> FastAPI:
 
 def _startup(app: FastAPI):
     """Initialisation au démarrage."""
-    print("🚀 Démarrage du Kimi Proxy Dashboard...")
+    print("🚀 Démarrage du Kimi Proxy MCP...")
     
     # Charge la configuration
     config = load_config()
     providers = config.get("providers", {})
     models = config.get("models", {})
     
-    print(f"✅ {len(providers)} provider(s) chargé(s)")
-    print(f"✅ {len(models)} modèle(s) chargé(s)")
+    # Architecture radicale : providers et modeles sont geres par Cline
+    if providers:
+        print(f"✅ {len(providers)} provider(s) chargé(s) (legacy)")
+    if models:
+        print(f"✅ {len(models)} modèle(s) chargé(s) (legacy)")
+    if not providers and not models:
+        print("🎯 Architecture radicale : aucun provider/modele en config (geres par Cline)")
     
     # Initialise la base de données
     init_database()
     
-    # Crée une session par défaut si aucune
-    if not get_active_session():
+    # Session par defaut uniquement en mode legacy (providers configures)
+    if providers and not get_active_session():
         provider_key = "managed:kimi-code"
         create_session("Session par défaut", provider_key)
         print(f"✅ Session par défaut créée (provider: {provider_key})")
@@ -344,7 +333,11 @@ def _startup(app: FastAPI):
         elif source_family == "kimi_global":
             print(f"📊 [KIMI GLOBAL] Context: {metrics.context_length} ({percentage:.1f}%)")
         elif source_family == "kimi_session":
-            print(f"📊 [KIMI SESSION] Tokens: {total_tokens} ({percentage:.1f}%)")
+            # En architecture radicale, les sessions sont gerees par Cline
+            # Ne logger que si une session legacy existe
+            active = get_active_session()
+            if active:
+                print(f"📊 [KIMI SESSION] Tokens: {total_tokens} ({percentage:.1f}%)")
         elif total_tokens > 100:
             print(f"📊 [LOGS] Tokens: {total_tokens} ({percentage:.1f}%)")
     
@@ -384,7 +377,7 @@ def _startup(app: FastAPI):
     # Démarre le polling Cline (tâche asyncio)
     asyncio.create_task(cline_polling.start())
     
-    print(f"🌐 Dashboard disponible sur http://localhost:8000")
+    print(f"🌐 Kimi Proxy MCP disponible sur http://localhost:8000")
 
 
 async def _shutdown(app: FastAPI):

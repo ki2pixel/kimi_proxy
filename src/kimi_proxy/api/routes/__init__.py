@@ -15,6 +15,7 @@ from . import websocket
 from . import models
 from . import memory
 from . import mcp_gateway
+from . import mcp_passthrough
 
 __all__ = [
     "sessions",
@@ -30,4 +31,5 @@ __all__ = [
     "models",
     "memory",
     "mcp_gateway",
+    "mcp_passthrough",
 ]

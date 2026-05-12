@@ -1,6 +1,9 @@
-# 📚 Documentation Kimi Proxy Dashboard
+# 📚 Documentation Kimi Proxy MCP (anciennement Dashboard)
 
-**TL;DR**: C'est ici que j'ai documenté tout ce que j'ai appris en construisant un proxy LLM qui me fait économiser 20-40% de tokens. Pas de jargon, juste les vrais problèmes et solutions.
+**TL;DR**: Proxy LLM orienté MCP-first qui fait économiser 20-40% de tokens. Le frontend Dashboard est **déprécié** — le flux de travail passe désormais exclusivement par les serveurs MCP et l'API REST.
+
+> **⚠️ Dépréciation du Frontend** (2026-05-12)
+> Le frontend Dashboard (HTML/CSS/JS, Chart.js, sessions visuelles) est déprécié. L'utilisation quotidienne passe par Cline et `scripts/start-mcp-servers.sh`. L'API FastAPI (`/api/*`, `/api/mcp-gateway/*`) et les features MCP restent pleinement opérationnelles.
 
 ## L'histoire derrière cette documentation
 
@@ -87,7 +90,7 @@ Les fondations techniques du système.
 ### 🔌 [API](./api/) - Routes et Endpoints
 L'interface REST/WebSocket du système.
 
-- **[Documentation API](./api/README.md)** - 60 routes documentées avec patterns système
+- **[Documentation API](./api/README.md)** - 61 routes documentées avec patterns système
 
 ### 📊 [Services](./services/) - Gestion WebSocket et Alertes
 Les services temps réel.
@@ -98,6 +101,7 @@ Les services temps réel.
 Le cœur du proxy multi-provider.
 
 - **[Logique Routage Proxy](./proxy/README.md)** - Routage intelligent vers 8 providers
+- **[Passthrough MCP Session-less](./proxy/passthrough.md)** - Route `/v1/chat/completions` avec features MCP
 - **[Tool Validation](./proxy/tool-validation.md)** - Validation outils proxy
 
 ## Comment naviguer intelligemment
@@ -189,7 +193,9 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 - **Sanitizer Phase 1** : Masking automatique contenus verbeux
 - **MCP Phase 2** : Intégration mémoire standardisée
 - **Compression Phase 3** : Bouton d'urgence compression
+- **Passthrough MCP** : Route `/v1/chat/completions` session-less avec features MCP (tool fixing, masking, pruning)
 - **MCP Phase 4** : 4 serveurs MCP (Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query) - **Exécution locale dans Continue.dev**
+- **MCP Tool Pruning** : Optimisation contextuelle avec métriques observabilité (Phase 2D)
 - **MCP Pruner DeepInfra** : Optimisation contextuelle avec moteur top-K
 - **Log Watcher** : Monitoring PyCharm/Continue en temps réel
 - **Métriques enrichies** : 304 points de surveillance METRICS/LOGGING/ALERT
@@ -226,5 +232,5 @@ Voir [Contributing](./development/contributing.md) pour les guidelines de contri
 
 ---
 
-*Dernière mise à jour : 2026-03-01*
-*Version: 2.0.4*
+*Dernière mise à jour : 2026-05-12*
+*Version: 2.0.5*
