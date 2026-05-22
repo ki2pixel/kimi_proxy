@@ -914,3 +914,144 @@ async def test_bridge_monitor_queue_overflow_increments_drops(monkeypatch, tmp_p
     await monitor.stop()
     assert monitor.log_dropped_total > 0
 
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_pipe_reader_to_writer_lines_with_monitor_strips_roots_for_filesystem_agent(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+
+    class _FakeReader:
+        def __init__(self, lines: list[bytes]) -> None:
+            self._lines = lines
+
+        async def readline(self) -> bytes:
+            return self._lines.pop(0) if self._lines else b""
+
+    class _FakeWriter:
+        def __init__(self) -> None:
+            self.buf = bytearray()
+            self.closed = False
+
+        def write(self, b: bytes) -> None:
+            self.buf.extend(b)
+
+        async def drain(self) -> None:
+            pass
+
+        def close(self) -> None:
+            self.closed = True
+
+        async def wait_closed(self) -> None:
+            pass
+
+    # Initialize client to server initialize request with roots capability
+    init_request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "capabilities": {
+                "roots": {"listChanged": True}
+            }
+        }
+    }
+
+    reader = _FakeReader([json.dumps(init_request).encode("utf-8") + b"\n", b""])
+    writer = _FakeWriter()
+
+    monitor = mcp_bridge.BridgeMonitor(
+        server_name="filesystem-agent",
+        enabled=False,
+        log_path=None,
+        queue_max=10,
+        summary_on_exit=False,
+    )
+
+    await mcp_bridge._pipe_reader_to_writer_lines_with_monitor(
+        reader=reader,
+        writer=writer,
+        monitor=monitor,
+        direction="client_to_server",
+        inflight=None,
+    )
+
+    out_lines = writer.buf.decode("utf-8").splitlines()
+    assert len(out_lines) == 1
+    parsed_req = json.loads(out_lines[0])
+
+    # Assert roots capability has been stripped
+    assert "roots" not in parsed_req["params"]["capabilities"]
+
+    # Verify other fields remain intact
+    assert parsed_req["method"] == "initialize"
+    assert parsed_req["id"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_pipe_reader_to_writer_lines_with_monitor_does_not_strip_roots_for_other_servers(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+
+    class _FakeReader:
+        def __init__(self, lines: list[bytes]) -> None:
+            self._lines = lines
+
+        async def readline(self) -> bytes:
+            return self._lines.pop(0) if self._lines else b""
+
+    class _FakeWriter:
+        def __init__(self) -> None:
+            self.buf = bytearray()
+            self.closed = False
+
+        def write(self, b: bytes) -> None:
+            self.buf.extend(b)
+
+        async def drain(self) -> None:
+            pass
+
+        def close(self) -> None:
+            self.closed = True
+
+        async def wait_closed(self) -> None:
+            pass
+
+    # Initialize client to server initialize request with roots capability
+    init_request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "capabilities": {
+                "roots": {"listChanged": True}
+            }
+        }
+    }
+
+    reader = _FakeReader([json.dumps(init_request).encode("utf-8") + b"\n", b""])
+    writer = _FakeWriter()
+
+    monitor = mcp_bridge.BridgeMonitor(
+        server_name="shrimp-task-manager",
+        enabled=False,
+        log_path=None,
+        queue_max=10,
+        summary_on_exit=False,
+    )
+
+    await mcp_bridge._pipe_reader_to_writer_lines_with_monitor(
+        reader=reader,
+        writer=writer,
+        monitor=monitor,
+        direction="client_to_server",
+        inflight=None,
+    )
+
+    out_lines = writer.buf.decode("utf-8").splitlines()
+    assert len(out_lines) == 1
+    parsed_req = json.loads(out_lines[0])
+
+    # Assert roots capability has NOT been stripped
+    assert "roots" in parsed_req["params"]["capabilities"]
+
+

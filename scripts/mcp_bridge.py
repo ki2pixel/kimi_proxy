@@ -844,10 +844,21 @@ async def _pipe_reader_to_writer_lines_with_monitor(
 
         monitor.observe_json_line(direction=direction, raw_line=line)
 
-        if inflight is not None and direction == "client_to_server":
+        if direction == "client_to_server":
             obj = _try_parse_json_from_line(line)
-            if obj is not None:
-                inflight.observe_client_message(obj)
+            if isinstance(obj, dict):
+                if inflight is not None:
+                    inflight.observe_client_message(obj)
+
+                # Strip roots capability to prevent sub-servers (like server-filesystem)
+                # from overwriting command-line allowed directories with IDE workspace roots.
+                if obj.get("method") == "initialize" and getattr(monitor, "_server_name", None) == "filesystem-agent":
+                    params = obj.get("params")
+                    if isinstance(params, dict):
+                        capabilities = params.get("capabilities")
+                        if isinstance(capabilities, dict) and "roots" in capabilities:
+                            del capabilities["roots"]
+                            line = (json.dumps(obj) + "\n").encode("utf-8")
 
         writer.write(line)
         await writer.drain()

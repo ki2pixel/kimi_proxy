@@ -1,4 +1,15 @@
 ## Tâche en cours
+### [2026-05-22 14:50:00] **Bypass Workspace Roots filesystem-agent — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Empêcher le serveur MCP `@modelcontextprotocol/server-filesystem` (lancé sous l'alias `filesystem-agent`) d'écraser la racine autorisée par défaut (`/home/kidpixel`) avec les workspace roots fournies par l'IDE (comme Windsurf ou Antigravity) via le protocole dynamic roots (`roots/list`), ce qui interdisait l'écriture dans des dossiers en dehors du workspace actif (ex: `~/.windsurf/plans/`).
+
+**Actions réalisées** :
+- Diagnostic du comportement de `@modelcontextprotocol/server-filesystem` qui requête dynamiquement les roots via dynamic roots capability si déclarée par l'IDE, écrasant ainsi la configuration CLI.
+- Modification chirurgicale de `scripts/mcp_bridge.py` au niveau du filtrage `client_to_server` lors du handshake `initialize` : si le serveur visé est `filesystem-agent`, la capability `roots` est retirée à la volée du payload JSON-RPC envoyé au serveur MCP.
+- Ajout de tests unitaires complets dans `tests/unit/test_mcp_bridge.py` validant que l'initialisation du `filesystem-agent` a bien ses `roots` de supprimées tandis que les autres serveurs (comme `shrimp-task-manager`) conservent la capability intacte.
+- Exécution réussie des 25 tests unitaires du bridge.
+
 ### [2026-05-12 03:02:00] **Réécriture README.md root — TERMINÉ**
 **Statut** : ✅ COMPLETÉ
 

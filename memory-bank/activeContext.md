@@ -1,7 +1,10 @@
 ## Tâche en Cours
+- [2026-05-22 14:50:00] **Bypass Workspace Roots filesystem-agent — TERMINÉ** : Résolution du problème d'écriture refusée (ex: dans `/home/kidpixel/.windsurf/plans/`) dans Windsurf/Antigravity. Interception chirurgicale de la requête `initialize` dans `scripts/mcp_bridge.py` pour le serveur `filesystem-agent` afin de supprimer la capability `roots`. Le serveur MCP ne peut plus écraser la configuration CLI `/home/kidpixel` par les workspace roots de l'IDE. 25/25 tests unitaires passés.
 - [2026-05-12 03:02:00] **Réécriture README.md root — TERMINÉ** : Réconciliation complète du README root avec l'architecture Pure Middleware MCP. Suppression de toutes les mentions du Dashboard frontend, WebSocket, jauges visuelles, sessions SQLite. Intégration du passthrough session-less, X-Target-Base-URL, MCP Tool Fixing, Context Sanitizer, Intelligent Compression. Mise à jour des métriques (78 fichiers Python, 12049 LOC, 61 routes API). Conforme documentation/SKILL.md : TL;DR first, Problem-First, blocs ❌/✅, analogie unique (filtre à eau), trade-offs table, Golden Rule. Ton personnel et section "Pourquoi je partage ça" conservés. 100% français.
 
 **Fichiers modifiés** :
+- `scripts/mcp_bridge.py` : Interception de initialize pour filesystem-agent.
+- `tests/unit/test_mcp_bridge.py` : Tests unitaires de la suppression roots.
 - `README.md` (root) : Réécriture totale — 246 lignes (vs 439 anciennes). Aucune mention frontend/Dashboard.
 
 - [2026-05-12 02:54:00] **Workflow Docs-Updater — TERMINÉ** : Audit structurel (78 fichiers Python, 12049 LOC, 61 endpoints API, 93 opérations SQL), création de 3 docs manquantes et mise à jour de 3 docs existantes. Conforme documentation/SKILL.md appliqué.
