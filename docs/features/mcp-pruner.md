@@ -499,7 +499,7 @@ Le pruner doit être **audit‑friendly**: chaque suppression doit être traçab
     - `MCP_PRUNER_CACHE_TTL_S`
     - `MCP_PRUNER_CACHE_MAX_ITEMS` (alias compat: `MCP_PRUNER_CACHE_MAX_ENTRIES`)
   - Sélection backend pruning (env > TOML):
-    - `KIMI_PRUNING_BACKEND` (`heuristic` | `deepinfra`, alias: `cloud`)
+    - `KIMI_PRUNING_BACKEND` (liste séparée par des virgules, ex: `heuristic,local_rag,deepinfra`)
   - DeepInfra (cloud opt‑in, secrets uniquement en env):
     - `DEEPINFRA_API_KEY` (obligatoire si backend deepinfra)
     - `DEEPINFRA_ENDPOINT_URL` (optionnel)
@@ -545,14 +545,15 @@ export DEEPINFRA_MAX_DOCS=128
 ### Paramètres supportés
 
 #### Sélection backend
-- `KIMI_PRUNING_BACKEND`:
-  - `deepinfra` (ou alias `cloud`) pour activer DeepInfra.
-  - toute autre valeur (ou variable absente) => heuristique, sauf si TOML demande DeepInfra.
+- `KIMI_PRUNING_BACKEND` : accepte désormais une liste de backends séparés par des virgules (pipeline séquentiel).
+  - Valeurs possibles : `heuristic`, `local_rag` (ou `local`, `rag`), `deepinfra` (ou `cloud`).
+  - Exemple : `heuristic,local_rag,deepinfra` (tente l'heuristique, puis affine avec local_rag, puis deepinfra).
+  - Si la valeur est invalide ou absente, le fallback reste `heuristic` (sauf si TOML défini).
 
 Fallback TOML (si env absent):
 ```toml
 [mcp_pruner]
-backend = "heuristic" # ou "deepinfra"
+backend = "heuristic,local_rag" # accepte la liste CSV
 deepinfra_timeout_ms = 20000
 deepinfra_max_docs = 64
 cache_ttl_s = 30
@@ -577,7 +578,7 @@ Le serveur maintient un cache TTL in‑memory pour éviter de reranker deux fois
 #### Champs `stats` (DeepInfra)
 En plus des champs standards (`tokens_est_*`, `pruned_ratio`, `elapsed_ms`, `used_fallback`), le backend DeepInfra peut fournir:
 
-- `backend`: `"deepinfra"`
+- `backend`: ex: `"heuristic,deepinfra"` (reflète le pipeline exécuté)
 - `deepinfra_latency_ms`: latence rerank (0 en `cache_hit`)
 - `deepinfra_docs_scored`: nombre de lignes réellement scorées
 - `deepinfra_docs_total`: nombre total de lignes
