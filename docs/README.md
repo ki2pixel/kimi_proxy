@@ -183,7 +183,7 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 
 ### ✅ v2.0 - Architecture Modulaire (2026-03-01)
 - **Restructuration complète** : 76 fichiers modulaires (+24)
-- **Métriques actuelles** : 10,528 LOC Python (+1,342)
+- **Métriques actuelles** : 22,532 LOC Python
 - **Nouvelle CLI** : `./bin/kimi-proxy` avec sous-commandes
 - **Tests structurés** : Unit, integration, E2E
 - **Setup script** : Installation via `pip install -e .`
@@ -199,8 +199,8 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 - **MCP Pruner DeepInfra** : Optimisation contextuelle avec moteur top-K
 - **Log Watcher** : Monitoring PyCharm/Continue en temps réel
 - **Métriques enrichies** : 304 points de surveillance METRICS/LOGGING/ALERT
-- **Monitoring temps réel** : WebSockets, dashboard
-- **Persistance** : SQLite avec historique complet
+- **Monitoring temps réel** : WebSockets, dashboard *(Dépréciés au profit d'un usage CLI/logs stdio)*
+- **Persistance** : SQLite avec historique technique *(Pas de stockage de conversations chat)*
 
 ## 🆕 Nouveautés v2.0
 

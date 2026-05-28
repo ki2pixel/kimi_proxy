@@ -1,4 +1,14 @@
 ## Tâche en cours
+### [2026-05-28 12:10:00] **Workflow Docs-Updater — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Exécuter le skill docs-updater pour harmoniser la documentation et les métriques (Audit cloc, radon).
+
+**Actions réalisées** :
+- Audit structurel : 150 fichiers Python, 22532 LOC (vs 12049 précédemment), 62 routes API, 118 opérations SQL.
+- Mise à jour des métriques dans `README.md` et `docs/README.md`.
+- Vérification de la documentation : les documents obsolètes comme `docs/features/ui.md` sont déjà correctement flaggés comme archives (Frontend déprécié).
+
 ### [2026-05-22 14:50:00] **Bypass Workspace Roots filesystem-agent — TERMINÉ**
 **Statut** : ✅ COMPLETÉ
 

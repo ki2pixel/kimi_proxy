@@ -1,5 +1,12 @@
 ## Décisions Techniques Récentes
 
+### [2026-05-28 12:10:00] - Workflow Docs-Updater et Architecture Pure Middleware
+**Problème** : Les métriques de la documentation étaient obsolètes (12049 LOC vs 22532 LOC réels) et l'architecture "Pure Middleware" impliquait de clarifier le statut des docs frontend.
+**Décision** : Mettre à jour les compteurs de ligne/fichiers dans les READMEs, et maintenir le statut "ARCHIVE" des anciennes documentations frontend (ex: `docs/features/ui.md`) sans les supprimer.
+**Alternatives considérées** :
+- Supprimer complètement l'ancienne documentation du frontend (rejeté : perte d'historique sur les patterns).
+**Résultat** : La documentation reflète précisément la taille réelle du projet (150 fichiers) tout en conservant la trace de l'ancien dashboard.
+
 ### [2026-05-12 02:00:00] - Pivot MCP-first : dépréciation du frontend Dashboard et recentrage sur les features MCP
 **Contexte** : L'utilisateur a migré son usage quotidien vers Cline, qui gère automatiquement la fenêtre de contexte avec ses modèles. Le frontend Dashboard (UI vanilla JS, Chart.js, WebSocket visuel, sessions visuelles) est devenu obsolète pour son flux de travail. Son usage passe exclusivement par `scripts/start-mcp-servers.sh` pour orchestrer les serveurs MCP (Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query, Redis, Postgres, Pruner, etc.).
 **Décision** : Recentrer le cœur de Kimi Proxy sur ses features MCP en dépréciant/allégeant le frontend, tout en conservant l'intégrité de l'architecture 5 couches.

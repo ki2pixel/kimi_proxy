@@ -114,6 +114,7 @@ Des serveurs MCP tournent en local (compression, filesystem, thinking), mais vou
 | `sequential-thinking` | `http://127.0.0.1:8003` |
 | `fast-filesystem` | `http://127.0.0.1:8004` |
 | `json-query` | `http://127.0.0.1:8005` |
+| `mcp-pruner` | `http://127.0.0.1:8006` |
 
 ```bash
 curl -sS \
@@ -220,18 +221,18 @@ Assurez-vous que Cline envoie bien le header `X-Target-Base-URL` (ex: `https://a
 ## Métriques Projet
 
 ### Architecture 5 Couches
-- **78 fichiers Python** dans l'architecture complète
-- **12 049 lignes de code** Python (core + features + services + api)
+- **150 fichiers Python** dans l'architecture complète
+- **22 532 lignes de code** Python (core + features + services + api)
 - **47 répertoires** structurés par responsabilité
 - **134 fichiers projet** totaux (documentation + configuration + scripts)
 
 ### API Layer
-- **61 routes HTTP** réparties sur 13 fichiers
-- **59 couples méthode+chemin uniques**
+- **62 routes HTTP** réparties sur 14 fichiers
+- **62 couples méthode+chemin uniques**
 - **Complexité moyenne** : C (17.42)
 
 ### Base de Données
-- **Opérations SQL** limitées aux features MCP et sanitizer (pas de stockage de chat)
+- **118 opérations SQL** limitées aux features MCP et sanitizer (pas de stockage de chat)
 - **Complexité schéma** : tables techniques uniquement
 
 ## Pourquoi je partage ça
