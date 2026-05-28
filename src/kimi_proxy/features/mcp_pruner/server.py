@@ -43,6 +43,7 @@ from .deepinfra_client import (
     DeepInfraHTTPError,
 )
 from .deepinfra_engine import prune_text_with_deepinfra
+from .local_rag import prune_text_with_local_rag
 
 
 JsonDict = dict[str, object]
@@ -696,7 +697,8 @@ async def _tool_prune_text(
         )
 
     prune_id = f"prn_{uuid.uuid4().hex}"
-    backend = _get_pruning_backend_from_env(toml_backend_cfg)
+    backends = _get_pruning_backends_from_env(toml_backend_cfg)
+    backends_str = ",".join(backends)
     _ = time.time()  # wall clock placeholder (utile si on ajoute des timestamps plus tard)
     started_perf = time.perf_counter()
 
@@ -708,7 +710,7 @@ async def _tool_prune_text(
             "pruned_text": text,
             "annotations": [],
             "stats": {
-                "backend": backend,
+                "backend": backends_str,
                 "original_lines": len(text.splitlines()),
                 "kept_lines": len(text.splitlines()),
                 "pruned_lines": 0,
@@ -776,112 +778,112 @@ async def _tool_prune_text(
     stats: JsonDict
     warnings: list[str]
 
-    if backend == "deepinfra":
-        cache_key = _cache_key_for_prune(
-            backend=backend,
-            text=text,
-            goal_hint=goal_hint,
-            source_type=source_type_raw,
-            options={
-                "max_prune_ratio": max_prune_ratio,
-                "min_keep_lines": min_keep_lines,
-                "timeout_ms": timeout_ms,
-                "annotate_lines": annotate_lines,
-                "include_markers": include_markers,
-            },
-        )
+    cache_key = _cache_key_for_prune(
+        backend=backends_str,
+        text=text,
+        goal_hint=goal_hint,
+        source_type=source_type_raw,
+        options={
+            "max_prune_ratio": max_prune_ratio,
+            "min_keep_lines": min_keep_lines,
+            "timeout_ms": timeout_ms,
+            "annotate_lines": annotate_lines,
+            "include_markers": include_markers,
+        },
+    )
 
-        cached = await cache.get(cache_key)
-        if cached is not None:
-            pruned_text = str(cached.pruned_text)
-            annotations = _clone_annotations(cached.annotations)
-            stats = dict(cached.stats)
-            warnings = list(cached.warnings) + ["cache_hit"]
-            stats["deepinfra_latency_ms"] = 0
-            stats["deepinfra_cached"] = True
-        else:
-            owned_client: httpx.AsyncClient | None = None
-            http_client_to_use = deepinfra_http_client
-            if http_client_to_use is None:
-                owned_client = httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0))
-                http_client_to_use = owned_client
-            try:
-                deepinfra_cfg = _get_deepinfra_client_config(toml_backend_cfg)
-                deepinfra_client = DeepInfraClient(deepinfra_cfg, http_client=http_client_to_use)
-
-                out = await prune_text_with_deepinfra(
-                    prune_id="<pending>",
-                    text=text,
-                    goal_hint=goal_hint,
-                    source_type=source_type_raw,  # type: ignore[arg-type]
-                    max_prune_ratio=max_prune_ratio,
-                    min_keep_lines=min_keep_lines,
-                    annotate_lines=annotate_lines,
-                    include_markers=include_markers,
-                    max_docs=deepinfra_cfg.max_docs,
-                    deepinfra_client=deepinfra_client,
-                )
-                pruned_text = out.pruned_text
-                annotations = out.annotations
-                stats = dict(out.stats)
-                warnings = list(out.warnings)
-
-                # Cache best-effort
-                await cache.put(
-                    cache_key,
-                    _CachedPrune(
-                        created_at_s=time.time(),
-                        pruned_text=pruned_text,
-                        annotations=_clone_annotations(annotations),
-                        stats=dict(stats),
-                        warnings=list(warnings),
-                    ),
-                )
-            except DeepInfraError as e:
-                pruned_text, annotations, stats = _baseline_prune(
-                    text=text,
-                    goal_hint=goal_hint,
-                    source_type=source_type_raw,  # type: ignore[arg-type]
-                    max_prune_ratio=max_prune_ratio,
-                    min_keep_lines=min_keep_lines,
-                    annotate_lines=annotate_lines,
-                    include_markers=include_markers,
-                )
-                stats["backend"] = "deepinfra"
-                stats["used_fallback"] = True
-                if isinstance(e, DeepInfraHTTPError):
-                    status_obj = e.details.get("status_code") if isinstance(e.details, dict) else None
-                    if isinstance(status_obj, int) and not isinstance(status_obj, bool):
-                        stats["deepinfra_http_status"] = int(status_obj)
-                warnings = ["deepinfra_error", str(e.code)]
-            except Exception:
-                pruned_text, annotations, stats = _baseline_prune(
-                    text=text,
-                    goal_hint=goal_hint,
-                    source_type=source_type_raw,  # type: ignore[arg-type]
-                    max_prune_ratio=max_prune_ratio,
-                    min_keep_lines=min_keep_lines,
-                    annotate_lines=annotate_lines,
-                    include_markers=include_markers,
-                )
-                stats["backend"] = "deepinfra"
-                stats["used_fallback"] = True
-                warnings = ["deepinfra_error", "unknown"]
-            finally:
-                if owned_client is not None:
-                    await owned_client.aclose()
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        pruned_text = str(cached.pruned_text)
+        annotations = _clone_annotations(cached.annotations)
+        stats = dict(cached.stats)
+        warnings = list(cached.warnings) + ["cache_hit"]
+        stats["cached"] = True
     else:
-        pruned_text, annotations, stats = _baseline_prune(
-            text=text,
+        lines = text.splitlines()
+        n = len(lines)
+        keep_set = set(range(n))
+        warnings = []
+        
+        owned_client: httpx.AsyncClient | None = None
+        http_client_to_use = deepinfra_http_client
+        
+        try:
+            if "heuristic" in backends:
+                from .layer1_heuristic import clean_base64_and_hashes_inline
+                clean_base64_and_hashes_inline(lines)
+                
+            max_prune_ratio_n = max(0.0, min(1.0, float(max_prune_ratio)))
+            min_keep_lines_n = max(0, int(min_keep_lines))
+            from .deepinfra_engine import _compute_keep_target
+            keep_target = _compute_keep_target(n_lines=n, max_prune_ratio=max_prune_ratio_n, min_keep_lines=min_keep_lines_n)
+            
+            for b in backends:
+                if b == "heuristic":
+                    from .layer1_heuristic import compute_heuristic_keep_set
+                    keep_set = compute_heuristic_keep_set(lines=lines, current_keep_set=keep_set, keep_target=keep_target)
+                elif b == "local_rag":
+                    from .local_rag import compute_local_rag_keep_set
+                    try:
+                        keep_set = await compute_local_rag_keep_set(lines=lines, current_keep_set=keep_set, goal_hint=goal_hint, keep_target=keep_target)
+                    except Exception as e:
+                        warnings.append(f"local_rag_error:{str(e)}")
+                elif b == "deepinfra":
+                    from .deepinfra_engine import compute_deepinfra_keep_set, DeepInfraError, DeepInfraHTTPError
+                    if owned_client is None and http_client_to_use is None:
+                        owned_client = httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0))
+                        http_client_to_use = owned_client
+                    try:
+                        deepinfra_cfg = _get_deepinfra_client_config(toml_backend_cfg)
+                        deepinfra_client = DeepInfraClient(deepinfra_cfg, http_client=http_client_to_use)
+                        keep_set = await compute_deepinfra_keep_set(
+                            lines=lines, current_keep_set=keep_set, goal_hint=goal_hint,
+                            keep_target=keep_target, max_docs=deepinfra_cfg.max_docs,
+                            deepinfra_client=deepinfra_client
+                        )
+                    except Exception as e:
+                        warnings.append(f"deepinfra_error:{str(e)}")
+        finally:
+            if owned_client is not None:
+                await owned_client.aclose()
+                
+        # Reconstruction
+        from .deepinfra_engine import _reconstruct_pruned_text
+        pruned_text, annotations = _reconstruct_pruned_text(
+            prune_id="<pending>",
+            lines=lines,
+            keep_set=keep_set,
             goal_hint=goal_hint,
-            source_type=source_type_raw,  # type: ignore[arg-type]
-            max_prune_ratio=max_prune_ratio,
-            min_keep_lines=min_keep_lines,
             annotate_lines=annotate_lines,
             include_markers=include_markers,
         )
-        stats["backend"] = "heuristic"
-        warnings = []
+        
+        kept_lines = len(keep_set)
+        pruned_lines = n - kept_lines
+        pruned_ratio = pruned_lines / n if n > 0 else 0.0
+        
+        stats = {
+            "backend": backends_str,
+            "original_lines": n,
+            "kept_lines": kept_lines,
+            "pruned_lines": pruned_lines,
+            "pruned_ratio": round(pruned_ratio, 6),
+            "tokens_est_before": count_tokens_text(text),
+            "tokens_est_after": count_tokens_text(pruned_text),
+            "elapsed_ms": 0,
+            "used_fallback": len(warnings) > 0,
+        }
+        
+        await cache.put(
+            cache_key,
+            _CachedPrune(
+                created_at_s=time.time(),
+                pruned_text=pruned_text,
+                annotations=_clone_annotations(annotations),
+                stats=dict(stats),
+                warnings=list(warnings),
+            ),
+        )
 
     # Remplacer le placeholder prune_id dans markers/annotations
     _replace_prune_id(annotations=annotations, prune_id=prune_id)
@@ -908,13 +910,21 @@ async def _tool_prune_text(
     return _jsonrpc_tool_result(req_id=req_id, tool_payload=payload)
 
 
-def _get_pruning_backend_from_env(toml_cfg: MCPPrunerBackendConfig) -> Literal["heuristic", "deepinfra"]:
+def _get_pruning_backends_from_env(toml_cfg: MCPPrunerBackendConfig) -> list[str]:
     raw = (os.getenv("KIMI_PRUNING_BACKEND") or "").strip().lower()
-    if raw:
-        if raw in {"deepinfra", "cloud"}:
-            return "deepinfra"
-        return "heuristic"
-    return toml_cfg.backend
+    if not raw:
+        raw = toml_cfg.backend
+    
+    parts = [p.strip() for p in raw.split(",")]
+    mapped = []
+    for p in parts:
+        if p in {"cloud", "deepinfra"}: mapped.append("deepinfra")
+        elif p in {"local", "rag", "local_rag"}: mapped.append("local_rag")
+        elif p in {"heuristic"}: mapped.append("heuristic")
+    
+    if mapped:
+        return mapped
+    return ["heuristic"]
 
 
 def _get_deepinfra_client_config(toml_cfg: MCPPrunerBackendConfig) -> DeepInfraClientConfig:

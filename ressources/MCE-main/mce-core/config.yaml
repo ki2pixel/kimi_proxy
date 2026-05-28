@@ -1,0 +1,141 @@
+# ──────────────────────────────────────────────
+# MCE — Model Context Engine Configuration
+# ──────────────────────────────────────────────
+
+proxy:
+  host: "127.0.0.1"
+  port: 3025
+
+# Token budget guardrails
+token_limits:
+  safe_limit: 1000          # tokens — pass directly if under this
+  squeeze_trigger: 2000     # tokens — route to Squeeze Engine if over
+  absolute_max: 8000        # tokens — hard cap after squeeze
+
+# Squeeze Engine layer toggles
+squeeze:
+  layer1_pruner: true
+  layer2_semantic: true
+  layer3_synthesizer: false  # requires local LLM (ollama)
+
+# Semantic cache
+cache:
+  enabled: true
+  max_entries: 512
+  ttl_seconds: 600
+
+# Upstream MCP servers the proxy connects to
+upstream_servers:
+  - name: "filesystem"
+    url: "http://localhost:3001"
+  - name: "database"
+    url: "http://localhost:3002"
+  - name: "github"
+    url: "http://localhost:3003"
+
+# Policy Engine — blocked patterns & HitL rules
+policy:
+  blocked_commands:
+    - "rm -rf"
+    - "mkfs"
+    - "FORMAT"
+    - ":(){:|:&};:"
+  blocked_network:
+    - "0.0.0.0"
+    - "169.254."
+  hitl_commands:
+    - "DROP"
+    - "TRUNCATE"
+    - "git push"
+    - "git push --force"
+
+# Circuit breaker
+circuit_breaker:
+  window_size: 5
+  failure_threshold: 3
+
+# Synthesizer (Layer 3 — optional)
+synthesizer:
+  model: "qwen2.5:3b"
+  ollama_url: "http://localhost:11434"
+  max_summary_tokens: 300
+
+# Embedding model
+embeddings:
+  model_name: "all-MiniLM-L6-v2"
+
+# Logging
+logging:
+  level: "INFO"
+  show_tokens: true
+
+# ─── MERIDIAN INTELLIGENCE LAYER (v1.0) ───────────────────────
+
+# MemVault — cross-session persistent memory
+memvault:
+  enabled: true
+  storage_path: "~/.mce/projects"
+  extraction_mode: "heuristic"       # "heuristic" | "ollama" | "api"
+  injection_token_budget: 500        # max tokens to inject per session
+  auto_update_claude_md: true
+  memory_types:
+    - decisions
+    - dead_ends
+    - constraints
+    - preferences
+    - file_patterns
+
+# CostWatch — real-time token cost monitoring
+cost_watch:
+  enabled: true
+  daily_budget_usd: 10.00
+  session_budget_usd: 3.00
+  alert_on_parallel_agents: true
+  token_rate_alert_per_min: 1000
+  model_costs:
+    claude-opus-4:    { input: 15.0, output: 75.0 }
+    claude-sonnet-4:  { input: 3.0,  output: 15.0 }
+    gpt-4o:           { input: 5.0,  output: 15.0 }
+
+# TimeMachine — session checkpointing & branching
+time_machine:
+  enabled: true
+  auto_checkpoint_interval_mins: 10
+  checkpoint_on_file_write: true
+  checkpoint_on_destructive_tool: true
+  max_checkpoints_per_session: 50
+  capture_file_diffs: true
+
+# DriftSentinel — constraint drift detection
+drift_sentinel:
+  enabled: true
+  alert_on_constraint_violation: true
+  block_on_critical_violation: true
+  load_constraints_from_memvault: true
+
+# PermissionGate — smart permission profiles
+permission_profiles:
+  active: "focused_work"
+  profiles:
+    exploration:
+      file_read: auto
+      file_write: prompt
+      shell_exec: prompt
+      destructive: block
+    focused_work:
+      file_read: auto
+      file_write: auto
+      shell_exec: prompt
+      destructive: prompt
+    review:
+      file_read: auto
+      file_write: prompt
+      shell_exec: prompt
+      destructive: block
+
+# SkillForge — team-shareable workflow packs
+skills:
+  enabled: true
+  path: ".mce/skills"
+  auto_trigger: true
+  team_sync_url: null

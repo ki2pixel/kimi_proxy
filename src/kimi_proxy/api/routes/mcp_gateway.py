@@ -9,8 +9,13 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+import hashlib
+import json
+import time
+
 from ...config.loader import get_config, get_mcp_tool_pruning_config
 from ...features.mcp.gateway import MCPGatewayService
+from ...features.mcp.detector import MCPCircuitBreaker
 from ...features.mcp_tool_pruning import (
     MCPToolPruningMetricsCollector,
     maybe_prune_jsonrpc_response,
@@ -31,9 +36,34 @@ router = APIRouter()
 # Exposition optionnelle via /health (voir routes/health.py).
 _MCP_TOOL_PRUNING_METRICS = MCPToolPruningMetricsCollector()
 
+_CIRCUIT_BREAKERS: dict[str, MCPCircuitBreaker] = {}
 
 def get_mcp_tool_pruning_metrics_collector() -> MCPToolPruningMetricsCollector:
     return _MCP_TOOL_PRUNING_METRICS
+
+
+_GATEWAY_CACHE: dict[str, tuple[float, dict[str, object]]] = {}
+_GATEWAY_CACHE_TTL = 30.0
+
+def _get_cache_key(server_name: str, request_json: dict[str, object]) -> str:
+    raw = json.dumps(request_json, sort_keys=True)
+    hash_str = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return f"{server_name}:{hash_str}"
+
+def _is_read_operation(request_json: dict[str, object]) -> bool:
+    method = request_json.get("method")
+    if method != "tools/call":
+        return False
+    params = request_json.get("params")
+    if not isinstance(params, dict):
+        return False
+    name = params.get("name")
+    if not isinstance(name, str):
+        return False
+    # Ecritures courantes
+    if any(write_verb in name for write_verb in ("write", "edit", "create", "delete", "remove", "update")):
+        return False
+    return True
 
 
 def _as_dict(obj: object) -> dict[str, object] | None:
@@ -63,6 +93,37 @@ async def api_mcp_gateway_rpc(server_name: str, request: Request):
             message="Requête JSON-RPC invalide (attendu objet JSON)",
         )
         return JSONResponse(content=error_payload, status_code=400)
+
+    # Circuit Breaker Check
+    if server_name not in _CIRCUIT_BREAKERS:
+        _CIRCUIT_BREAKERS[server_name] = MCPCircuitBreaker()
+    
+    cb = _CIRCUIT_BREAKERS[server_name]
+    if request_json.get("method") == "tools/call":
+        params = request_json.get("params")
+        if isinstance(params, dict):
+            # Verify if circuit is open
+            if cb.check_call(params):
+                error_payload = service.build_jsonrpc_error(
+                    request_json_obj,
+                    code=-32000,
+                    message="Circuit Breaker ouvert : Boucle d'appels MCP répétitifs détectée."
+                )
+                return JSONResponse(content=error_payload, status_code=429)
+
+    # Reactive Cache
+    cache_key = None
+    is_read = _is_read_operation(request_json)
+    if is_read:
+        cache_key = _get_cache_key(server_name, request_json)
+        now = time.time()
+        if cache_key in _GATEWAY_CACHE:
+            ts, cached_resp = _GATEWAY_CACHE[cache_key]
+            if now - ts < _GATEWAY_CACHE_TTL:
+                # Ajoute une info dans la payload pour tracer
+                if isinstance(cached_resp, dict):
+                    cached_resp["_gateway_cached"] = True
+                return JSONResponse(content=cached_resp)
 
     try:
         upstream_response = await forward_jsonrpc(server_name, request_json)
@@ -111,6 +172,16 @@ async def api_mcp_gateway_rpc(server_name: str, request: Request):
             pruned_response = upstream_response
 
         masked = service.mask_jsonrpc_response(pruned_response)
+
+        if is_read and cache_key:
+            _GATEWAY_CACHE[cache_key] = (time.time(), masked)
+        elif not is_read:
+            # Invalider tout le cache du server_name
+            prefix = f"{server_name}:"
+            keys_to_del = [k for k in _GATEWAY_CACHE.keys() if k.startswith(prefix)]
+            for k in keys_to_del:
+                del _GATEWAY_CACHE[k]
+
         return JSONResponse(content=masked)
     except MCPGatewayUpstreamError as e:
         # Map vers codes JSON-RPC spécifiques au gateway

@@ -192,7 +192,7 @@ start_servers() {
         
         # Démarrer en arrière-plan avec nohup
         # Autorise tous les chemins sous /home/kidpixel par défaut (configurable)
-        MCP_ALLOWED_ROOT="/home/kidpixel" nohup python3 /tmp/mcp_fast_filesystem_server.py > /tmp/mcp_fast_filesystem.log 2>&1 &
+        MCP_ALLOWED_ROOT="/" nohup python3 /tmp/mcp_fast_filesystem_server.py > /tmp/mcp_fast_filesystem.log 2>&1 &
         FAST_FILESYSTEM_PID=$!
         
         # Attendre que le serveur démarre

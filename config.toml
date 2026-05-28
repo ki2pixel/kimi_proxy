@@ -50,9 +50,14 @@ include_markers = true
 # ============================================
 
 [mcp_pruner]
-# Backend par defaut si KIMI_PRUNING_BACKEND n'est pas defini.
-# Valeurs: "heuristic" | "deepinfra"
-backend = "heuristic"
+# Backend(s) par defaut si KIMI_PRUNING_BACKEND n'est pas defini.
+# Fonctionnement en Pipeline (Cascade Squeeze Engine).
+# Modes disponibles :
+# - "heuristic" : Nettoyage Base64 et trim de lignes (Layer 1)
+# - "local_rag" : Semantic RAG via sentence-transformers (Layer 2)
+# - "deepinfra" : Semantic Rerank via DeepInfra cloud (Layer 2 cloud)
+# Exemple de chainage: "heuristic,local_rag"
+backend = "heuristic,local_rag"
 
 # Parametres DeepInfra (sans secrets). Les secrets restent en env:
 # - DEEPINFRA_API_KEY (obligatoire pour activer DeepInfra)

@@ -229,7 +229,7 @@ class MCPPrunerBackendConfig:
     - ce fichier ne contient pas de secrets (API keys restent en env)
     """
 
-    backend: Literal["heuristic", "deepinfra"] = "heuristic"
+    backend: str = "heuristic"
     deepinfra_timeout_ms: int = 20_000
     deepinfra_max_docs: int = 64
     cache_ttl_s: int = 30
@@ -250,11 +250,20 @@ def get_mcp_pruner_backend_config(config: Dict[str, Any]) -> MCPPrunerBackendCon
         return defaults
 
     backend_obj = obj.get("backend", defaults.backend)
-    backend: Literal["heuristic", "deepinfra"]
-    if isinstance(backend_obj, str) and backend_obj.strip().lower() in {"deepinfra", "cloud"}:
-        backend = "deepinfra"
-    else:
-        backend = "heuristic"
+    backend = "heuristic"
+    if isinstance(backend_obj, str):
+        # On nettoie et on garde la liste séparée par des virgules
+        raw = backend_obj.strip().lower()
+        if raw:
+            # Map "cloud" to "deepinfra" and "local" to "local_rag" in the list
+            parts = [p.strip() for p in raw.split(",")]
+            mapped = []
+            for p in parts:
+                if p in {"cloud", "deepinfra"}: mapped.append("deepinfra")
+                elif p in {"local", "rag", "local_rag"}: mapped.append("local_rag")
+                elif p in {"heuristic"}: mapped.append("heuristic")
+            if mapped:
+                backend = ",".join(mapped)
 
     def _clamp_int(value: object, *, default: int, min_value: int, max_value: int) -> int:
         if isinstance(value, int) and not isinstance(value, bool):

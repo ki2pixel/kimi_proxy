@@ -40,6 +40,46 @@ class DeepInfraPruneOutput:
     warnings: list[str]
 
 
+async def compute_deepinfra_keep_set(
+    *,
+    lines: list[str],
+    current_keep_set: set[int],
+    goal_hint: str,
+    keep_target: int,
+    max_docs: int,
+    deepinfra_client: DeepInfraClient,
+) -> set[int]:
+    """Sélectionne un sous-ensemble des lignes actives via DeepInfra Rerank."""
+    active_indices = sorted(list(current_keep_set))
+    if not active_indices or keep_target <= 0:
+        return set()
+    if len(active_indices) <= keep_target:
+        return current_keep_set.copy()
+
+    n_active = len(active_indices)
+    sampled_indices = _select_doc_indices(n_lines=n_active, max_docs=max_docs)
+    
+    docs_to_score = [lines[active_indices[i]] for i in sampled_indices]
+    
+    rerank_result = await deepinfra_client.rerank(query=goal_hint, documents=docs_to_score)
+    
+    new_keep_set = set()
+    # On garde les meilleurs scores.
+    # rerank_result.scores_by_index est un dict[int, float] indexé sur docs_to_score
+    scored = []
+    for i, doc_idx in enumerate(sampled_indices):
+        score = float(rerank_result.scores_by_index.get(i, 0.0))
+        scored.append((active_indices[doc_idx], score))
+    
+    scored.sort(key=lambda x: x[1], reverse=True)
+    
+    # Remplissage du keep_set
+    for i in range(min(keep_target, len(scored))):
+        new_keep_set.add(scored[i][0])
+        
+    return new_keep_set
+
+
 async def prune_text_with_deepinfra(
     *,
     prune_id: str,
@@ -81,24 +121,18 @@ async def prune_text_with_deepinfra(
     keep_target = _compute_keep_target(n_lines=n, max_prune_ratio=max_prune_ratio_n, min_keep_lines=min_keep_lines_n)
 
     max_docs_n = max(1, int(max_docs))
-    doc_indices = _select_doc_indices(n_lines=n, max_docs=max_docs_n)
     warnings: list[str] = []
-    if len(doc_indices) < n:
-        warnings.append("deepinfra_docs_truncated")
-
-    docs = [lines[i] for i in doc_indices]
-    rerank_result = await deepinfra_client.rerank(query=goal_hint, documents=docs)
-
-    # Remap doc scores -> line scores (missing docs default 0.0)
-    line_scores: dict[int, float] = {}
-    for doc_i, line_i in enumerate(doc_indices):
-        score = float(rerank_result.scores_by_index.get(doc_i, 0.0))
-        line_scores[line_i] = score
-
-    # Score manquant = 0.0 (stratégie déterministe)
-    scored_indices = list(range(n))
-    scored_indices.sort(key=lambda i: (-float(line_scores.get(i, 0.0)), i))
-    keep_set = set(scored_indices[:keep_target])
+    try:
+        keep_set = await compute_deepinfra_keep_set(
+            lines=lines,
+            current_keep_set=set(range(n)),
+            goal_hint=goal_hint,
+            keep_target=keep_target,
+            max_docs=max_docs_n,
+            deepinfra_client=deepinfra_client,
+        )
+    except DeepInfraError as e:
+        raise e
 
     pruned_text, annotations = _reconstruct_pruned_text(
         prune_id=prune_id,
