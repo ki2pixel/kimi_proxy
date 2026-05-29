@@ -60,11 +60,6 @@ Mon histoire de développement, avec les vrais problèmes et solutions.
   - Le grand déménagement : du studio 10m² à la maison organisée
   - Instructions étape par étape pour faire pareil
 
-- **[Rapport Refactorisation MCP](./development/mcp-refactoring-report.md)** ⭐ **Nouveau**
-  - Transformation monolithe 1,230 lignes → 9 modules + 169 tests
-  - Réduction 90% taille fichier, compatibilité 100% préservée
-  - Les défis techniques et solutions de la refactorisation majeure
-
 ### 🚀 [Déploiement](./deployment/) - Installation et Utilisation
 Comment installer et utiliser le système en 5 minutes.
 
@@ -78,7 +73,6 @@ Les solutions aux problèmes courants rencontrés.
 
 - **[Bridge MCP stdio](./troubleshooting/MCP_Bridge_Stdio_Servers.md)** - Configuration serveurs MCP locaux avec filtrage JSON-RPC
 - **[Interop IDE MCP](./troubleshooting/MCP_IDE_Interop.md)** ⭐ **Nouveau** - Configuration MCP dans Windsurf, Cline, Continue.dev avec shim roots/list
-- **[MCP Transport HTTP Guide](./troubleshooting/MCP_TRANSPORT_HTTP_GUIDE.md)** - Guide transport MCP HTTP pour debugging
 - **[MCP Bridge stdio Serveurs](./troubleshooting/MCP_Bridge_Stdio_Servers.md)** - Configuration détaillée bridge stdio
 - **[Task Master Persistence Containment](./troubleshooting/TASK_MASTER_PERSISTENCE_CONTAINMENT.md)** - Containment persistance tâches MCP
 
@@ -162,11 +156,9 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
   - [Gestion fenêtre contexte Continue IDE](./development/guides/continue-ide-context-management.md)
   - [Guide création système gestion contexte](./development/guides/context-window-management-guide.md)
   - [Top 6 techniques gestion contexte](./development/guides/top-6-context-management-techniques.md)
-  - [Analyse enrichissement dashboard](./development/guides/dashboard-enhancement-analysis.md)
 
 - **[Migration](./development/)**
   - [Migration v1.0 vers v2.0](./development/migration-v2.md) ⭐ **Nouveau**
-  - [Plan de restructuration](./development/plan-restructuration-scripts.md)
 
 ### 🚀 Déploiement
 - [Installation](./deployment/installation.md)
