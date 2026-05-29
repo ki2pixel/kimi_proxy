@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from fastapi import FastAPI
 
 from src.kimi_proxy.main import create_app
-from src.kimi_proxy.core.database import init_database, get_db
+from src.kimi_proxy.core.database import init_database, get_db, create_session
 from src.kimi_proxy.features.compaction.auto_trigger import (
     AutoTriggerConfig,
     get_auto_trigger,
@@ -40,14 +40,12 @@ def client(app):
 
 @pytest.fixture
 def test_session(client):
-    """Crée une session de test."""
-    response = client.post("/api/sessions", json={
-        "name": "Test Session Compaction",
-        "provider": "managed:kimi-code",
-        "model": "kimi-for-coding"
-    })
-    assert response.status_code == 200
-    session = response.json()
+    """Crée une session de test en base de données."""
+    session = create_session(
+        name="Test Session Compaction",
+        provider="managed:kimi-code",
+        model="kimi-for-coding"
+    )
     yield session
     
     # Cleanup

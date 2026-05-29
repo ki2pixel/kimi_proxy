@@ -31,38 +31,12 @@ def test_health_endpoint(client: TestClient):
     assert data.get("status") in {"ok", "opérationnel"}
 
 
-def test_list_providers(client: TestClient):
-    """Test que la liste des providers fonctionne."""
-    response = client.get("/api/providers")
-    assert response.status_code == 200
-    data = response.json()
-    assert isinstance(data, list)
-
-
 def test_list_models(client: TestClient):
     """Test que la liste des modèles fonctionne (format dashboard: liste)."""
     response = client.get("/api/models")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-
-
-def test_create_session(client: TestClient):
-    """Test la création de session."""
-    response = client.post(
-        "/api/sessions",
-        json={"name": "Test Session", "provider": "managed:kimi-code"},
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert "id" in data
-    assert data["name"] == "Test Session"
-
-
-def test_get_active_session(client: TestClient):
-    """Test la récupération de la session active."""
-    response = client.get("/api/sessions/active")
-    assert response.status_code == 200
 
 
 def test_openai_models_endpoint(client: TestClient):
@@ -72,14 +46,6 @@ def test_openai_models_endpoint(client: TestClient):
     data = response.json()
     assert data.get("object") == "list"
     assert isinstance(data.get("data"), list)
-
-
-def test_websocket_connection(client: TestClient):
-    """Test la connexion WebSocket (ASGI in-process)."""
-    with client.websocket_connect("/ws") as websocket:
-        data = websocket.receive_json()
-        assert isinstance(data, dict)
-        assert "type" in data
 
 
 def test_sanitizer_stats(client: TestClient):

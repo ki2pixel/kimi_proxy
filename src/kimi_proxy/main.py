@@ -9,14 +9,13 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.database import init_database, create_session, get_active_session
 from .config.loader import load_config
-from .services.websocket_manager import create_connection_manager
-from .services.cline_polling import ClinePollingConfig, create_cline_polling_service
+
 from .features.log_watcher import create_log_watcher
 from .api.router import api_router
 from .api.routes.health import set_log_watcher
@@ -183,64 +182,7 @@ def create_app() -> FastAPI:
             "version": "2.0.0-mcp"
         })
     
-    # WebSocket endpoint
-    @app.websocket("/ws")
-    async def websocket_endpoint(websocket: WebSocket):
-        """
-        Endpoint WebSocket pour les mises à jour temps réel.
 
-        Envoie:
-        - Initialisation avec la session active
-        - Mises à jour de métriques en temps réel
-        - Alertes de seuils
-        - Événements de routing/sanitizer
-
-        Reçoit:
-        - Messages de commandes (compression, similarité, etc.)
-        """
-        manager = create_connection_manager()
-        await manager.connect(websocket)
-
-        try:
-            # Envoie l'état initial
-            session = get_active_session()
-            if session:
-                from .core.database import get_session_stats
-                stats = get_session_stats(session["id"])
-                await websocket.send_json({
-                    "type": "init",
-                    "session": session,
-                    **stats
-                })
-
-            # Garde la connexion ouverte et traite les messages entrants
-            while True:
-                data_raw = await websocket.receive_text()
-                try:
-                    import json
-                    from .api.routes.memory import WEBSOCKET_HANDLERS
-                    
-                    data = json.loads(data_raw)
-                    message_type = data.get("type")
-
-                    # Dispatch vers le handler approprié
-                    if message_type in WEBSOCKET_HANDLERS:
-                        handler = WEBSOCKET_HANDLERS[message_type]
-                        await handler(websocket, data)
-                    else:
-                        print(f"⚠️ Type de message WebSocket inconnu: {message_type}")
-
-                except json.JSONDecodeError as e:
-                    print(f"⚠️ Message WebSocket invalide JSON: {e}")
-                except Exception as e:
-                    print(f"⚠️ Erreur traitement message WebSocket: {e}")
-
-        except WebSocketDisconnect:
-            manager.disconnect(websocket)
-        except Exception as e:
-            print(f"⚠️ Erreur WebSocket: {e}")
-            manager.disconnect(websocket)
-    
     return app
 
 
@@ -271,7 +213,6 @@ def _startup(app: FastAPI):
         print(f"✅ Session par défaut créée (provider: {provider_key})")
     
     # Démarre le Log Watcher
-    manager = create_connection_manager()
     error_log_cache: dict[str, float] = {}
     
     async def broadcast_log_metrics(metrics, watcher):
@@ -299,26 +240,7 @@ def _startup(app: FastAPI):
         source_family = _get_log_source_family(source_type, metrics)
         source_label = _get_log_source_label(source_type, source_family)
         
-        message = {
-            "type": "log_metric",
-            "source": source_type,
-            "source_family": source_family,
-            "source_label": source_label,
-            "metrics": {
-                "prompt_tokens": metrics.prompt_tokens,
-                "completion_tokens": metrics.completion_tokens,
-                "tools_tokens": metrics.tools_tokens,
-                "system_message_tokens": metrics.system_message_tokens,
-                "total_tokens": total_tokens,
-                "context_length": metrics.context_length or max_context,
-                "max_context": max_context,
-                "percentage": percentage
-            },
-            "session_id": session["id"],
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        await manager.broadcast(message)
+
         
         # Log détaillé selon le type
         if source_family == "continue_compile":
@@ -342,29 +264,9 @@ def _startup(app: FastAPI):
             print(f"📊 [LOGS] Tokens: {total_tokens} ({percentage:.1f}%)")
     
     log_watcher = create_log_watcher(broadcast_callback=broadcast_log_metrics)
-
-    # Démarre le polling Cline (ledger local) + broadcast WS (optionnel)
-    cline_polling_raw = config.get("cline", {}).get("polling", {})
-    try:
-        cline_polling_enabled = bool(cline_polling_raw.get("enabled", True))
-        cline_interval_seconds = float(cline_polling_raw.get("interval_seconds", 60.0))
-        cline_backoff_max_seconds = float(cline_polling_raw.get("backoff_max_seconds", 600.0))
-    except (TypeError, ValueError):
-        cline_polling_enabled = True
-        cline_interval_seconds = 60.0
-        cline_backoff_max_seconds = 600.0
-
-    cline_polling_config = ClinePollingConfig(
-        enabled=cline_polling_enabled,
-        interval_seconds=max(cline_interval_seconds, 5.0),
-        # backoff >= interval (sinon on clamp au minimum fonctionnel)
-        backoff_max_seconds=max(cline_backoff_max_seconds, max(cline_interval_seconds, 30.0)),
-    )
-    cline_polling = create_cline_polling_service(manager=manager, config=cline_polling_config)
     
     # Stocke le log watcher dans l'app state
     app.state.log_watcher = log_watcher
-    app.state.cline_polling = cline_polling
     app.state.config = config
     
     # Enregistre pour le health check
@@ -373,9 +275,6 @@ def _startup(app: FastAPI):
     # Démarre le watcher (dans la lifespan async)
     import asyncio
     asyncio.create_task(log_watcher.start())
-
-    # Démarre le polling Cline (tâche asyncio)
-    asyncio.create_task(cline_polling.start())
     
     print(f"🌐 Kimi Proxy MCP disponible sur http://localhost:8000")
 
@@ -387,10 +286,6 @@ async def _shutdown(app: FastAPI):
     # Arrête le Log Watcher
     if hasattr(app.state, 'log_watcher'):
         await app.state.log_watcher.stop()
-
-    # Arrête le polling Cline
-    if hasattr(app.state, 'cline_polling'):
-        await app.state.cline_polling.stop()
     
     print("✅ Serveur arrêté proprement")
 

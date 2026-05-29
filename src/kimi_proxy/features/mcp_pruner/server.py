@@ -778,6 +778,11 @@ async def _tool_prune_text(
     stats: JsonDict
     warnings: list[str]
 
+    deepinfra_latency_ms: int | None = None
+    deepinfra_docs_scored: int | None = None
+    deepinfra_docs_total: int | None = None
+    deepinfra_http_status: int | None = None
+
     cache_key = _cache_key_for_prune(
         backend=backends_str,
         text=text,
@@ -799,6 +804,9 @@ async def _tool_prune_text(
         stats = dict(cached.stats)
         warnings = list(cached.warnings) + ["cache_hit"]
         stats["cached"] = True
+        if "deepinfra" in backends_str:
+            stats["deepinfra_cached"] = True
+            stats["deepinfra_latency_ms"] = 0
     else:
         lines = text.splitlines()
         n = len(lines)
@@ -829,20 +837,34 @@ async def _tool_prune_text(
                     except Exception as e:
                         warnings.append(f"local_rag_error:{str(e)}")
                 elif b == "deepinfra":
-                    from .deepinfra_engine import compute_deepinfra_keep_set, DeepInfraError, DeepInfraHTTPError
+                    from .deepinfra_engine import compute_deepinfra_keep_set, _select_doc_indices
                     if owned_client is None and http_client_to_use is None:
                         owned_client = httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0))
                         http_client_to_use = owned_client
+                    deepinfra_docs_total = n
+                    deepinfra_cfg = _get_deepinfra_client_config(toml_backend_cfg)
+                    sampled_indices = _select_doc_indices(n_lines=len(keep_set), max_docs=deepinfra_cfg.max_docs)
+                    deepinfra_docs_scored = len(sampled_indices)
                     try:
-                        deepinfra_cfg = _get_deepinfra_client_config(toml_backend_cfg)
+                        deepinfra_started = time.perf_counter()
                         deepinfra_client = DeepInfraClient(deepinfra_cfg, http_client=http_client_to_use)
                         keep_set = await compute_deepinfra_keep_set(
                             lines=lines, current_keep_set=keep_set, goal_hint=goal_hint,
                             keep_target=keep_target, max_docs=deepinfra_cfg.max_docs,
                             deepinfra_client=deepinfra_client
                         )
+                        deepinfra_latency_ms = getattr(deepinfra_client, "last_latency_ms", int((time.perf_counter() - deepinfra_started) * 1000))
+                        deepinfra_http_status = 200
                     except Exception as e:
-                        warnings.append(f"deepinfra_error:{str(e)}")
+                        warnings.append("deepinfra_error")
+                        code = getattr(e, "code", None)
+                        if code is not None:
+                            warnings.append(str(code))
+                        warnings.append(f"deepinfra_error:[{code}] {str(e)}")
+                        if hasattr(e, "details") and isinstance(e.details, dict):
+                            sc = e.details.get("status_code")
+                            if sc is not None:
+                                deepinfra_http_status = int(sc)
         finally:
             if owned_client is not None:
                 await owned_client.aclose()
@@ -873,6 +895,15 @@ async def _tool_prune_text(
             "elapsed_ms": 0,
             "used_fallback": len(warnings) > 0,
         }
+        if "deepinfra" in backends:
+            if deepinfra_latency_ms is not None:
+                stats["deepinfra_latency_ms"] = deepinfra_latency_ms
+            if deepinfra_docs_scored is not None:
+                stats["deepinfra_docs_scored"] = deepinfra_docs_scored
+            if deepinfra_docs_total is not None:
+                stats["deepinfra_docs_total"] = deepinfra_docs_total
+            if deepinfra_http_status is not None:
+                stats["deepinfra_http_status"] = deepinfra_http_status
         
         await cache.put(
             cache_key,

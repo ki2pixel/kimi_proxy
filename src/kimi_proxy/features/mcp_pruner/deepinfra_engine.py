@@ -62,6 +62,10 @@ async def compute_deepinfra_keep_set(
     docs_to_score = [lines[active_indices[i]] for i in sampled_indices]
     
     rerank_result = await deepinfra_client.rerank(query=goal_hint, documents=docs_to_score)
+    try:
+        setattr(deepinfra_client, "last_latency_ms", int(getattr(rerank_result, "elapsed_ms", 0)))
+    except Exception:
+        pass
     
     new_keep_set = set()
     # On garde les meilleurs scores.
@@ -122,7 +126,9 @@ async def prune_text_with_deepinfra(
 
     max_docs_n = max(1, int(max_docs))
     warnings: list[str] = []
+    sampled_indices = _select_doc_indices(n_lines=n, max_docs=max_docs_n)
     try:
+        deepinfra_started = time.perf_counter()
         keep_set = await compute_deepinfra_keep_set(
             lines=lines,
             current_keep_set=set(range(n)),
@@ -131,6 +137,8 @@ async def prune_text_with_deepinfra(
             max_docs=max_docs_n,
             deepinfra_client=deepinfra_client,
         )
+        deepinfra_latency_ms = int((time.perf_counter() - deepinfra_started) * 1000)
+        deepinfra_latency_ms = getattr(deepinfra_client, "last_latency_ms", deepinfra_latency_ms)
     except DeepInfraError as e:
         raise e
 
@@ -159,8 +167,8 @@ async def prune_text_with_deepinfra(
         "tokens_est_after": count_tokens_text(pruned_text),
         "elapsed_ms": elapsed_ms,
         "used_fallback": False,
-        "deepinfra_latency_ms": int(rerank_result.elapsed_ms),
-        "deepinfra_docs_scored": len(doc_indices),
+        "deepinfra_latency_ms": deepinfra_latency_ms,
+        "deepinfra_docs_scored": len(sampled_indices),
         "deepinfra_docs_total": n,
         "deepinfra_http_status": 200,
     }
