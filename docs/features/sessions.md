@@ -1,5 +1,9 @@
 # Sessions Module - Gestion des Sessions et Métriques
 
+> [!WARNING]
+> **DOCUMENTATION CONSERVÉE POUR ARCHIVE (FRONTEND DÉPRÉCIÉ)**
+> Suite au pivot architectural du **2026-05-12**, le frontend Dashboard (HTML/JS/CSS, Chart.js) a été déprécié au profit d'un usage purement orienté CLI, API REST et serveurs MCP locaux stdio. La logique d'interface ou de WebSocket décrite ci-dessous n'est plus active dans le workflow nominal.
+
 ## TL;DR
 Module JavaScript centralisant la gestion des sessions LLM, métriques de tokens temps réel, et fusion intelligente des sources de données (proxy/logs) pour le dashboard Kimi Proxy.
 

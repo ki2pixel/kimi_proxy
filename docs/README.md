@@ -92,10 +92,10 @@ L'interface REST/WebSocket du système.
 
 - **[Documentation API](./api/README.md)** - 61 routes documentées avec patterns système
 
-### 📊 [Services](./services/) - Gestion WebSocket et Alertes
-Les services temps réel.
+### 📊 [Services](./services/) - Services internes
+Les services internes et alertes.
 
-- **[Vue d'ensemble Services](./services/README.md)** - WebSocket manager, rate limiting, alertes
+- **[Vue d'ensemble Services](./services/README.md)** - Rate limiting, alertes
 
 ### 🌐 [Proxy](./proxy/) - Routage vers APIs LLM
 Le cœur du proxy multi-provider.

@@ -1,6 +1,10 @@
 # ⚡ Fonctionnalités : Les Superpouvoirs du Dashboard
 
-**TL;DR**: J'ai construit 3 superpouvoirs qui me font économiser 20-40% de tokens LLM : le sanitizer qui masque le bruit, MCP qui organise la mémoire, et la compression qui me sauve la vie en urgence.
+> [!WARNING]
+> **COMPOSANTS VISUELS DÉPRÉCIÉS (FONCTIONNALITÉS BACKEND ACTIVES)**
+> Depuis la mise à jour majeure du **2026-05-12**, l'interface visuelle du Dashboard a été retirée au profit d'un middleware purement orienté CLI/stateless. Les algorithmes sous-jacents (Sanitizer, Compression, MCP) restent pleinement opérationnels en arrière-plan sans nécessiter d'interaction visuelle.
+
+**TL;DR**: J'ai construit 3 superpouvoirs qui font économiser 20-40% de tokens LLM : le sanitizer qui masque le bruit, MCP qui organise la mémoire, et la compression qui me sauve la vie en urgence.
 
 Ces fonctionnalités ne sont pas des gadgets. Elles sont nées de vrais problèmes que j'ai rencontrés pendant des mois d'utilisation intensive. Chacune résout un point précis de douleur.
 
