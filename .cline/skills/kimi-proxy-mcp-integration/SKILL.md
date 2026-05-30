@@ -1,6 +1,6 @@
 ---
 name: kimi-proxy-mcp-integration
-description: Comprehensive MCP (Model Context Protocol) integration for Kimi Proxy Dashboard. Use when working with MCP servers, memory management, semantic search, or external tool integration. Covers Phase 2-5 MCP features including Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query, and Gateway servers.
+description: Comprehensive MCP (Model Context Protocol) integration for Kimi Proxy Middleware MCP. Use when working with MCP servers, memory management, semantic search, or external tool integration. Covers Phase 2-5 MCP features including Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query, and Gateway servers.
 license: Complete terms in LICENSE.txt
 ---
 
@@ -29,13 +29,13 @@ Primary backend files:
 - `compaction_history` table in SQLite
 - `features/compaction/simple_compaction.py`
 - `features/compaction/auto_trigger.py`
-- WebSocket compaction events broadcast from storage / API routes
+- `features/compaction/auto_trigger.py`
 
 ### Phase 2: Auto-memory and session-aware memory metrics
 
 - memory metrics in `metrics`, `memory_metrics`, `memory_segments`
 - auto-memory broadcasts such as `auto_memory_stored`
-- advanced memory stats surfaced in API and dashboard modules
+- advanced memory stats surfaced in API
 
 ### Phase 3: Standardized MCP persistence
 
@@ -152,10 +152,9 @@ Do not hardcode tool-specific examples such as `initialize_project`, `expand_tas
 
 MCP-related context features now coexist with a richer analytics pipeline.
 
-`src/kimi_proxy/main.py` starts `create_log_watcher(...)` and broadcasts normalized log-derived metrics to the dashboard. This is relevant for MCP documentation because:
+`src/kimi_proxy/main.py` starts `create_log_watcher(...)` and provides normalized log-derived metrics. This is relevant for MCP documentation because:
 
 - auto-session decisions may correlate provider/model/session metadata
-- memory and compaction UI receive live updates alongside proxy metrics
 - health endpoints surface log watcher state and sources
 
 ## Database Schema Notes

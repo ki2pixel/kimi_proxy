@@ -246,7 +246,7 @@ config.toml             # Secrets here only
 ## Key Dependencies
 - FastAPI + Uvicorn (async server)
 - HTTPX (async HTTP client)
-- aiosqlite (async SQLite)
+- sqlite3 (standard library, synchronous but wrapped in factory context)
 - tiktoken (token counting)
 - pytest-asyncio (async tests)
 
@@ -272,45 +272,57 @@ Keep the model name mapping simple and direct: a) check exact key matches, b) ot
 - `src/kimi_proxy/core/` - Implementation examples
 
 ### Documentation Updates
-Any time you create or modify documentation (README, docs/, Markdown guides), you **must** apply the methodology defined in `.cline/skills/documentation/SKILL.md` (TL;DR first, problem-first opening, ❌/✅ blocks, trade-offs, Golden Rule). Treat this skill file as the authoritative checklist before writing.
+Any time you create or modify documentation (README, docs/, Markdown guides), you **must** apply the methodology defined in `.agents/skills/documentation/SKILL.md` (TL;DR first, problem-first opening, ❌/✅ blocks, trade-offs, Golden Rule). Treat this skill file as the authoritative checklist before writing.
 
 ## Skills Invocation Guide
 
-### Use debugging-strategies Skill (@.cline/skills/debugging-strategies/SKILL.md)
+### Use commit-push Skill (@.agents/skills/commit-push/SKILL.md)
+- Commit changes to the current branch and push to remote
+
+### Use debugging-strategies Skill (@.agents/skills/debugging-strategies/SKILL.md)
 - Systematic debugging, profiling, root cause analysis for bugs and performance issues
 
-### Use documentation Skill (@.cline/skills/documentation/SKILL.md)
+### Use docs-updater Skill (@.agents/skills/docs-updater/SKILL.md)
+- Harmoniser la documentation Kimi Proxy en utilisant l'analyse statique standard
+
+### Use documentation Skill (@.agents/skills/documentation/SKILL.md)
 - Technical writing, README guidelines, AI-free documentation
 
-### Use kimi-proxy-config-manager Skill (@.cline/skills/kimi-proxy-config-manager/SKILL.md)
-- TOML/YAML config management, provider routing, API key setup
+### Use end Skill (@.agents/skills/end/SKILL.md)
+- Terminer la session et synchroniser la Memory Bank
 
-### Use kimi-proxy-frontend-architecture Skill (@.cline/skills/kimi-proxy-frontend-architecture/SKILL.md)
-- Real-time dashboard, ES6 modules, Chart.js, WebSocket architecture
+### Use enhance Skill (@.agents/skills/enhance/SKILL.md)
+- Améliorer un Prompt avec le Contexte du Projet Kimi Proxy Middleware MCP
 
-### Use kimi-proxy-mcp-integration Skill (@.cline/skills/kimi-proxy-mcp-integration/SKILL.md)
-- MCP servers, memory management, semantic search, Phase 2-4 features
+### Use enhance-complex Skill (@.agents/skills/enhance-complex/SKILL.md)
+- Analyse profonde, Planification Shrimp Task Manager et Réflexion Séquentielle
 
-### Use kimi-proxy-performance-optimization Skill (@.cline/skills/kimi-proxy-performance-optimization/SKILL.md)
-- Token counting, database queries, WebSocket performance, caching
-
-### Use kimi-proxy-streaming-debug Skill (@.cline/skills/kimi-proxy-streaming-debug/SKILL.md)
-- Streaming errors: ReadError, Timeout, ConnectError, SSE issues
-
-### Use kimi-proxy-testing-strategies Skill (@.cline/skills/kimi-proxy-testing-strategies/SKILL.md)
-- Unit tests, integration, E2E, performance testing with pytest-asyncio
-
-### Use shrimp-task-manager Skill (@.cline/skills/shrimp-task-manager/SKILL.md)
-- Task management with Shrimp Task Manager
-
-### Use sequentialthinking-logic Skill (@.cline/skills/sequentialthinking-logic/SKILL.md)
-- Sequential Thinking Logic for complex architecture and extension logic
-
-### Use fast-filesystem Skill (@.cline/skills/fast-filesystem-ops/SKILL.md)
+### Use fast-filesystem Skill (@.agents/skills/fast-filesystem-ops/SKILL.md)
 - Fast file system operations for efficient file management
 
-### Use json-query-expert Skill (@.cline/skills/json-query-expert/SKILL.md)
+### Use json-query-expert Skill (@.agents/skills/json-query-expert/SKILL.md)
 - JSON Query Expert for efficient data extraction and manipulation
+
+### Use kimi-proxy-config-manager Skill (@.agents/skills/kimi-proxy-config-manager/SKILL.md)
+- TOML/YAML config management, provider routing, API key setup
+
+### Use kimi-proxy-mcp-integration Skill (@.agents/skills/kimi-proxy-mcp-integration/SKILL.md)
+- MCP servers, memory management, semantic search, Phase 2-4 features
+
+### Use kimi-proxy-performance-optimization Skill (@.agents/skills/kimi-proxy-performance-optimization/SKILL.md)
+- Token counting, database queries, WebSocket performance, caching
+
+### Use kimi-proxy-streaming-debug Skill (@.agents/skills/kimi-proxy-streaming-debug/SKILL.md)
+- Streaming errors: ReadError, Timeout, ConnectError, SSE issues
+
+### Use kimi-proxy-testing-strategies Skill (@.agents/skills/kimi-proxy-testing-strategies/SKILL.md)
+- Unit tests, integration, E2E, performance testing with pytest-asyncio
+
+### Use sequentialthinking-logic Skill (@.agents/skills/sequentialthinking-logic/SKILL.md)
+- Sequential Thinking Logic for complex architecture and extension logic
+
+### Use shrimp-task-manager Skill (@.agents/skills/shrimp-task-manager/SKILL.md)
+- Task management with Shrimp Task Manager
 
 ## Database Schema Extensions (Phase 3 MCP)
 

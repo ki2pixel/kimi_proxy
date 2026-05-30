@@ -1,12 +1,12 @@
 ---
 name: kimi-proxy-streaming-debug
-description: Expert debugging for streaming errors in Kimi Proxy Dashboard. Use when encountering ReadError, TimeoutException, ConnectError, or SSE streaming issues. Provides systematic troubleshooting for proxy streaming failures, token extraction problems, and WebSocket connection issues.
+description: Expert debugging for streaming errors in Kimi Proxy Middleware MCP. Use when encountering ReadError, TimeoutException, ConnectError, or SSE streaming issues. Provides systematic troubleshooting for proxy streaming failures and token extraction problems.
 license: Complete terms in LICENSE.txt
 ---
 
 # Kimi Proxy Streaming Debug
 
-**TL;DR**: The current streaming layer is designed for best effort, not perfect resume. `proxy/stream.py` normalizes known streaming failures, still tries to extract partial usage from buffered SSE data in `finally`, and broadcasts `streaming_error` plus `metric_updated` events when possible.
+**TL;DR**: The current streaming layer is designed for best effort, not perfect resume. `proxy/stream.py` normalizes known streaming failures, and still tries to extract partial usage from buffered SSE data in `finally`.
 
 ## Source of Truth
 
@@ -59,29 +59,7 @@ usage_data = extract_usage_from_stream(buffer, provider_type)
 
 The code does this in `finally`, which means partial buffered SSE data can still update token metrics even if the stream ended badly.
 
-### 4. Broadcast to the dashboard
 
-When enough context is available, the backend can emit:
-
-- `metric_updated`
-- `streaming_error`
-
-## WebSocket Error Broadcast
-
-### ✅ Real event shape
-
-```python
-await manager.broadcast({
-    "type": "streaming_error",
-    "session_id": session_id,
-    "metric_id": metric_id,
-    "error_type": error_type,
-    "error_message": STREAMING_ERROR_TYPES.get(error_type, STREAMING_ERROR_TYPES["unknown"]),
-    "timestamp": datetime.now().isoformat(),
-})
-```
-
-If you update frontend or monitoring docs, use this structure.
 
 ## Provider Timeouts
 
@@ -131,4 +109,4 @@ Inspect `src/kimi_proxy/api/routes/proxy.py` for the JSON responses returned on 
 
 ## Golden Rule
 
-**For streaming docs, be explicit about best-effort behavior: partial tokens may still be recovered, errors are normalized, and dashboards are updated via WebSocket when possible.** Avoid promising resume semantics the code does not implement.
+**For streaming docs, be explicit about best-effort behavior: partial tokens may still be recovered, and errors are normalized.** Avoid promising resume semantics the code does not implement.

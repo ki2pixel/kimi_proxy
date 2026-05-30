@@ -1,6 +1,6 @@
 ---
 name: kimi-proxy-config-manager
-description: Expert configuration management for Kimi Proxy Dashboard. Use when managing TOML/YAML configurations, adding new providers, setting up API keys, or troubleshooting configuration issues. Handles provider routing, model mappings, and environment variable integration.
+description: Expert configuration management for Kimi Proxy Middleware MCP. Use when managing TOML/YAML configurations, adding new providers, setting up API keys, or troubleshooting configuration issues. Handles provider routing, model mappings, and environment variable integration.
 license: Complete terms in LICENSE.txt
 ---
 

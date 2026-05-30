@@ -1,6 +1,6 @@
 ---
 name: kimi-proxy-testing-strategies
-description: Comprehensive testing strategies for Kimi Proxy Dashboard. Use when writing tests, debugging issues, or ensuring system reliability. Covers unit tests, integration tests, E2E testing, and performance testing with pytest-asyncio.
+description: Comprehensive testing strategies for Kimi Proxy Middleware MCP. Use when writing tests, debugging issues, or ensuring system reliability. Covers unit tests, integration tests, E2E testing, and performance testing with pytest-asyncio.
 license: Complete terms in LICENSE.txt
 ---
 

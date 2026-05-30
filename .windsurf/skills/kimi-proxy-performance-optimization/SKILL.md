@@ -1,12 +1,12 @@
 ---
 name: kimi-proxy-performance-optimization
-description: Performance optimization expert for Kimi Proxy Dashboard. Use when optimizing token counting, database queries, WebSocket performance, or reducing latency. Covers async optimization, database indexing, caching strategies, and resource utilization.
+description: Performance optimization expert for Kimi Proxy Middleware MCP. Use when optimizing token counting, database queries, or reducing latency. Covers async optimization, database indexing, caching strategies, and resource utilization.
 license: Complete terms in LICENSE.txt
 ---
 
 # Kimi Proxy Performance Optimization
 
-**TL;DR**: Focus on the optimizations that are already in production: HTTPX connection reuse, MCP response chunking/cache, throttled database `VACUUM`, existing SQLite indexes, and lightweight WebSocket broadcast cleanup. Do not document speculative helpers as if they were live code.
+**TL;DR**: Focus on the optimizations that are already in production: HTTPX connection reuse, MCP response chunking/cache, throttled database `VACUUM`, and existing SQLite indexes. Do not document speculative helpers as if they were live code.
 
 ## Source of Truth
 
@@ -15,7 +15,6 @@ Key implementation files:
 - `src/kimi_proxy/features/mcp/base/rpc.py`
 - `src/kimi_proxy/features/mcp/client.py`
 - `src/kimi_proxy/core/database.py`
-- `src/kimi_proxy/services/websocket_manager.py`
 - `src/kimi_proxy/proxy/stream.py`
 - `src/kimi_proxy/proxy/client.py`
 
@@ -41,9 +40,7 @@ Large MCP outputs are already handled through:
 
 The current code includes schema indexes and a throttled `vacuum_database()` helper.
 
-### 4. WebSocket broadcast fan-out
 
-`ConnectionManager.broadcast()` is intentionally simple: sequential send, collect broken sockets, then clean them up.
 
 ## Existing Optimizations You Should Preserve
 
@@ -77,16 +74,7 @@ result = vacuum_database()
 
 This helper is also invoked after bulk session deletions.
 
-### WebSocket cleanup-on-broadcast
 
-```python
-from kimi_proxy.services.websocket_manager import get_connection_manager
-
-manager = get_connection_manager()
-await manager.broadcast({"type": "metric_updated", "session_id": 1})
-```
-
-The current manager is not queue-based. It favors straightforward cleanup and small JSON payloads.
 
 ## Token Counting Guidance
 
@@ -102,7 +90,6 @@ The current manager is not queue-based. It favors straightforward cleanup and sm
 - `StreamingTokenCounter`
 - `MemoryProfiler`
 - Redis-style TTL caches
-- queued WebSocket workers
 
 Those may be valid future ideas; they are not part of the current production implementation.
 
@@ -123,11 +110,11 @@ When documenting queries, prefer the actual helpers already used by the app:
 - `get_session_stats()`
 - `vacuum_database()`
 
-## Streaming and Broadcast Performance
+## Streaming Performance
 
-`proxy/stream.py` performs best-effort token extraction after streaming and emits compact WebSocket updates such as `metric_updated` and `streaming_error`.
+`proxy/stream.py` performs best-effort token extraction after streaming.
 
-Optimization rule: keep payloads small and typed; let the frontend derive presentation state from events rather than sending oversized UI-specific blobs.
+Optimization rule: keep payloads small and typed.
 
 ## Measurement Guidance
 
