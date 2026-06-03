@@ -310,8 +310,6 @@ class PassthroughProcessor:
                         provider_type=provider_type,
                         models=self.models,
                         manager=None,
-                        max_retries=0,
-                        retry_delay=1.0,
                     ),
                     status_code=response.status_code,
                     headers={

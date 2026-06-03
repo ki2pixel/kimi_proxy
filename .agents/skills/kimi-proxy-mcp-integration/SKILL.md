@@ -146,7 +146,7 @@ Documented external server families should stay limited to the ones already reco
 
 ### Important caution
 
-Do not hardcode tool-specific examples such as `initialize_project`, `expand_task`, `batch_file_operations`, or `json_query_jsonpath` as guaranteed Python façade methods unless you have revalidated them against the current gateway/bridge/server contract. Prefer gateway- or RPC-level examples when writing durable docs.
+Do not hardcode tool-specific examples such as `initialize_project`, `expand_task`, `batch_file_operations`, or `json_query_query_json` as guaranteed Python façade methods unless you have revalidated them against the current gateway/bridge/server contract. Prefer gateway- or RPC-level examples when writing durable docs.
 
 ## Log Watcher Integration
 

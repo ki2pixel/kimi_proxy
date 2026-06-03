@@ -44,7 +44,7 @@ Tu transformes une demande complexe en une stratégie d'exécution multi-étapes
 4. **Tester itérativement** : Valider chaque sous-tâche avant de continuer
 
 ## Phase 5 : Vérification
-1. **Vérification structurelle** : Utiliser `json_query_jsonpath` pour valider les modifications de configuration
+1. **Vérification structurelle** : Utiliser `json_query_query_json` pour valider les modifications de configuration
 2. **Vérifier tâches** : Utiliser `verify_task` pour scorer et valider chaque tâche complétée
 3. **Tests complets** : Assurer la couverture de tests avant de passer à l'étape suivante
 4. **Réfléchir résultats** : Utiliser `reflect_task` pour analyser les résultats et identifier optimisations

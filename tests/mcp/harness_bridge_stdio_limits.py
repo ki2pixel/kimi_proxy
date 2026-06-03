@@ -1,3 +1,4 @@
+import tempfile
 #!/usr/bin/env python3
 """Harness: verify scripts/mcp_bridge.py behavior under nominal + oversized stdout.
 
@@ -39,7 +40,7 @@ def main() -> int:
     bridge = repo_root / "scripts" / "mcp_bridge.py"
     fake_server = repo_root / "tests" / "fixtures" / "fake_mcp_server_stdio.py"
 
-    tmp_dir = Path("/tmp/kimi-proxy")
+    tmp_dir = Path(tempfile.gettempdir()) / "kimi-proxy"
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
     # Create a wrapper to replace `npx` so the bridge uses our fake server.

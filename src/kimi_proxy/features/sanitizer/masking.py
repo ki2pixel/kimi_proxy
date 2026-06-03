@@ -1,3 +1,4 @@
+import os
 """
 Logique de masking pour le sanitizer.
 """
@@ -77,7 +78,7 @@ class ContentMasker:
             config={
                 "threshold_tokens": self.threshold_tokens,
                 "preview_length": self.preview_length,
-                "tmp_dir": "/tmp/kimi_proxy_masked"
+                "tmp_dir": os.path.join(os.path.expanduser("~"), ".kimi", "tmp", "kimi_proxy_masked")
             }
         )
         

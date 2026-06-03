@@ -1,3 +1,4 @@
+import os
 """
 Routes API pour le sanitizer (Phase 1).
 """
@@ -59,7 +60,7 @@ async def get_sanitizer_stats_endpoint():
         "enabled": config.get("enabled", True),
         "threshold_tokens": config.get("threshold_tokens", 1000),
         "preview_length": config.get("preview_length", 200),
-        "tmp_dir": config.get("tmp_dir", "/tmp/kimi_proxy_masked"),
+        "tmp_dir": config.get("tmp_dir", os.path.join(os.path.expanduser("~"), ".kimi", "tmp", "kimi_proxy_masked")),
         "stats": stats
     }
 
@@ -88,7 +89,7 @@ def get_sanitizer_config():
         "enabled": sanitizer_config.get("enabled", True),
         "threshold_tokens": sanitizer_config.get("threshold_tokens", 1000),
         "preview_length": sanitizer_config.get("preview_length", 200),
-        "tmp_dir": sanitizer_config.get("tmp_dir", "/tmp/kimi_proxy_masked"),
+        "tmp_dir": sanitizer_config.get("tmp_dir", os.path.join(os.path.expanduser("~"), ".kimi", "tmp", "kimi_proxy_masked")),
         "fallback_threshold": sanitizer_config.get("routing", {}).get("fallback_threshold", 0.90),
         "heavy_duty_fallback": sanitizer_config.get("routing", {}).get("heavy_duty_fallback", True),
     }

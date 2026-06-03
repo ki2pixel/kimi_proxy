@@ -1,3 +1,4 @@
+import os
 """
 Constantes globales pour Kimi Proxy Dashboard.
 """
@@ -43,7 +44,7 @@ DEFAULT_SANITIZER_CONFIG = {
     "enabled": True,
     "threshold_tokens": 1000,
     "preview_length": 200,
-    "tmp_dir": "/tmp/kimi_proxy_masked",
+    "tmp_dir": os.path.join(os.path.expanduser("~"), ".kimi", "tmp", "kimi_proxy_masked"),
     "tags": ["@file", "@codebase", "@tool", "@console", "@output"]
 }
 
@@ -176,3 +177,16 @@ DEFAULT_KIMI_SESSIONS_PATH = "/home/kidpixel/.kimi/sessions"
 
 # Backward compatibility: l'ancien watcher mono-source utilisait cette constante.
 DEFAULT_LOG_PATH = DEFAULT_CONTINUE_LOG_PATH
+
+# ============================================================================
+# CONSTANTES GLOBALES (Refactoring S1192)
+# ============================================================================
+MSG_MANAGED_KIMI_CODE = "managed:kimi-code"
+MSG_CONTEXT_ID_EMPTY = "Context ID cannot be empty"
+MSG_NOT_FOUND = "not found"
+MSG_SESSION_NOT_FOUND = "Session non trouvée"
+MSG_DIVIDE_REQUEST = "Diviser la requête en parties plus petites"
+MSG_HTTP_DISCONNECTED = "❌ HTTP déconnecté"
+REGEX_REDACTED = r"\1[REDACTED]"
+REGEX_TOOL_FORMAT = r'\1, "\2":'
+LOG_PREFIX_QDRANT = "[mcp.qdrant]"

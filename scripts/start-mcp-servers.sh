@@ -67,7 +67,7 @@ check_port() {
 kill_port() {
     local port=$1
     local pid=$(lsof -ti:$port 2>/dev/null)
-    if [ ! -z "$pid" ]; then
+    if [[ ! -z "$pid" ]]; then
         kill -9 $pid 2>/dev/null || true
         sleep 1
     fi
@@ -82,7 +82,7 @@ start_servers() {
     echo ""
     
     # Vérifier l'environnement virtuel
-    if [ -d "venv" ]; then
+    if [[ -d "venv" ]]; then
         source venv/bin/activate
         log_info "Environnement virtuel activé"
     fi
@@ -328,7 +328,7 @@ start_pruner_server() {
     log_info "Lancement du serveur MCP Pruner sur le port $PRUNER_PORT..."
 
     # Charger les variables d'environnement depuis .env
-    if [ -f ".env" ]; then
+    if [[ -f ".env" ]]; then
         set -a
         source .env
         set +a
@@ -347,7 +347,7 @@ start_pruner_server() {
     local max_wait_s=12
     local waited_s=0
 
-    while [ $waited_s -lt $max_wait_s ]; do
+    while [[ $waited_s -lt $max_wait_s ]]; do
         if check_port $PRUNER_PORT; then
             log_success "MCP Pruner démarré (PID: $PRUNER_PID)"
             echo $PRUNER_PID > /tmp/mcp_pruner.pid
@@ -365,7 +365,7 @@ start_pruner_server() {
     log_error "Échec du démarrage du serveur MCP Pruner (attendu ${max_wait_s}s)"
     echo "   Logs: /tmp/mcp_pruner.log"
     echo "   PID: $PRUNER_PID"
-    if [ -f /tmp/mcp_pruner.log ]; then
+    if [[ -f /tmp/mcp_pruner.log ]]; then
         echo ""
         echo "--- Dernières lignes (/tmp/mcp_pruner.log) ---"
         tail -n 80 /tmp/mcp_pruner.log 2>/dev/null || true
@@ -1778,7 +1778,7 @@ stop_servers() {
     echo "🛑 Arrêt des serveurs MCP..."
     
     # Arrêter le serveur de compression
-    if [ -f /tmp/mcp_compression.pid ]; then
+    if [[ -f /tmp/mcp_compression.pid ]]; then
         pid=$(cat /tmp/mcp_compression.pid)
         if kill -0 $pid 2>/dev/null; then
             kill -9 $pid 2>/dev/null || true
@@ -1788,7 +1788,7 @@ stop_servers() {
     fi
 
     # Arrêter le serveur de sequential thinking
-    if [ -f /tmp/mcp_sequential_thinking.pid ]; then
+    if [[ -f /tmp/mcp_sequential_thinking.pid ]]; then
         pid=$(cat /tmp/mcp_sequential_thinking.pid)
         if kill -0 $pid 2>/dev/null; then
             kill -9 $pid 2>/dev/null || true
@@ -1798,7 +1798,7 @@ stop_servers() {
     fi
     
     # Arrêter le serveur de fast filesystem
-    if [ -f /tmp/mcp_fast_filesystem.pid ]; then
+    if [[ -f /tmp/mcp_fast_filesystem.pid ]]; then
         pid=$(cat /tmp/mcp_fast_filesystem.pid)
         if kill -0 $pid 2>/dev/null; then
             kill -9 $pid 2>/dev/null || true
@@ -1808,7 +1808,7 @@ stop_servers() {
     fi
     
     # Arrêter le serveur de json query
-    if [ -f /tmp/mcp_json_query.pid ]; then
+    if [[ -f /tmp/mcp_json_query.pid ]]; then
         pid=$(cat /tmp/mcp_json_query.pid)
         if kill -0 $pid 2>/dev/null; then
             kill -9 $pid 2>/dev/null || true
@@ -1818,7 +1818,7 @@ stop_servers() {
     fi
 
     # Arrêter le serveur MCP Pruner
-    if [ -f /tmp/mcp_pruner.pid ]; then
+    if [[ -f /tmp/mcp_pruner.pid ]]; then
         pid=$(cat /tmp/mcp_pruner.pid)
         if kill -0 $pid 2>/dev/null; then
             kill -9 $pid 2>/dev/null || true
@@ -1852,9 +1852,9 @@ status_servers() {
     if [[ "$QDRANT_URL" == *"cloud.qdrant.io"* ]]; then
         # Vérifier la connectivité Cloud
         QDRANT_API_KEY=$(grep -A 15 '\[mcp.qdrant\]' config.toml 2>/dev/null | grep '^api_key' | cut -d'"' -f2)
-        if [ ! -z "$QDRANT_API_KEY" ]; then
+        if [[ ! -z "$QDRANT_API_KEY" ]]; then
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $QDRANT_API_KEY" "$QDRANT_URL/healthz" 2>/dev/null || echo "000")
-            if [ "$HTTP_CODE" == "200" ]; then
+            if [[ "$HTTP_CODE" == "200" ]]; then
                 log_success "✅ Cloud Connecté ($QDRANT_URL)"
             else
                 log_warning "⚠️  Cloud vérifier API key (HTTP $HTTP_CODE)"

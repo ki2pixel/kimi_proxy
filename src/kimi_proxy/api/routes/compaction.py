@@ -653,7 +653,7 @@ async def api_get_compaction_history_chart(session_id: int):
             from datetime import datetime
             dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
             label = dt.strftime("%H:%M")
-        except:
+        except Exception:
             label = timestamp[:5] if timestamp else "?"
         
         labels.append(label)

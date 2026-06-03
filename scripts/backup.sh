@@ -16,7 +16,7 @@ echo "================================"
 mkdir -p "$BACKUP_DIR"
 
 # Backup de la base
-if [ -f "$PROJECT_DIR/sessions.db" ]; then
+if [[ -f "$PROJECT_DIR/sessions.db" ]]; then
     BACKUP_FILE="$BACKUP_DIR/sessions_$TIMESTAMP.db"
     cp "$PROJECT_DIR/sessions.db" "$BACKUP_FILE"
     gzip "$BACKUP_FILE"
@@ -26,7 +26,7 @@ else
 fi
 
 # Backup de la config
-if [ -f "$PROJECT_DIR/config.toml" ]; then
+if [[ -f "$PROJECT_DIR/config.toml" ]]; then
     CONFIG_BACKUP="$BACKUP_DIR/config_$TIMESTAMP.toml"
     cp "$PROJECT_DIR/config.toml" "$CONFIG_BACKUP"
     echo "✅ Config backup: $CONFIG_BACKUP"

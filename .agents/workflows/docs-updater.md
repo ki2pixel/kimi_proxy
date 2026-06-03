@@ -7,7 +7,7 @@ description: Docs Updater, Standard Tools, Cloc Radon, Quality Context
 > Ce workflow harmonise la documentation Kimi Proxy en utilisant l'analyse statique standard (`cloc`, `radon`, `tree`) pour la précision technique et les modèles de référence pour la qualité éditoriale, adapté à l'architecture 5 couches et aux patterns système.
 
 ## 🚨 Protocoles Critiques
-1.  **Outils autorisés** : MCP fast-filesystem (`fast_read_file`, `fast_list_directory`, `fast_search_files`, `edit_file`), MCP ripgrep (`search`, `advanced-search`, `count-matches`), et `bash` limité aux audits (`tree`, `cloc`, `radon`, `ls`).
+1.  **Outils autorisés** : MCP fast-filesystem (`fast_read_file`, `fast_list_directory`, `fast_search_files`), MCP filesystem-agent (`edit_file`), MCP ripgrep (`search`, `advanced-search`, `count-matches`), et `bash` limité aux audits (`tree`, `cloc`, `radon`, `ls`).
 2.  **Contexte** : Initialiser le contexte en appelant l'outil fast_read_file du serveur fast-filesystem pour lire UNIQUEMENT activeContext.md. Ne lire les autres fichiers de la Memory Bank que si une divergence majeure est détectée lors du diagnostic.
 3.  **Source de Vérité** : Le Code (analysé par outils) > La Documentation existante > La Mémoire.
 4.  **Sécurité Memory Bank** : Utilisez les outils fast-filesystem (fast_*) pour accéder aux fichiers memory-bank avec des chemins absolus dans `/home/kidpixel/kimi-proxy/memory-bank/`.

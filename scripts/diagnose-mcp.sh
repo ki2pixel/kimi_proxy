@@ -25,7 +25,7 @@ echo ""
 # =============================================================================
 echo -e "${BLUE}📋 1. Vérification de la configuration...${NC}"
 
-if [ -f "config.toml" ]; then
+if [[ -f "config.toml" ]]; then
     echo "   ✅ config.toml trouvé"
     
     # Extraire les URLs MCP
@@ -58,16 +58,16 @@ else
     echo -n "   Qdrant (cloud): "
     # Essayer avec l'API key si disponible
     QDRANT_API_KEY=$(grep -A 10 '\[mcp.qdrant\]' config.toml 2>/dev/null | grep 'api_key' | cut -d'"' -f2 || echo "")
-    if [ ! -z "$QDRANT_API_KEY" ]; then
+    if [[ ! -z "$QDRANT_API_KEY" ]]; then
         HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "api-key: $QDRANT_API_KEY" "$QDRANT_URL/healthz" 2>/dev/null || echo "000")
-        if [ "$HTTP_CODE" == "200" ]; then
+        if [[ "$HTTP_CODE" == "200" ]]; then
             echo -e "${GREEN}✅ Connecté (HTTP $HTTP_CODE)${NC}"
         else
             echo -e "${YELLOW}⚠️  Vérifiez l'API key (HTTP $HTTP_CODE)${NC}"
         fi
     else
         HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$QDRANT_URL/healthz" 2>/dev/null || echo "000")
-        if [ "$HTTP_CODE" == "200" ]; then
+        if [[ "$HTTP_CODE" == "200" ]]; then
             echo -e "${GREEN}✅ Connecté${NC}"
         else
             echo -e "${YELLOW}⚠️  Accès restreint (HTTP $HTTP_CODE - API key requise)${NC}"
@@ -111,7 +111,7 @@ echo -e "${BLUE}🔗 4. Test depuis l'API Kimi Proxy...${NC}"
 
 PROXY_STATUS=$(curl -s http://localhost:8000/api/memory/servers 2>/dev/null || echo "")
 
-if [ ! -z "$PROXY_STATUS" ]; then
+if [[ ! -z "$PROXY_STATUS" ]]; then
     echo "   ✅ Endpoint /api/memory/servers accessible"
     
     # Analyser la réponse
@@ -144,7 +144,7 @@ echo ""
 
 # Vérifier si des processus fastmcp tournent
 FASTMCP_PIDS=$(pgrep -f "fastmcp" 2>/dev/null || echo "")
-if [ ! -z "$FASTMCP_PIDS" ]; then
+if [[ ! -z "$FASTMCP_PIDS" ]]; then
     echo -e "   ${YELLOW}⚠️  ATTENTION: Processus fastmcp détectés (PIDs: $FASTMCP_PIDS)${NC}"
     echo "      → fastmcp run server.py démarre en mode STDIO (pas HTTP)"
     echo "      → Le client MCP Kimi Proxy attend des serveurs HTTP"
@@ -190,11 +190,11 @@ if [[ "$QDRANT_URL" == *"localhost"* ]] && ! nc -z localhost 6333 2>/dev/null; t
     ISSUES=$((ISSUES + 1))
 fi
 
-if [ ! -z "$FASTMCP_PIDS" ]; then
+if [[ ! -z "$FASTMCP_PIDS" ]]; then
     ISSUES=$((ISSUES + 1))
 fi
 
-if [ $ISSUES -eq 0 ]; then
+if [[ $ISSUES -eq 0 ]]; then
     echo -e "   ${GREEN}✅ Tous les systèmes sont opérationnels !${NC}"
     echo ""
     echo "   Le dashboard devrait afficher:"

@@ -835,33 +835,40 @@ async def _pipe_reader_to_writer_lines_with_monitor(
     while True:
         line = await reader.readline()
         if not line:
-            try:
-                writer.close()
-                await writer.wait_closed()
-            except Exception:
-                pass
+            _close_writer_gracefully(writer)
             return
 
         monitor.observe_json_line(direction=direction, raw_line=line)
 
         if direction == "client_to_server":
-            obj = _try_parse_json_from_line(line)
-            if isinstance(obj, dict):
-                if inflight is not None:
-                    inflight.observe_client_message(obj)
-
-                # Strip roots capability to prevent sub-servers (like server-filesystem)
-                # from overwriting command-line allowed directories with IDE workspace roots.
-                if obj.get("method") == "initialize" and getattr(monitor, "_server_name", None) == "filesystem-agent":
-                    params = obj.get("params")
-                    if isinstance(params, dict):
-                        capabilities = params.get("capabilities")
-                        if isinstance(capabilities, dict) and "roots" in capabilities:
-                            del capabilities["roots"]
-                            line = (json.dumps(obj) + "\n").encode("utf-8")
+            line = _process_client_to_server_line(line, monitor, inflight)
 
         writer.write(line)
         await writer.drain()
+
+def _close_writer_gracefully(writer):
+    try:
+        writer.close()
+    except Exception:
+        pass
+
+def _process_client_to_server_line(line: bytes, monitor: BridgeMonitor, inflight: InflightTracker | None) -> bytes:
+    obj = _try_parse_json_from_line(line)
+    if not isinstance(obj, dict):
+        return line
+        
+    if inflight is not None:
+        inflight.observe_client_message(obj)
+
+    if obj.get("method") == "initialize" and getattr(monitor, "_server_name", None) == "filesystem-agent":
+        params = obj.get("params")
+        if isinstance(params, dict):
+            capabilities = params.get("capabilities")
+            if isinstance(capabilities, dict) and "roots" in capabilities:
+                del capabilities["roots"]
+                return (json.dumps(obj) + "\n").encode("utf-8")
+                
+    return line
 
 
 async def _pipe_stream_to_buffer_lines(*, stream: asyncio.StreamReader, out, flush: bool) -> None:
@@ -884,231 +891,75 @@ async def _pipe_child_stdout_jsonrpc_only(
     inflight: InflightTracker | None = None,
     tool_pruner: BridgeToolPruner | None = None,
 ) -> None:
-    """Relaye uniquement les lignes JSON (objets) vers stdout.
-
-    Certains serveurs MCP stdio (ex: server-filesystem) peuvent imprimer une bannière
-    ou des logs sur stdout au démarrage. Cela corrompt le flux JSON-RPC côté client.
-
-    Stratégie:
-    - si la ligne (après strip gauche) commence par '{' => forward vers stdout
-    - sinon => rediriger vers stderr (best-effort)
-    """
-
     while True:
         try:
             line = await stream.readline()
         except ValueError as e:
-            # Typiquement: "Separator is not found, and chunk exceed the limit"
-            # => réponse JSON-RPC trop volumineuse (ligne > limit).
-            try:
-                hint = (
-                    "[mcp_bridge stdout relay error] "
-                    + str(e)
-                    + " (hint: increase MCP_BRIDGE_STDIO_STREAM_LIMIT or reduce ripgrep maxResults)\n"
-                ).encode("utf-8", errors="replace")
-                stderr_buffer.write(hint)
-                stderr_buffer.flush()
-            except Exception:
-                pass
-
-            if inflight is not None:
-                _write_inflight_errors(
-                    server_name=server_name,
-                    inflight_ids=inflight.snapshot(),
-                    message=(
-                        "Réponse trop volumineuse (stdout) - "
-                        + str(e)
-                        + ". Augmenter MCP_BRIDGE_STDIO_STREAM_LIMIT ou réduire ripgrep maxResults."
-                    ),
-                )
-                inflight.clear()
-
-            # On n'élève pas l'exception: le bridge doit rester vivant et fournir
-            # une erreur JSON-RPC au client plutôt qu'un timeout.
+            _handle_stdout_readline_error(e, stderr_buffer, server_name, inflight)
             return
         if not line:
             return
 
         stripped_left = line.lstrip()
         if stripped_left.startswith(b"{"):
-            # Filtre minimal anti-logs JSON:
-            # on ne forwarde que des objets JSON-RPC {"jsonrpc": "2.0", ...}
-            try:
-                candidate = json.loads(stripped_left.decode("utf-8", errors="replace"))
-                if isinstance(candidate, dict) and candidate.get("jsonrpc") == "2.0":
-                    if monitor is not None:
-                        monitor.observe_json_obj(direction="server_to_client", obj=candidate)
+            if await _try_process_jsonrpc_stdout(stripped_left, line, stdout_buffer, monitor, inflight, tool_pruner):
+                continue
 
-                    meta = inflight.consume_server_response(candidate) if inflight is not None else None
-                    if meta is not None and meta.method == "tools/call" and tool_pruner is not None:
-                        pruned_obj = await tool_pruner.maybe_prune(
-                            request_json=meta.request_json,
-                            response_json=candidate,
-                        )
-                        stdout_buffer.write((json.dumps(pruned_obj, ensure_ascii=False) + "\n").encode("utf-8"))
-                        stdout_buffer.flush()
-                        continue
-
-                    stdout_buffer.write(line)
-                    stdout_buffer.flush()
-                    continue
-            except json.JSONDecodeError:
-                pass
-
-        # Ne jamais écrire de logs sur stdout.
         try:
             stderr_buffer.write(b"[mcp_bridge relay stdout] " + line)
             stderr_buffer.flush()
         except Exception:
             pass
 
-
-async def _run_shrimp_task_manager_stdio_with_roots_shim() -> int:
-    """Run shrimp-task-manager stdio server with a client-side shim for roots/list.
-
-    Some MCP servers (notably Shrimp Task Manager) call `roots/list` as a request
-    FROM server -> client to discover workspace roots. Some IDE clients support
-    this bidirectionally; a plain stdin/stdout pipe does not.
-
-    This shim:
-    - forwards client->server messages as-is
-    - intercepts server->client `roots/list` requests and replies with a file:// root
-      derived from the current working directory.
-
-    This keeps Continue.dev behavior while allowing other clients to work.
-    """
-
-    relay_cmd = _build_shrimp_task_manager_command()
-    stdin_reader = await _connect_stdin_reader()
-    monitor = BridgeMonitor.from_env(server_name="shrimp-task-manager")
-    await monitor.start()
-    inflight = InflightTracker()
-    tool_pruner = BridgeToolPruner(server_name="shrimp-task-manager")
-
+def _handle_stdout_readline_error(e: ValueError, stderr_buffer, server_name: str, inflight: InflightTracker | None):
     try:
-        proc = await asyncio.create_subprocess_exec(
-            relay_cmd.command,
-            *relay_cmd.args,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            limit=_get_stdio_stream_limit_bytes(),
-            env=relay_cmd.env,
+        hint = (
+            "[mcp_bridge stdout relay error] "
+            + str(e)
+            + " (hint: increase MCP_BRIDGE_STDIO_STREAM_LIMIT or reduce ripgrep maxResults)\n"
+        ).encode("utf-8", errors="replace")
+        stderr_buffer.write(hint)
+        stderr_buffer.flush()
+    except Exception:
+        pass
+
+    if inflight is not None:
+        _write_inflight_errors(
+            server_name=server_name,
+            inflight_ids=inflight.snapshot(),
+            message=(
+                "Réponse trop volumineuse (stdout) - "
+                + str(e)
+                + ". Augmenter MCP_BRIDGE_STDIO_STREAM_LIMIT ou réduire ripgrep maxResults."
+            ),
         )
-    except Exception as e:
-        # Mirror behavior from _run_stdio_relay: answer errors for every incoming request.
-        while True:
-            raw = await stdin_reader.readline()
-            if not raw:
-                await monitor.stop()
-                return 1
+        inflight.clear()
 
-            monitor.observe_json_line(direction="client_to_server", raw_line=raw)
+async def _try_process_jsonrpc_stdout(stripped_left: bytes, original_line: bytes, stdout_buffer, monitor, inflight, tool_pruner) -> bool:
+    try:
+        candidate = json.loads(stripped_left.decode("utf-8", errors="replace"))
+        if isinstance(candidate, dict) and candidate.get("jsonrpc") == "2.0":
+            if monitor is not None:
+                monitor.observe_json_obj(direction="server_to_client", obj=candidate)
 
-            try:
-                req_obj = json.loads(raw.decode("utf-8", errors="replace").strip())
-                req_id = _extract_jsonrpc_id(req_obj)
-            except json.JSONDecodeError:
-                req_id = None
+            meta = inflight.consume_server_response(candidate) if inflight is not None else None
+            if meta is not None and meta.method == "tools/call" and tool_pruner is not None:
+                pruned_obj = await tool_pruner.maybe_prune(
+                    request_json=meta.request_json,
+                    response_json=candidate,
+                )
+                stdout_buffer.write((json.dumps(pruned_obj, ensure_ascii=False) + "\n").encode("utf-8"))
+                stdout_buffer.flush()
+                return True
 
-            payload = _jsonrpc_error(
-                code=-32603,
-                message=f"Impossible de démarrer shrimp-task-manager: {e}",
-                req_id=req_id,
-            )
+            stdout_buffer.write(original_line)
+            stdout_buffer.flush()
+            return True
+    except json.JSONDecodeError:
+        pass
+    return False
 
-            monitor.observe_json_obj(direction="server_to_client", obj=payload)
-            sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
-
-    assert proc.stdin is not None
-    assert proc.stdout is not None
-    assert proc.stderr is not None
-
-    async def _pump_client_to_server() -> None:
-        await _pipe_reader_to_writer_lines_with_monitor(
-            reader=stdin_reader,
-            writer=proc.stdin,  # type: ignore[arg-type]
-            monitor=monitor,
-            direction="client_to_server",
-            inflight=inflight,
-        )
-
-    async def _pump_server_to_client_with_shim() -> None:
-        try:
-            while True:
-                try:
-                    line = await proc.stdout.readline()
-                except ValueError as e:
-                    try:
-                        sys.stderr.write(
-                            "[mcp_bridge shrimp stdout relay error] "
-                            + str(e)
-                            + " (hint: increase MCP_BRIDGE_STDIO_STREAM_LIMIT)\n"
-                        )
-                        sys.stderr.flush()
-                    except Exception:
-                        pass
-                    raise RuntimeError("shrimp stdout line exceeded asyncio stream limit") from e
-                if not line:
-                    return
-
-                stripped_left = line.lstrip()
-                if stripped_left.startswith(b"{"):
-                    try:
-                        msg_obj = json.loads(stripped_left.decode("utf-8", errors="replace"))
-                    except json.JSONDecodeError:
-                        msg_obj = None
-
-                    if _is_jsonrpc_request_message(msg_obj) and msg_obj.get("method") == "roots/list":
-                        monitor.observe_json_obj(direction="server_to_client", obj=msg_obj)
-                        req_id = _extract_jsonrpc_id(msg_obj)
-                        roots_payload = _build_roots_list_result(
-                            req_id=req_id,
-                            root_path=_get_workspace_root_for_roots_list(),
-                        )
-                        monitor.observe_json_obj(direction="client_to_server", obj=roots_payload)
-                        # Reply to server on its stdin
-                        try:
-                            proc.stdin.write(
-                                (json.dumps(roots_payload, ensure_ascii=False) + "\n").encode("utf-8")
-                            )
-                            await proc.stdin.drain()
-                        except (BrokenPipeError, ConnectionResetError):
-                            return
-                        continue
-
-                    # Default filtering policy: only forward JSON-RPC objects.
-                    if isinstance(msg_obj, dict) and msg_obj.get("jsonrpc") == "2.0":
-                        monitor.observe_json_obj(direction="server_to_client", obj=msg_obj)
-
-                        meta = inflight.consume_server_response(msg_obj)
-                        if meta is not None and meta.method == "tools/call":
-                            pruned_obj = await tool_pruner.maybe_prune(
-                                request_json=meta.request_json,
-                                response_json=msg_obj,
-                            )
-                            sys.stdout.buffer.write(
-                                (json.dumps(pruned_obj, ensure_ascii=False) + "\n").encode("utf-8")
-                            )
-                            sys.stdout.buffer.flush()
-                        else:
-                            sys.stdout.buffer.write(line)
-                            sys.stdout.buffer.flush()
-                        continue
-
-                # Anything else is considered logs/banners; redirect to stderr.
-                try:
-                    sys.stderr.buffer.write(b"[mcp_bridge relay stdout] " + line)
-                    sys.stderr.buffer.flush()
-                except Exception:
-                    pass
-        except asyncio.CancelledError:
-            return
-
-    stdin_task = asyncio.create_task(_pump_client_to_server())
-    stdout_task = asyncio.create_task(_pump_server_to_client_with_shim())
-    stderr_task = asyncio.create_task(_pipe_stream_to_buffer_lines(stream=proc.stderr, out=sys.stderr.buffer, flush=True))
+async def _wait_and_cleanup_relay(proc, stdin_task, stdout_task, stderr_task, monitor, tool_pruner, server_name, inflight=None):
     proc_wait_task = asyncio.create_task(proc.wait())
 
     done, _pending = await asyncio.wait(
@@ -1116,10 +967,21 @@ async def _run_shrimp_task_manager_stdio_with_roots_shim() -> int:
         return_when=asyncio.FIRST_COMPLETED,
     )
 
-    # Si stdout s'arrête avant la fin du process (EOF ou crash), on termine le process
-    # pour éviter des timeouts silencieux côté client.
     if stdout_task in done and not proc_wait_task.done():
         exc = stdout_task.exception()
+        if inflight is not None:
+            inflight_ids = inflight.snapshot()
+            if inflight_ids:
+                _write_inflight_errors(
+                    server_name=server_name,
+                    inflight_ids=inflight_ids,
+                    message=(
+                        "Le serveur MCP n'a pas pu produire une réponse (stdout interrompu). "
+                        + (f"Détail: {exc}" if exc is not None else "")
+                    ).strip(),
+                )
+                inflight.clear()
+
         try:
             if exc is None:
                 sys.stderr.write("[mcp_bridge] stdout relay ended unexpectedly; terminating child\n")
@@ -1176,7 +1038,6 @@ async def _run_shrimp_task_manager_stdio_with_roots_shim() -> int:
             except asyncio.CancelledError:
                 pass
         except Exception:
-            # Ne pas faire tomber le bridge pendant la phase de drainage.
             pass
 
     await monitor.stop()
@@ -1184,8 +1045,141 @@ async def _run_shrimp_task_manager_stdio_with_roots_shim() -> int:
     return returncode
 
 
+async def _run_shrimp_task_manager_stdio_with_roots_shim() -> int:
+    relay_cmd = _build_shrimp_task_manager_command()
+    stdin_reader = await _connect_stdin_reader()
+    monitor = BridgeMonitor.from_env(server_name="shrimp-task-manager")
+    await monitor.start()
+    inflight = InflightTracker()
+    tool_pruner = BridgeToolPruner(server_name="shrimp-task-manager")
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            relay_cmd.command,
+            *relay_cmd.args,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            limit=_get_stdio_stream_limit_bytes(),
+            env=relay_cmd.env,
+        )
+    except Exception as e:
+        await _handle_subprocess_start_error("shrimp-task-manager", e, stdin_reader, monitor)
+        return 1
+
+    assert proc.stdin is not None
+    assert proc.stdout is not None
+    assert proc.stderr is not None
+
+    async def _pump_client_to_server() -> None:
+        await _pipe_reader_to_writer_lines_with_monitor(
+            reader=stdin_reader,
+            writer=proc.stdin,
+            monitor=monitor,
+            direction="client_to_server",
+            inflight=inflight,
+        )
+
+    async def _pump_server_to_client_with_shim() -> None:
+        try:
+            while True:
+                try:
+                    line = await proc.stdout.readline()
+                except ValueError as e:
+                    try:
+                        sys.stderr.write("[mcp_bridge shrimp stdout relay error] " + str(e) + "\n")
+                        sys.stderr.flush()
+                    except Exception:
+                        pass
+                    raise RuntimeError("shrimp stdout line exceeded asyncio stream limit") from e
+                if not line:
+                    return
+
+                stripped_left = line.lstrip()
+                if stripped_left.startswith(b"{"):
+                    if await _try_process_shrimp_stdout_shim(stripped_left, line, proc, monitor, inflight, tool_pruner):
+                        continue
+
+                try:
+                    sys.stderr.buffer.write(b"[mcp_bridge relay stdout] " + line)
+                    sys.stderr.buffer.flush()
+                except Exception:
+                    pass
+        except asyncio.CancelledError:
+            return
+
+    stdin_task = asyncio.create_task(_pump_client_to_server())
+    stdout_task = asyncio.create_task(_pump_server_to_client_with_shim())
+    stderr_task = asyncio.create_task(_pipe_stream_to_buffer_lines(stream=proc.stderr, out=sys.stderr.buffer, flush=True))
+
+    return await _wait_and_cleanup_relay(proc, stdin_task, stdout_task, stderr_task, monitor, tool_pruner, "shrimp-task-manager", inflight)
+
+async def _try_process_shrimp_stdout_shim(stripped_left, original_line, proc, monitor, inflight, tool_pruner) -> bool:
+    try:
+        msg_obj = json.loads(stripped_left.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError:
+        msg_obj = None
+
+    if _is_jsonrpc_request_message(msg_obj) and msg_obj.get("method") == "roots/list":
+        monitor.observe_json_obj(direction="server_to_client", obj=msg_obj)
+        req_id = _extract_jsonrpc_id(msg_obj)
+        roots_payload = _build_roots_list_result(
+            req_id=req_id,
+            root_path=_get_workspace_root_for_roots_list(),
+        )
+        monitor.observe_json_obj(direction="client_to_server", obj=roots_payload)
+        try:
+            proc.stdin.write((json.dumps(roots_payload, ensure_ascii=False) + "\n").encode("utf-8"))
+            await proc.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        return True
+
+    if isinstance(msg_obj, dict) and msg_obj.get("jsonrpc") == "2.0":
+        monitor.observe_json_obj(direction="server_to_client", obj=msg_obj)
+
+        meta = inflight.consume_server_response(msg_obj)
+        if meta is not None and meta.method == "tools/call":
+            pruned_obj = await tool_pruner.maybe_prune(
+                request_json=meta.request_json,
+                response_json=msg_obj,
+            )
+            sys.stdout.buffer.write((json.dumps(pruned_obj, ensure_ascii=False) + "\n").encode("utf-8"))
+            sys.stdout.buffer.flush()
+        else:
+            sys.stdout.buffer.write(original_line)
+            sys.stdout.buffer.flush()
+        return True
+    return False
+
+async def _handle_subprocess_start_error(server_name, e, stdin_reader, monitor):
+    await _drain_and_error(server_name, e, stdin_reader, monitor)
+
+async def _drain_and_error(server_name, e, stdin_reader, monitor):
+    while True:
+        raw = await stdin_reader.readline()
+        if not raw:
+            await monitor.stop()
+            return
+
+        monitor.observe_json_line(direction="client_to_server", raw_line=raw)
+        try:
+            req_obj = json.loads(raw.decode("utf-8", errors="replace").strip())
+            req_id = _extract_jsonrpc_id(req_obj)
+        except json.JSONDecodeError:
+            req_id = None
+
+        payload = _jsonrpc_error(
+            code=-32603,
+            message=f"Impossible de démarrer {server_name}: {e}",
+            req_id=req_id,
+        )
+        monitor.observe_json_obj(direction="server_to_client", obj=payload)
+        sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+
+
 async def _run_stdio_relay(server_name: str) -> int:
-    # Special-case: shrimp-task-manager uses bidirectional requests (roots/list).
     if server_name == "shrimp-task-manager":
         return await _run_shrimp_task_manager_stdio_with_roots_shim()
 
@@ -1207,31 +1201,8 @@ async def _run_stdio_relay(server_name: str) -> int:
             env=relay_cmd.env,
         )
     except Exception as e:
-        # Si le process ne démarre pas, répondre en JSON-RPC à chaque requête reçue
-        # pour rendre l’erreur visible côté client.
-        while True:
-            raw = await stdin_reader.readline()
-            if not raw:
-                await monitor.stop()
-                return 1
-
-            monitor.observe_json_line(direction="client_to_server", raw_line=raw)
-
-            try:
-                req_obj = json.loads(raw.decode("utf-8", errors="replace").strip())
-                req_id = _extract_jsonrpc_id(req_obj)
-            except json.JSONDecodeError:
-                req_id = None
-
-            payload = _jsonrpc_error(
-                code=-32603,
-                message=f"Impossible de démarrer {server_name}: {e}",
-                req_id=req_id,
-            )
-
-            monitor.observe_json_obj(direction="server_to_client", obj=payload)
-            sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
+        await _handle_subprocess_start_error(server_name, e, stdin_reader, monitor)
+        return 1
 
     assert proc.stdin is not None
     assert proc.stdout is not None
@@ -1260,93 +1231,8 @@ async def _run_stdio_relay(server_name: str) -> int:
     stderr_task = asyncio.create_task(
         _pipe_stream_to_buffer_lines(stream=proc.stderr, out=sys.stderr.buffer, flush=True)
     )
-    proc_wait_task = asyncio.create_task(proc.wait())
 
-    done, _pending = await asyncio.wait(
-        {stdin_task, stdout_task, proc_wait_task},
-        return_when=asyncio.FIRST_COMPLETED,
-    )
-
-    # Si stdout s'arrête avant la fin du process (EOF ou crash), on termine le process
-    # pour éviter des timeouts silencieux côté client.
-    if stdout_task in done and not proc_wait_task.done():
-        exc = stdout_task.exception()
-
-        inflight_ids = inflight.snapshot()
-        if inflight_ids:
-            _write_inflight_errors(
-                server_name=server_name,
-                inflight_ids=inflight_ids,
-                message=(
-                    "Le serveur MCP n'a pas pu produire une réponse (stdout interrompu). "
-                    + (f"Détail: {exc}" if exc is not None else "")
-                ).strip(),
-            )
-            inflight.clear()
-
-        try:
-            if exc is None:
-                sys.stderr.write("[mcp_bridge] stdout relay ended unexpectedly; terminating child\n")
-            else:
-                sys.stderr.write(f"[mcp_bridge] stdout relay crashed: {exc}\n")
-            sys.stderr.flush()
-        except Exception:
-            pass
-        try:
-            proc.terminate()
-        except ProcessLookupError:
-            pass
-        try:
-            await proc_wait_task
-        except asyncio.CancelledError:
-            pass
-
-        if not stdin_task.done():
-            stdin_task.cancel()
-            try:
-                await stdin_task
-            except asyncio.CancelledError:
-                pass
-
-    # Si le process se termine alors que stdin reste ouvert, on arrête la lecture.
-    if proc_wait_task in done and not stdin_task.done():
-        stdin_task.cancel()
-        try:
-            await stdin_task
-        except asyncio.CancelledError:
-            pass
-
-    # Si stdin est fermé, on tente d’arrêter proprement le process (s’il tourne encore)
-    if stdin_task in done and not proc_wait_task.done():
-        try:
-            await asyncio.wait_for(proc_wait_task, timeout=2.0)
-        except asyncio.TimeoutError:
-            try:
-                proc.terminate()
-            except ProcessLookupError:
-                pass
-            await proc_wait_task
-
-    returncode = int(proc.returncode or 0)
-
-    # Laisse stdout/stderr se vider (EOF). Ne cancel qu'en dernier recours.
-    for task in (stdout_task, stderr_task):
-        try:
-            await asyncio.wait_for(task, timeout=1.0)
-        except asyncio.TimeoutError:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-        except Exception:
-            # Ne pas faire tomber le bridge pendant la phase de drainage.
-            pass
-
-    await monitor.stop()
-    await tool_pruner.aclose()
-    return returncode
-
+    return await _wait_and_cleanup_relay(proc, stdin_task, stdout_task, stderr_task, monitor, tool_pruner, server_name, inflight)
 
 async def _run_gateway_http(server_name: str) -> int:
     gateway_url = _get_gateway_url(server_name)

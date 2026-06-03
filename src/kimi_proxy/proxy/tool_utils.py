@@ -360,11 +360,11 @@ def reconstruct_complex_json(corrupted_str: str) -> str:
                             elif item.replace('.', '').replace('-', '').isdigit():
                                 array_items.append(float(item) if '.' in item else int(item))
                         properties[key] = array_items
-                    except:
+                    except Exception:
                         properties[key] = value_str  # Garde comme string
                 else:
                     properties[key] = value_str
-            except:
+            except Exception:
                 properties[key] = value_str  # Garde comme string en cas d'erreur
 
         if properties:

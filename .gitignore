@@ -99,3 +99,7 @@ tasks/
 
 # Research directory (contains LFS-tracked files causing push issues)
 research/ 
+
+# Runtime data
+shrimp_data/
+debug/

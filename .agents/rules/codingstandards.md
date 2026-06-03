@@ -1,17 +1,17 @@
 ---
 trigger: always_on
-description: Kimi Proxy Dashboard coding standards - 5-layer architecture, async Python, ES6 modules
-globs: ["**/*.py", "**/*.js", "**/*.html", "**/test_*.py", "**/tests/**/*.py"]
+description: Kimi Proxy Middleware MCP coding standards - 5-layer architecture, async Python, SSE streaming
+globs: ["**/*.py", "**/test_*.py", "**/tests/**/*.py"]
 ---
 
-# Kimi Proxy Coding Standards
+# Kimi Proxy Middleware MCP Coding Standards
 
 ## Architecture (5 Layers)
 ```
-API (FastAPI) ← Services (WebSocket) ← Features (MCP) ← Proxy (HTTPX) ← Core (SQLite)
+API (FastAPI) ← Services (SSE/Streaming) ← Features (MCP/Context) ← Proxy (HTTPX Passthrough) ← Core (SQLite MCP Memory)
 ```
 
-**Rule**: Each layer depends only on layers below. Core has no external dependencies.
+**Rule**: Each layer depends only on layers below. Core has no external dependencies. The application is a pure headless middleware (session-less).
 
 ## Python Rules
 
@@ -20,7 +20,7 @@ API (FastAPI) ← Services (WebSocket) ← Features (MCP) ← Proxy (HTTPX) ← 
 # ✅ GOOD
 import httpx
 async def fetch_data(url: str) -> dict:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(url)
         return response.json()
 
@@ -50,8 +50,10 @@ def bad_function(data: Any) -> Any:  # FORBIDDEN
     return data
 ```
 
-### HTTPX Only (No Requests)
-- Use `httpx.AsyncClient()` for all HTTP calls
+### HTTPX Resilience & Passthrough
+- Use `httpx.AsyncClient()` for all HTTP calls.
+- **Mandatory Resilience**: Always handle `httpx.TimeoutException` and `httpx.ReadError` to ensure stable passthrough streaming.
+- Configure explicit timeouts and connection pool limits.
 
 ### Tiktoken for Token Counting
 ```python
@@ -68,58 +70,30 @@ def bad_count(text: str) -> int:
 
 ### Factory Functions & Dependency Injection
 ```python
-# Factory pattern
+# Factory pattern for MCP DB
 @contextmanager
-def get_db():
-    conn = sqlite3.connect("sessions.db")
+def get_mcp_db():
+    conn = sqlite3.connect("mcp_memory.db")
     try:
         yield conn
         conn.commit()
     finally:
         conn.close()
 
-# DI pattern
-def get_connection_manager() -> ConnectionManager:
-    return manager
+# DI pattern for Base URL routing
+def get_target_base_url(x_target_base_url: str = Header(...)) -> str:
+    return x_target_base_url
 
-@router.websocket("/ws")
-async def endpoint(manager: ConnectionManager = Depends(get_connection_manager)):
-    await manager.connect(websocket)
+@router.post("/chat/completions")
+async def proxy_endpoint(target_url: str = Depends(get_target_base_url)):
+    # Passthrough logic here
+    pass
 ```
 
-## Frontend Rules
-
-### ES6 Modules (No Bundlers)
-```javascript
-// static/js/modules/utils.js
-export const EventBus = {
-    events: new Map(),
-    on(event, callback) {
-        this.events.get(event)?.add(callback);
-    },
-    emit(event, data) {
-        this.events.get(event)?.forEach(cb => cb(data));
-    }
-};
-
-// static/js/modules/api.js
-import { EventBus } from './utils.js';
-
-export async function createSession(data) {
-    const response = await fetch('/api/sessions', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(data)
-    });
-    const session = await response.json();
-    EventBus.emit('sessionCreated', session);
-    return session;
-}
-```
-
-### Vanilla JS (No Frameworks)
-- No React, Vue, or heavy frameworks
-- Event bus for decoupling
+## SSE Streaming Rules (No WebSockets)
+- Use `StreamingResponse` with asynchronous generators for Server-Sent Events (SSE).
+- Ensure generators are fully non-blocking and yield bytes/strings correctly formatted as `data: {...}\n\n`.
+- WebSockets (`/ws`) are deprecated.
 
 ## Testing Rules
 
@@ -178,29 +152,23 @@ def validate_workspace_access(requested_path: str) -> bool:
 
 ## Language Rules
 
-### French UI Text Mandatory
+### French Diagnostic & Logs Mandatory
 ```python
+# ✅ GOOD
 @app.get("/health")
 def health_check():
     return JSONResponse({
         "status": "opérationnel",
-        "message": "Kimi Proxy Dashboard est en ligne"
+        "message": "Kimi Proxy Middleware MCP est en ligne"
     })
 ```
-
-```javascript
-const STATUS_LABELS = {
-    active: 'Actif',
-    idle: 'Inactif',
-    error: 'Erreur'
-};
-```
+- API error messages, system logs, and diagnostic payloads must be in French.
 
 ## Anti-Patterns (FORBIDDEN)
 
 ### ❌ Global State/Singletons
 ```python
-connection = sqlite3.connect("sessions.db")  # GLOBAL STATE!
+connection = sqlite3.connect("mcp_memory.db")  # GLOBAL STATE!
 ```
 
 ### ❌ Circular Imports
@@ -227,32 +195,26 @@ import requests
 response = requests.get(url)  # BLOCKS EVENT LOOP
 ```
 
-### ❌ Default Exports
-```javascript
-export default function Button() {}  # NO DEFAULTS
-export function Button() {}  # NAMED EXPORT
-```
-
 ## Project Structure
 ```
 src/kimi_proxy/
 ├── main.py              # FastAPI factory
 ├── core/                # Business logic, no deps
 ├── config/              # TOML configuration
-├── features/            # MCP, sanitizer
-├── proxy/               # HTTP routing
-├── services/            # WebSocket manager
+├── features/            # MCP, sanitizer, compaction
+├── proxy/               # HTTP routing (passthrough)
+├── services/            # SSE/Streaming manager
 └── api/                 # FastAPI routes
 
-static/js/modules/       # ES6 modules
 tests/unit/              # Isolated tests
-config.toml             # Secrets here only
+memory-bank/             # Context MCP (activeContext.md)
+config.toml              # Secrets here only
 ```
 
 ## Key Dependencies
 - FastAPI + Uvicorn (async server)
-- HTTPX (async HTTP client)
-- sqlite3 (standard library, synchronous but wrapped in factory context)
+- HTTPX (async HTTP client + Streaming)
+- sqlite3 / Qdrant (MCP Memory & Vector Search)
 - tiktoken (token counting)
 - pytest-asyncio (async tests)
 
@@ -266,12 +228,14 @@ config.toml             # Secrets here only
 ## File-Specific Rules
 
 ### Clean API Router Structure
-
-Maintain only standard API routes (/models, /chat/completions) and remove any experimental editor-specific compatibility routes. Do not add additional compatibility prefixes like /v1/models or routes similar to Ollama without thorough review.
+Maintain only standard API routes (`/models`, `/chat/completions`) and remove any experimental editor-specific compatibility routes. Do not add additional compatibility prefixes like `/v1/models` without thorough review. Ensure `X-Target-Base-URL` header handles dynamic provider routing.
 
 ### Model ID Mapping Simplicity
-
 Keep the model name mapping simple and direct: a) check exact key matches, b) otherwise use suffix split logic. Do not implement JetBrains-specific mappings, complex prefix removals, or fuzzy matching.
+
+### MCP Gateway & Qdrant Integration
+- Ensure all insertions to `mcp_memory_entries` and `compaction_history` are asynchronous or properly wrapped.
+- Partition context data appropriately for Auto-Memory.
 
 ## References
 - `README.md` - User docs
@@ -369,4 +333,4 @@ def vacuum_database() -> Dict[str, Any]:
 For Kimi Proxy development: Use primary skill + reference this file for unified conventions.
 
 ---
-**Version 2.7** - **< 10000 chars**
+**Version 2.8** - **< 10000 chars**

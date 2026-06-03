@@ -46,7 +46,7 @@ echo "📡 Arrêt du serveur FastAPI..."
 
 # Arrêter le processus sur le port
 PID=$(lsof -ti:$PORT 2>/dev/null)
-if [ ! -z "$PID" ]; then
+if [[ ! -z "$PID" ]]; then
     echo "🔪 Arrêt du processus sur le port $PORT (PID: $PID)..."
     kill $PID 2>/dev/null
     sleep 1
@@ -58,7 +58,7 @@ if [ ! -z "$PID" ]; then
         sleep 1
     fi
     
-    if [ -z "$(lsof -ti:$PORT 2>/dev/null)" ]; then
+    if [[ -z "$(lsof -ti:$PORT 2>/dev/null)" ]]; then
         log_success "Port $PORT libéré"
     else
         log_error "Impossible d'arrêter le processus"
@@ -70,7 +70,7 @@ fi
 # 2. Arrêter tous les processus uvicorn/python liés à main
 echo "🔍 Recherche de processus uvicorn..."
 UVICORN_PIDS=$(pgrep -f "uvicorn main:app")
-if [ ! -z "$UVICORN_PIDS" ]; then
+if [[ ! -z "$UVICORN_PIDS" ]]; then
     echo "🔪 Arrêt des processus uvicorn: $UVICORN_PIDS"
     echo $UVICORN_PIDS | xargs kill -9 2>/dev/null
     sleep 1
@@ -78,7 +78,7 @@ if [ ! -z "$UVICORN_PIDS" ]; then
 fi
 
 PYTHON_PIDS=$(pgrep -f "python.*main.py")
-if [ ! -z "$PYTHON_PIDS" ]; then
+if [[ ! -z "$PYTHON_PIDS" ]]; then
     echo "🔪 Arrêt des processus python: $PYTHON_PIDS"
     echo $PYTHON_PIDS | xargs kill -9 2>/dev/null
     sleep 1
@@ -86,7 +86,7 @@ if [ ! -z "$PYTHON_PIDS" ]; then
 fi
 
 # 3. Nettoyer le fichier PID si existe
-if [ -f "$PID_FILE" ]; then
+if [[ -f "$PID_FILE" ]]; then
     rm -f "$PID_FILE"
     echo "🗑️  Fichier PID nettoyé"
 fi
@@ -98,10 +98,10 @@ log_success "Serveur FastAPI arrêté"
 # =============================================================================
 echo ""
 echo "🔌 Arrêt des serveurs MCP externes..."
-if [ -f "$SCRIPT_DIR/start-mcp-servers.sh" ]; then
+if [[ -f "$SCRIPT_DIR/start-mcp-servers.sh" ]]; then
     "$SCRIPT_DIR/start-mcp-servers.sh" stop
     MCP_STATUS=$?
-    if [ $MCP_STATUS -eq 0 ]; then
+    if [[ $MCP_STATUS -eq 0 ]]; then
         log_success "Serveurs MCP arrêtés avec succès"
     else
         log_warning "Problème lors de l'arrêt des serveurs MCP (code: $MCP_STATUS)"
@@ -117,12 +117,12 @@ echo ""
 echo "🧹 Nettoyage final..."
 
 # Nettoyer les fichiers PID MCP si présents
-if [ -f "/tmp/mcp_compression.pid" ]; then
+if [[ -f "/tmp/mcp_compression.pid" ]]; then
     rm -f /tmp/mcp_compression.pid
     log_info "Fichier PID Compression MCP nettoyé"
 fi
 
-if [ -f ".mcp-servers.pid" ]; then
+if [[ -f ".mcp-servers.pid" ]]; then
     rm -f .mcp-servers.pid
     log_info "Fichier PID MCP servers nettoyé"
 fi

@@ -70,7 +70,7 @@ def save_masked_content(
         config = {
             "threshold_tokens": 1000,
             "preview_length": 200,
-            "tmp_dir": "/tmp/kimi_proxy_masked"
+            "tmp_dir": os.path.join(os.path.expanduser("~"), ".kimi", "tmp", "kimi_proxy_masked")
         }
     
     content_hash = generate_content_hash(content)
@@ -80,7 +80,7 @@ def save_masked_content(
     tags_str = ",".join(tags) if tags else ""
     
     # Crée le répertoire temporaire si nécessaire
-    tmp_dir = config.get("tmp_dir", "/tmp/kimi_proxy_masked")
+    tmp_dir = config.get("tmp_dir", os.path.join(os.path.expanduser("~"), ".kimi", "tmp", "kimi_proxy_masked"))
     os.makedirs(tmp_dir, exist_ok=True)
     
     # Sauvegarde sur disque

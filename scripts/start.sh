@@ -42,7 +42,7 @@ echo "🚀 Démarrage du Kimi Proxy Dashboard..."
 # 1. Vérifier si un processus utilise déjà le port
 echo "🔍 Vérification du port $PORT..."
 PID=$(lsof -ti:$PORT 2>/dev/null)
-if [ ! -z "$PID" ]; then
+if [[ ! -z "$PID" ]]; then
     echo "⚠️  Port $PORT occupé par le processus $PID - Arrêt en cours..."
     kill -9 $PID 2>/dev/null
     sleep 1
@@ -56,7 +56,7 @@ sleep 1
 
 # 3. Vérifier à nouveau que le port est libre
 PID=$(lsof -ti:$PORT 2>/dev/null)
-if [ ! -z "$PID" ]; then
+if [[ ! -z "$PID" ]]; then
     log_error "Impossible de libérer le port $PORT (PID: $PID)"
     echo "   Essayez: sudo kill -9 $PID"
     exit 1
@@ -65,19 +65,19 @@ fi
 echo "✅ Port $PORT libéré"
 
 # 4. Activer l'environnement virtuel si existe
-if [ -d "venv" ]; then
+if [[ -d "venv" ]]; then
     echo "🐍 Activation de l'environnement virtuel..."
     source venv/bin/activate
 fi
 
 # 5. Charger automatiquement les variables d'environnement
-if [ -f ".env" ]; then
+if [[ -f ".env" ]]; then
     echo "🔑 Chargement des variables d'environnement depuis .env..."
     set -a
     source .env
     set +a
     log_success "Variables d'environnement chargées"
-elif [ -f ".env.example" ]; then
+elif [[ -f ".env.example" ]]; then
     log_warning "Fichier .env non trouvé, mais .env.example existe"
     log_info "Copiez .env.example vers .env et configurez vos clés API"
     echo "   cp .env.example .env"
@@ -95,10 +95,10 @@ pip show fastapi >/dev/null 2>&1 || pip install fastapi uvicorn httpx websockets
 # 6. Démarrage des serveurs MCP externes (Phase 3)
 # =============================================================================
 echo ""
-if [ -f "$SCRIPT_DIR/start-mcp-servers.sh" ]; then
+if [[ -f "$SCRIPT_DIR/start-mcp-servers.sh" ]]; then
     "$SCRIPT_DIR/start-mcp-servers.sh" start
     MCP_STATUS=$?
-    if [ $MCP_STATUS -eq 0 ]; then
+    if [[ $MCP_STATUS -eq 0 ]]; then
         log_success "Serveurs MCP démarrés avec succès"
     else
         log_warning "Les serveurs MCP n'ont pas pu démarrer (code: $MCP_STATUS)"

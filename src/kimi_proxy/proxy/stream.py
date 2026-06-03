@@ -34,40 +34,10 @@ async def stream_generator(
     response: httpx.Response,
     session_id: int,
     metric_id: int,
-    body: bytes = None,
-    headers: dict = None,
     provider_type: str = "openai",
     models: dict = None,
-    manager: ConnectionManager = None,
-    max_retries: int = 1,
-    retry_delay: float = 1.0
+    manager: Optional[ConnectionManager] = None
 ) -> AsyncGenerator[bytes, None]:
-    """
-    Générateur de streaming + extraction des vrais tokens avec gestion d'erreurs.
-    
-    Pourquoi le retry à l'intérieur du générateur:
-    - Une fois que le stream commence, on ne peut pas "recommencer" la requête
-    - Le retry ici concerne les reconnexions si le provider supporte les resumes
-    - La plupart du temps, on fait du best-effort: on extrait ce qu'on peut
-    
-    Args:
-        response: Réponse HTTPX en streaming
-        session_id: ID de la session
-        metric_id: ID de la métrique
-        body: Body de la requête (optionnel)
-        headers: Headers de la requête (optionnel)
-        provider_type: Type de provider
-        models: Dictionnaire des modèles
-        manager: Gestionnaire WebSocket pour broadcast
-        max_retries: Nombre max de retries (pour futures implémentations resume)
-        retry_delay: Délai entre retries en secondes
-        
-    Yields:
-        Chunks de la réponse
-        
-    Raises:
-        Aucune: Les erreurs sont loggées et le stream se termine proprement
-    """
     buffer = b""
     first_chunk = True
     chunk_count = 0
@@ -75,90 +45,59 @@ async def stream_generator(
     stream_start_time = datetime.now()
     
     try:
-        # Itération sur les chunks avec gestion d'erreurs granulaire
         async for chunk in _iter_stream_with_error_handling(response, provider_type):
             chunk_count += 1
-            
-            # Log du premier chunk pour debug
             if first_chunk and response.status_code >= 400:
                 _log_error_response(chunk, response.status_code)
             first_chunk = False
             
-            # Accumulation et yield
             buffer += chunk
             yield chunk
             
-    except httpx.ReadError as e:
-        # Erreur la plus courante: connexion interrompue
-        error_occurred = ("read_error", str(e))
-        _log_streaming_error(
-            error_type="read_error",
-            provider=provider_type,
-            session_id=session_id,
-            metric_id=metric_id,
-            chunks_received=chunk_count,
-            error=str(e),
-            start_time=stream_start_time
-        )
-        
-    except httpx.ConnectError as e:
-        error_occurred = ("connect_error", str(e))
-        _log_streaming_error(
-            error_type="connect_error",
-            provider=provider_type,
-            session_id=session_id,
-            metric_id=metric_id,
-            chunks_received=chunk_count,
-            error=str(e),
-            start_time=stream_start_time
-        )
-        
-    except httpx.TimeoutException as e:
-        error_occurred = ("timeout_error", str(e))
-        _log_streaming_error(
-            error_type="timeout_error",
-            provider=provider_type,
-            session_id=session_id,
-            metric_id=metric_id,
-            chunks_received=chunk_count,
-            error=str(e),
-            start_time=stream_start_time
-        )
-        
     except Exception as e:
-        # Erreur inattendue - on log et on continue
-        error_occurred = ("unknown", str(e))
-        _log_streaming_error(
-            error_type="unknown",
-            provider=provider_type,
-            session_id=session_id,
-            metric_id=metric_id,
-            chunks_received=chunk_count,
-            error=str(e),
-            start_time=stream_start_time
-        )
-    
+        error_occurred = _handle_stream_exception(e, provider_type, session_id, metric_id, chunk_count, stream_start_time)
     finally:
-        # Extraction des tokens même si le stream a échoué
-        # Pourquoi: les tokens partiels sont valides et doivent être comptabilisés
-        if metric_id and session_id:
-            try:
-                usage_data = extract_usage_from_stream(buffer, provider_type)
-                if usage_data and models and manager:
-                    await _broadcast_token_update(
-                        session_id, metric_id, usage_data, models, manager
-                    )
-                    
-                    # Si erreur, on broadcast aussi l'erreur
-                    if error_occurred:
-                        await _broadcast_streaming_error(
-                            session_id, metric_id, error_occurred[0], 
-                            error_occurred[1], manager
-                        )
-                        
-            except Exception as e:
-                # Même l'extraction peut fail - on log mais on ne crash pas
-                print(f"⚠️  [STREAM] Erreur extraction usage après stream: {e}")
+        await _finalize_stream(buffer, session_id, metric_id, provider_type, models, manager, error_occurred)
+
+def _handle_stream_exception(e: Exception, provider_type: str, session_id: int, metric_id: int, chunk_count: int, start_time: datetime) -> tuple[str, str]:
+    if isinstance(e, httpx.ReadError):
+        error_type = "read_error"
+    elif isinstance(e, httpx.ConnectError):
+        error_type = "connect_error"
+    elif isinstance(e, httpx.TimeoutException):
+        error_type = "timeout_error"
+    else:
+        error_type = "unknown"
+        
+    _log_streaming_error(
+        error_type=error_type,
+        provider=provider_type,
+        session_id=session_id,
+        metric_id=metric_id,
+        chunks_received=chunk_count,
+        error=str(e),
+        start_time=start_time
+    )
+    return (error_type, str(e))
+
+async def _finalize_stream(buffer: bytes, session_id: int, metric_id: int, provider_type: str, models: dict, manager: Optional[ConnectionManager], error_occurred: tuple[str, str] | None):
+    if not (metric_id and session_id):
+        return
+        
+    try:
+        usage_data = extract_usage_from_stream(buffer, provider_type)
+        if usage_data and models and manager:
+            await _broadcast_token_update(
+                session_id, metric_id, usage_data, models, manager
+            )
+            
+            if error_occurred:
+                await _broadcast_streaming_error(
+                    session_id, metric_id, error_occurred[0], 
+                    manager
+                )
+    except Exception as e:
+        print(f"⚠️  [STREAM] Erreur extraction usage après stream: {e}")
 
 
 async def _iter_stream_with_error_handling(
@@ -229,7 +168,7 @@ async def _broadcast_streaming_error(
     session_id: int,
     metric_id: int,
     error_type: str,
-    error_detail: str,
+    
     manager: ConnectionManager
 ) -> None:
     """Diffuse une erreur streaming via WebSocket."""

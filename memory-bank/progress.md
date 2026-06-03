@@ -1,4 +1,16 @@
 ## Tâche en cours
+### [2026-06-03 21:19:00] **Refactoring Complexité Cognitive (Phase 1, 2, 3) — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Analyser le rapport SonarCloud et assainir la base de code en résolvant les vulnérabilités de sécurité, les bugs (paramètres redondants) et en diminuant drastiquement la complexité cognitive (S3776) des composants centraux du Proxy.
+
+**Actions réalisées** :
+- Phase 1 (Sécurité & Fiabilité) : Fix des répertoires temporaires (S5443), correctifs de typage et standardisation de la capture d'exception.
+- Phase 2 (Simplification & Refactoring) : Extraction de logique pour réduire la complexité de la route `/chat/completions` dans `proxy.py`, du générateur dans `stream.py`, du circuit-breaker dans `mcp_gateway.py`, et des mécanismes de relai I/O asynchrones dans `mcp_bridge.py`.
+- Phase 3 (Nettoyage & Redondance) : Suppression des paramètres inutilisés (S1172), sécurisation des conditions bash (`[[`) (S7688), et centralisation de constantes globales (S1192).
+- Validation rigoureuse via la suite de tests (`./bin/kimi-proxy test`) : 189/189 tests en succès (100%), garantissant l'absence de régression.
+- Nettoyage des artefacts de refactoring à la racine du projet.
+
 ### [2026-05-28 12:10:00] **Workflow Docs-Updater — TERMINÉ**
 **Statut** : ✅ COMPLETÉ
 

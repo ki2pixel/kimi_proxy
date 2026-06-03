@@ -114,102 +114,40 @@ async def proxy_chat(request: Request):
     """
     body = await request.body()
     headers = dict(request.headers)
-    
-    # Configuration basique
     config = get_config()
     providers = config.get("providers", {})
     models = config.get("models", {})
     
-    # Session - Vérifier si on doit créer une nouvelle session automatiquement
     from ...core.auto_session import process_auto_session
-    
     current_session = get_active_session()
+    
     try:
         json_body = json.loads(body) if body else {}
     except json.JSONDecodeError:
         json_body = {}
-    
-    # Traiter la logique d'auto-session
+        
     session, new_session_created = process_auto_session(json_body, current_session)
-    
     if new_session_created:
         print(f"🔄 [AUTO SESSION] Nouvelle session créée: #{session['id']}")
-    
+        
     max_context = get_max_context_for_session(session, models, DEFAULT_MAX_CONTEXT)
     target_url = get_target_url_for_session(session, providers)
     provider_key = session.get("provider", "managed:kimi-code") if session else "managed:kimi-code"
 
-    messages_obj = json_body.get("messages") if isinstance(json_body, dict) else None
-    messages = messages_obj if isinstance(messages_obj, list) else []
     sanitized_body_json = dict(json_body) if isinstance(json_body, dict) else {}
     sanitized_body_json = fix_tool_calls_in_request(sanitized_body_json)
     sanitized_body_json, fixed_arguments_count = normalize_tool_call_arguments(sanitized_body_json)
     if fixed_arguments_count > 0:
         print(f"🛠️ [PROXY] Arguments tool_calls normalisés: {fixed_arguments_count}")
+        
     messages_obj = sanitized_body_json.get("messages") if isinstance(sanitized_body_json, dict) else None
     messages = messages_obj if isinstance(messages_obj, list) else []
 
-    # Schéma 1: observation masking conversationnel (tool results) avant tokens/provider send
-    schema1_cfg = get_observation_masking_schema1_config(config)
-    schema1_policy = MaskPolicy(
-        enabled=schema1_cfg.enabled,
-        window_turns=schema1_cfg.window_turns,
-        keep_errors=schema1_cfg.keep_errors,
-        keep_last_k_per_tool=schema1_cfg.keep_last_k_per_tool,
-        placeholder_template=schema1_cfg.placeholder_template,
-    )
-    effective_messages = messages
-    body_for_provider = json.dumps(sanitized_body_json).encode("utf-8") if sanitized_body_json else body
-    if schema1_policy.enabled:
-        try:
-            effective_messages = mask_old_tool_results(messages, schema1_policy)
-            masked_body_json = dict(sanitized_body_json)
-            masked_body_json["messages"] = effective_messages
-            body_for_provider = json.dumps(masked_body_json).encode("utf-8")
-        except Exception as e:
-            print(f"⚠️ [OBSERVATION MASKING] Échec schema1 (no-op): {e}")
-            effective_messages = messages
-            body_for_provider = json.dumps(sanitized_body_json).encode("utf-8") if sanitized_body_json else body
+    effective_messages, body_for_provider = _apply_observation_masking(messages, sanitized_body_json, body, config)
+    effective_messages, body_for_provider = await _apply_context_pruning(effective_messages, sanitized_body_json, body_for_provider, config)
 
-    # Lot C2: Context Pruning (MCP Pruner) — prune uniquement `role="tool"` pour
-    # préserver les invariants tool-calling.
-    pruning_cfg = get_context_pruning_config(config)
-    if pruning_cfg.enabled:
-        try:
-            goal_hint = derive_goal_hint(effective_messages)
-            effective_messages, pruning_summary = await prune_tool_messages_best_effort(
-                messages=effective_messages,
-                goal_hint=goal_hint,
-                cfg=pruning_cfg,
-                source_type="logs",
-            )
-
-            pruned_body_json = dict(sanitized_body_json)
-            pruned_body_json["messages"] = effective_messages
-            body_for_provider = json.dumps(pruned_body_json).encode("utf-8")
-
-            # Logs metadata-only (pas de contenu pruné)
-            if pruning_summary.calls_attempted > 0:
-                print(
-                    "✂️ [CONTEXT PRUNING] "
-                    f"calls={pruning_summary.calls_attempted} "
-                    f"pruned_messages={pruning_summary.messages_pruned} "
-                    f"fallbacks={pruning_summary.used_fallback_count} "
-                    f"warnings={','.join(pruning_summary.warnings) if pruning_summary.warnings else 'none'}"
-                )
-        except Exception as e:
-            print(f"⚠️ [CONTEXT PRUNING] Échec (no-op): {e}")
-
-    # Calcul tokens simple (sur les messages effectivement envoyés)
-    estimated_tokens = 0
-    try:
-        for msg in effective_messages:
-            if isinstance(msg, dict):
-                estimated_tokens += count_tokens_tiktoken([msg])
-    except (TypeError, ValueError):
-        estimated_tokens = 0
+    estimated_tokens = _calculate_estimated_tokens(effective_messages)
     
-    # Vérification limite contexte
     if estimated_tokens > max_context:
         return JSONResponse(
             content={
@@ -218,54 +156,15 @@ async def proxy_chat(request: Request):
             },
             status_code=413
         )
-    
-    # Métriques basiques
-    if session:
-        content_preview = ""
-        try:
-            messages = json_body.get("messages", [])
-            for msg in messages:
-                if msg.get("role") == "user" and msg.get("content"):
-                    content_preview = str(msg.get("content"))[:100]
-                    break
-        except:
-            content_preview = "Parse error"
         
-        metric_id = save_metric(
-            session_id=session["id"],
-            tokens=estimated_tokens,
-            percentage=(estimated_tokens / max_context) * 100,
-            preview=content_preview,
-            is_estimated=True,
-            source='proxy'
-        )
-        
-        # Vérifier auto-compaction après sauvegarde des métriques
-        from ...core.database import get_session_cumulative_tokens
-        from ...features.compaction.auto_trigger import get_auto_trigger
-        
-        cumulative_tokens = get_session_cumulative_tokens(session["id"])["total_tokens"]
-        auto_trigger = get_auto_trigger()
-        
-        # Vérifier si auto-compaction doit être déclenchée
-        compaction_result = await auto_trigger.check_and_trigger(
-            session_id=session["id"],
-            current_tokens=cumulative_tokens,  # Utiliser les tokens cumulés
-            max_context=max_context,
-            messages=effective_messages,  # Messages de la requête (maskés si activé)
-            trigger_callback=lambda result, info: print(f"🗜️ [AUTO-COMPACTION] Déclenchée: {info}")
-        )
-        
-        if compaction_result:
-            print(f"✅ [AUTO-COMPACTION] Exécutée pour session {session['id']}: {compaction_result.tokens_saved} tokens économisés")
-    
+    metric_id = await _handle_metrics_and_compaction(session, estimated_tokens, max_context, effective_messages, json_body)
+
     print(f"📊 [PROXY] {estimated_tokens:,} tokens → {provider_key}")
 
     if provider_key == "nvidia":
         rate_limiter = get_rate_limiter()
         await rate_limiter.throttle_if_needed()
     
-    # Proxy direct
     return await _proxy_to_provider(
         body=body_for_provider,
         headers=headers,
@@ -274,11 +173,112 @@ async def proxy_chat(request: Request):
         models=models,
         target_url=target_url,
         session=session,
-        metric_id=metric_id if 'metric_id' in locals() else None,
+        metric_id=metric_id,
         max_context=max_context,
         request_tokens=estimated_tokens
     )
 
+def _apply_observation_masking(messages: list, sanitized_body_json: dict, original_body: bytes, config: dict):
+    schema1_cfg = get_observation_masking_schema1_config(config)
+    schema1_policy = MaskPolicy(
+        enabled=schema1_cfg.enabled,
+        window_turns=schema1_cfg.window_turns,
+        keep_errors=schema1_cfg.keep_errors,
+        keep_last_k_per_tool=schema1_cfg.keep_last_k_per_tool,
+        placeholder_template=schema1_cfg.placeholder_template,
+    )
+    if not schema1_policy.enabled:
+        return messages, (json.dumps(sanitized_body_json).encode("utf-8") if sanitized_body_json else original_body)
+
+    try:
+        effective_messages = mask_old_tool_results(messages, schema1_policy)
+        masked_body_json = dict(sanitized_body_json)
+        masked_body_json["messages"] = effective_messages
+        return effective_messages, json.dumps(masked_body_json).encode("utf-8")
+    except Exception as e:
+        print(f"⚠️ [OBSERVATION MASKING] Échec schema1 (no-op): {e}")
+        return messages, (json.dumps(sanitized_body_json).encode("utf-8") if sanitized_body_json else original_body)
+
+async def _apply_context_pruning(messages: list, sanitized_body_json: dict, current_body: bytes, config: dict):
+    pruning_cfg = get_context_pruning_config(config)
+    if not pruning_cfg.enabled:
+        return messages, current_body
+
+    try:
+        goal_hint = derive_goal_hint(messages)
+        effective_messages, pruning_summary = await prune_tool_messages_best_effort(
+            messages=messages,
+            goal_hint=goal_hint,
+            cfg=pruning_cfg,
+            source_type="logs",
+        )
+        pruned_body_json = dict(sanitized_body_json)
+        pruned_body_json["messages"] = effective_messages
+        
+        if pruning_summary.calls_attempted > 0:
+            print(
+                "✂️ [CONTEXT PRUNING] "
+                f"calls={pruning_summary.calls_attempted} "
+                f"pruned_messages={pruning_summary.messages_pruned} "
+                f"fallbacks={pruning_summary.used_fallback_count} "
+                f"warnings={','.join(pruning_summary.warnings) if pruning_summary.warnings else 'none'}"
+            )
+        return effective_messages, json.dumps(pruned_body_json).encode("utf-8")
+    except Exception as e:
+        print(f"⚠️ [CONTEXT PRUNING] Échec (no-op): {e}")
+        return messages, current_body
+
+def _calculate_estimated_tokens(messages: list) -> int:
+    estimated_tokens = 0
+    try:
+        for msg in messages:
+            if isinstance(msg, dict):
+                estimated_tokens += count_tokens_tiktoken([msg])
+    except (TypeError, ValueError):
+        estimated_tokens = 0
+    return estimated_tokens
+
+async def _handle_metrics_and_compaction(session: dict, estimated_tokens: int, max_context: int, effective_messages: list, json_body: dict) -> int | None:
+    if not session:
+        return None
+        
+    content_preview = ""
+    try:
+        messages = json_body.get("messages", [])
+        for msg in messages:
+            if msg.get("role") == "user" and msg.get("content"):
+                content_preview = str(msg.get("content"))[:100]
+                break
+    except Exception as e:
+        content_preview = "Parse error"
+    
+    metric_id = save_metric(
+        session_id=session["id"],
+        tokens=estimated_tokens,
+        percentage=(estimated_tokens / max_context) * 100,
+        preview=content_preview,
+        is_estimated=True,
+        source='proxy'
+    )
+    
+    from ...core.database import get_session_cumulative_tokens
+    from ...features.compaction.auto_trigger import get_auto_trigger
+    
+    cumulative_tokens = get_session_cumulative_tokens(session["id"])["total_tokens"]
+    auto_trigger = get_auto_trigger()
+    
+    compaction_result = await auto_trigger.check_and_trigger(
+        session_id=session["id"],
+        current_tokens=cumulative_tokens,
+        max_context=max_context,
+        messages=effective_messages,
+        trigger_callback=lambda result, info: print(f"🗜️ [AUTO-COMPACTION] Déclenchée: {info}")
+    )
+    
+    if compaction_result:
+        print(f"✅ [AUTO-COMPACTION] Exécutée pour session {session['id']}: {compaction_result.tokens_saved} tokens économisés")
+        
+    return metric_id
 
 async def _proxy_to_provider(
     body: bytes,
@@ -510,9 +510,7 @@ async def _proxy_to_provider(
                         metric_id,
                         provider_type=provider_type, 
                         models=models, 
-                        manager=manager,
-                        max_retries=0,  # Retry déjà géré dans send_streaming
-                        retry_delay=1.0
+                        manager=manager
                     ),
                     status_code=response.status_code,
                     headers=headers,

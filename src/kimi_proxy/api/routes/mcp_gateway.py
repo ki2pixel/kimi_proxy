@@ -78,130 +78,107 @@ def _as_dict(obj: object) -> dict[str, object] | None:
     return None
 
 
-@router.post("/mcp-gateway/{server_name}/rpc")
-async def api_mcp_gateway_rpc(server_name: str, request: Request):
-    """Forwarde un JSON-RPC 2.0 brut vers un serveur MCP local puis masque la réponse."""
-
-    service = MCPGatewayService()
-
-    request_json_obj = await request.json()
-    request_json = _as_dict(request_json_obj)
-    if request_json is None:
-        error_payload = service.build_jsonrpc_error(
-            request_json_obj,
-            code=-32600,
-            message="Requête JSON-RPC invalide (attendu objet JSON)",
-        )
-        return JSONResponse(content=error_payload, status_code=400)
-
-    # Circuit Breaker Check
+def _check_circuit_breaker(server_name: str, request_json: dict, request_json_obj: dict, service: MCPGatewayService) -> JSONResponse | None:
     if server_name not in _CIRCUIT_BREAKERS:
         _CIRCUIT_BREAKERS[server_name] = MCPCircuitBreaker()
-    
     cb = _CIRCUIT_BREAKERS[server_name]
     if request_json.get("method") == "tools/call":
         params = request_json.get("params")
-        if isinstance(params, dict):
-            # Verify if circuit is open
-            if cb.check_call(params):
-                error_payload = service.build_jsonrpc_error(
-                    request_json_obj,
-                    code=-32000,
-                    message="Circuit Breaker ouvert : Boucle d'appels MCP répétitifs détectée."
-                )
-                return JSONResponse(content=error_payload, status_code=429)
+        if isinstance(params, dict) and cb.check_call(params):
+            error_payload = service.build_jsonrpc_error(
+                request_json_obj,
+                code=-32000,
+                message="Circuit Breaker ouvert : Boucle d'appels MCP répétitifs détectée."
+            )
+            return JSONResponse(content=error_payload, status_code=429)
+    return None
 
-    # Reactive Cache
-    cache_key = None
+def _get_from_cache(server_name: str, request_json: dict) -> tuple[str | None, bool, JSONResponse | None]:
     is_read = _is_read_operation(request_json)
-    if is_read:
-        cache_key = _get_cache_key(server_name, request_json)
-        now = time.time()
-        if cache_key in _GATEWAY_CACHE:
-            ts, cached_resp = _GATEWAY_CACHE[cache_key]
-            if now - ts < _GATEWAY_CACHE_TTL:
-                # Ajoute une info dans la payload pour tracer
-                if isinstance(cached_resp, dict):
-                    cached_resp["_gateway_cached"] = True
-                return JSONResponse(content=cached_resp)
+    cache_key = _get_cache_key(server_name, request_json) if is_read else None
+    if is_read and cache_key in _GATEWAY_CACHE:
+        ts, cached_resp = _GATEWAY_CACHE[cache_key]
+        if time.time() - ts < _GATEWAY_CACHE_TTL:
+            if isinstance(cached_resp, dict):
+                cached_resp["_gateway_cached"] = True
+            return cache_key, is_read, JSONResponse(content=cached_resp)
+    return cache_key, is_read, None
+
+def _update_cache(server_name: str, cache_key: str | None, is_read: bool, masked: dict):
+    if is_read and cache_key:
+        _GATEWAY_CACHE[cache_key] = (time.time(), masked)
+    elif not is_read:
+        prefix = f"{server_name}:"
+        keys_to_del = [k for k in _GATEWAY_CACHE.keys() if k.startswith(prefix)]
+        for k in keys_to_del:
+            del _GATEWAY_CACHE[k]
+
+async def _pruner_callable(*, request_id: int, text: str, goal_hint: str, source_type: SourceType, options: PruneOptionsDict, call_timeout_ms: int):
+    req = build_prune_text_request_jsonrpc(
+        request_id=request_id,
+        text=text,
+        goal_hint=goal_hint,
+        source_type=source_type,
+        options=options,
+    )
+    timeout_s = max(0.001, float(call_timeout_ms) / 1000.0)
+    try:
+        resp = await forward_jsonrpc("pruner", req, timeout_s=timeout_s)
+        return extract_prune_result_from_jsonrpc_response(resp)
+    except Exception:
+        return None
+
+async def _apply_pruning(server_name: str, request_json: dict, upstream_response: dict) -> dict:
+    try:
+        toml_cfg = get_mcp_tool_pruning_config(get_config())
+        pruning_cfg = resolve_mcp_tool_pruning_config(toml_cfg)
+        return await maybe_prune_jsonrpc_response(
+            server_name=server_name,
+            request_json=request_json,
+            response_json=upstream_response,
+            cfg=pruning_cfg,
+            pruner=_pruner_callable,
+            metrics=_MCP_TOOL_PRUNING_METRICS,
+        )
+    except Exception:
+        return upstream_response
+
+def _handle_gateway_error(e: MCPGatewayUpstreamError, request_json: dict, service: MCPGatewayService) -> JSONResponse:
+    if e.code == "unknown_server":
+        code, status = -32001, 404
+    elif e.code in {"timeout", "connect_error"}:
+        code, status = -32002, 502
+    elif e.code == "invalid_json":
+        code, status = -32003, 502
+    else:
+        code, status = -32603, 502
+    error_payload = service.build_jsonrpc_error(request_json, code=code, message=e.message, data=e.details)
+    return JSONResponse(content=error_payload, status_code=status)
+
+@router.post("/mcp-gateway/{server_name}/rpc")
+async def api_mcp_gateway_rpc(server_name: str, request: Request):
+    """Forwarde un JSON-RPC 2.0 brut vers un serveur MCP local puis masque la réponse."""
+    service = MCPGatewayService()
+    request_json_obj = await request.json()
+    request_json = _as_dict(request_json_obj)
+    
+    if request_json is None:
+        error_payload = service.build_jsonrpc_error(
+            request_json_obj, code=-32600, message="Requête JSON-RPC invalide (attendu objet JSON)"
+        )
+        return JSONResponse(content=error_payload, status_code=400)
+
+    cb_response = _check_circuit_breaker(server_name, request_json, request_json_obj, service)
+    if cb_response: return cb_response
+
+    cache_key, is_read, cached_response = _get_from_cache(server_name, request_json)
+    if cached_response: return cached_response
 
     try:
         upstream_response = await forward_jsonrpc(server_name, request_json)
-
-        # Phase 2 (wrapper hybride): pruning conditionnel avant masking.
-        # Fail-open: toute erreur => upstream_response intact.
-        try:
-            toml_cfg = get_mcp_tool_pruning_config(get_config())
-            pruning_cfg = resolve_mcp_tool_pruning_config(toml_cfg)
-
-            async def _pruner_callable(
-                *,
-                request_id: int,
-                text: str,
-                goal_hint: str,
-                source_type: SourceType,
-                options: PruneOptionsDict,
-                call_timeout_ms: int,
-            ):
-                # NOTE: I/O HTTP conservée côté Proxy via forward_jsonrpc.
-                req = build_prune_text_request_jsonrpc(
-                    request_id=request_id,
-                    text=text,
-                    goal_hint=goal_hint,
-                    source_type=source_type,
-                    options=options,
-                )
-                timeout_s = max(0.001, float(call_timeout_ms) / 1000.0)
-                try:
-                    resp = await forward_jsonrpc("pruner", req, timeout_s=timeout_s)
-                except MCPGatewayUpstreamError:
-                    return None
-                except Exception:
-                    return None
-                return extract_prune_result_from_jsonrpc_response(resp)
-
-            pruned_response = await maybe_prune_jsonrpc_response(
-                server_name=server_name,
-                request_json=request_json,
-                response_json=upstream_response,
-                cfg=pruning_cfg,
-                pruner=_pruner_callable,
-                metrics=_MCP_TOOL_PRUNING_METRICS,
-            )
-        except Exception:
-            pruned_response = upstream_response
-
+        pruned_response = await _apply_pruning(server_name, request_json, upstream_response)
         masked = service.mask_jsonrpc_response(pruned_response)
-
-        if is_read and cache_key:
-            _GATEWAY_CACHE[cache_key] = (time.time(), masked)
-        elif not is_read:
-            # Invalider tout le cache du server_name
-            prefix = f"{server_name}:"
-            keys_to_del = [k for k in _GATEWAY_CACHE.keys() if k.startswith(prefix)]
-            for k in keys_to_del:
-                del _GATEWAY_CACHE[k]
-
+        _update_cache(server_name, cache_key, is_read, masked)
         return JSONResponse(content=masked)
     except MCPGatewayUpstreamError as e:
-        # Map vers codes JSON-RPC spécifiques au gateway
-        if e.code == "unknown_server":
-            code = -32001
-            status = 404
-        elif e.code in {"timeout", "connect_error"}:
-            code = -32002
-            status = 502
-        elif e.code == "invalid_json":
-            code = -32003
-            status = 502
-        else:
-            code = -32603
-            status = 502
-
-        error_payload = service.build_jsonrpc_error(
-            request_json,
-            code=code,
-            message=e.message,
-            data=e.details,
-        )
-        return JSONResponse(content=error_payload, status_code=status)
+        return _handle_gateway_error(e, request_json, service)

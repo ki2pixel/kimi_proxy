@@ -1,3 +1,4 @@
+import os
 """
 Dataclasses pour la configuration.
 """
@@ -11,7 +12,7 @@ class SanitizerConfig:
     enabled: bool = True
     threshold_tokens: int = 1000
     preview_length: int = 200
-    tmp_dir: str = "/tmp/kimi_proxy_masked"
+    tmp_dir: str = field(default_factory=lambda: os.path.join(os.path.expanduser("~"), ".kimi", "tmp", "kimi_proxy_masked"))
     tags: List[str] = field(default_factory=lambda: ["@file", "@codebase", "@tool", "@console", "@output"])
     fallback_threshold: float = 0.90
     heavy_duty_fallback: bool = True
@@ -23,7 +24,7 @@ class SanitizerConfig:
             enabled=data.get("enabled", True),
             threshold_tokens=data.get("threshold_tokens", 1000),
             preview_length=data.get("preview_length", 200),
-            tmp_dir=data.get("tmp_dir", "/tmp/kimi_proxy_masked"),
+            tmp_dir=data.get("tmp_dir", os.path.join(os.path.expanduser("~"), ".kimi", "tmp", "kimi_proxy_masked")),
             tags=data.get("tags", ["@file", "@codebase", "@tool", "@console", "@output"]),
             fallback_threshold=data.get("fallback_threshold", 0.90),
             heavy_duty_fallback=data.get("heavy_duty_fallback", True)

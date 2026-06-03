@@ -185,4 +185,4 @@ Utilise pour valider la logique avant les édition chirurgicales avec `edit_file
 
 ### Avec JSON Query
 
-Utilise `json_query_jsonpath` pour extraire les structures logiques des fichiers de configuration avant validation.
+Utilise `json_query_query_json` pour extraire les structures logiques des fichiers de configuration avant validation.
