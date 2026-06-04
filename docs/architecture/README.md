@@ -78,27 +78,28 @@ Pensez à cette architecture comme une maison :
 
 Chaque étage peut être rénové sans effondrer la maison. Je peux changer la décoration d'une chambre sans perturber le salon.
 
-## Métriques Actuelles (2026-02-19)
+## Métriques Actuelles (2026-06-04)
 
 ### Volumétrie Code Source
-- **69 fichiers Python** analysés
-- **7,336 lignes de code** (hors commentaires/vides)
-- **Complexité moyenne** : C (16.93)
+- **87 fichiers Python** de production (dans `src/` et `scripts/`)
+- **14 177 lignes de code** (hors commentaires/vides)
+- **Complexité moyenne** : A (3.95)
 
 ### Distribution par Couche
 | Couche | Fichiers | LOC | Complexité Moyenne |
 | ------ | --------- | --- | ---------------- |
-| Core | 8 | ~1,200 | B |
-| Features | 15 | ~2,100 | C |
-| Proxy | 6 | ~800 | D |
-| Services | 4 | ~600 | B |
-| API | 36 | ~2,636 | C |
+| Core | 7 | 1 632 | A (2.62) |
+| Features | 45 | 6 587 | A (4.11) |
+| Proxy | 9 | 1 468 | B (5.79) |
+| Services | 4 | 252 | A (2.14) |
+| API | 13 | 2 378 | A (4.24) |
 
 ### Points Chauds Identifiés
-- **proxy_chat()** (API) : Score F - gestion multi-provider + streaming
-- **_proxy_to_provider()** (API) : Score D - 311 LOC routing
-- **_extract_standard_metrics()** (Features) : Score D - parsing robuste
-- **_parse_compile_chat_block()** (Features) : Score C - parsing PyCharm
+- **_proxy_to_provider()** (API/routes/proxy.py) : Score F (41) — routage et transformation des requêtes LLM
+- **maybe_prune_jsonrpc_response()** (Features/mcp_tool_pruning/engine.py) : Score F (44) — analyse et élagage des réponses d'outils volumineuses
+- **_tool_prune_text()** (Features/mcp_pruner/server.py) : Score E (40) — moteur algorithmique d'élagage de texte
+- **reconstruct_complex_json()** (Proxy/tool_utils.py) : Score E (38) — réparation structurelle de JSON corrompus ou tronqués
+- **fix_malformed_json_arguments()** (Proxy/tool_utils.py) : Score E (31) — normalisation d'arguments JSON mal formés
 
 ### Documentation Créée
 - ✅ **proxy-layer.md** : Architecture couche proxy avec patterns système

@@ -32,6 +32,7 @@ D4 --> E([END])
    - Exécuter `tree -L 3 -I '__pycache__|venv|node_modules|.git'` pour visualiser la structure du projet.
    - Utiliser `cloc` et `radon` pour analyser les métriques de code (lignes de code, complexité, etc.).
    - Analyser les résultats pour identifier les zones nécessitant une documentation.
+   - **Validation dynamique** : Comparer ces métriques avec l'état actuel rapporté dans `activeContext.md` (ex: ~150 fichiers Python, 22 500+ LOC, 60+ endpoints) pour confirmer la justesse de l'audit sans pour autant figer ces valeurs absolues dans les règles.
 2. **Recherche de modèles existants** :
    - Utiliser `search` ou `advanced-search` pour trouver des fichiers de documentation similaires.
    - Vérifier les patterns système dans `systemPatterns.md`.

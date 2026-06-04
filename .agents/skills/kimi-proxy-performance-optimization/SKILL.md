@@ -72,7 +72,7 @@ from kimi_proxy.core.database import vacuum_database
 result = vacuum_database()
 ```
 
-This helper is also invoked after bulk session deletions.
+This helper is also invoked after bulk cleanup operations.
 
 
 
@@ -100,14 +100,6 @@ The SQLite layer is currently synchronous and context-manager based. Optimize wi
 Existing persisted performance-related structures include:
 
 - indexes on `mcp_memory_entries`
-- compaction counters on `sessions`
-- stored token metrics in `metrics`
-
-When documenting queries, prefer the actual helpers already used by the app:
-
-- `get_session_total_tokens()`
-- `get_session_cumulative_tokens()`
-- `get_session_stats()`
 - `vacuum_database()`
 
 ## Streaming Performance
@@ -121,7 +113,7 @@ Optimization rule: keep payloads small and typed.
 Prefer measuring real hotspots with the existing stack:
 
 ```bash
-sqlite3 sessions.db 'EXPLAIN QUERY PLAN SELECT * FROM metrics WHERE session_id = 1 ORDER BY timestamp DESC LIMIT 50;'
+sqlite3 mcp_memory.db 'EXPLAIN QUERY PLAN SELECT * FROM mcp_memory_entries ORDER BY timestamp DESC LIMIT 50;'
 PYTHONPATH=src python -m pytest tests/mcp/test_mcp_compression.py -q
 ```
 

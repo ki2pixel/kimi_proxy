@@ -31,10 +31,10 @@ def fetch_data(url: str) -> dict:
     return response.json()
 ```
 
-### Strict Typing (No Any)
+### Strict Typing (Limit Any)
 ```python
 # ✅ GOOD
-from typing import TypedDict
+from typing import TypedDict, Dict, Any
 
 class TokenUsage(TypedDict):
     prompt_tokens: int
@@ -45,8 +45,12 @@ def count_tokens(text: str) -> int:
     import tiktoken
     return len(tiktoken.encoding_for_model("gpt-4").encode(text))
 
+def process_payload(data: Dict[str, Any]) -> None:
+    # Use Dict[str, Any] only for external JSON payloads
+    pass
+
 # ❌ BAD
-def bad_function(data: Any) -> Any:  # FORBIDDEN
+def bad_function(data: Any) -> Any:  # FORBIDDEN for core domain logic
     return data
 ```
 
@@ -67,6 +71,12 @@ def count_tokens_tiktoken(text: str) -> int:
 def bad_count(text: str) -> int:
     return len(text.split()) * 1.3  # WRONG!
 ```
+
+### Cognitive Complexity & Refactoring (SonarCloud S3776)
+- Maintain low cognitive complexity (strictly <= 15 per function).
+- Avoid deep nesting (max 3 levels of indentation in business logic).
+- Centralize constants and remove unused parameters.
+- This rule must be strictly enforced (e.g., maintaining the purity of `proxy.py`, `stream.py`, and `mcp_bridge.py` following Phase 1-3 refactoring).
 
 ### Factory Functions & Dependency Injection
 ```python
@@ -333,4 +343,4 @@ def vacuum_database() -> Dict[str, Any]:
 For Kimi Proxy development: Use primary skill + reference this file for unified conventions.
 
 ---
-**Version 2.8** - **< 10000 chars**
+**Version 2.9** - **< 10000 chars**

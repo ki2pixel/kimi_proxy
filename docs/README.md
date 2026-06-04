@@ -84,7 +84,7 @@ Les fondations techniques du système.
 ### 🔌 [API](./api/) - Routes et Endpoints
 L'interface REST/WebSocket du système.
 
-- **[Documentation API](./api/README.md)** - 61 routes documentées avec patterns système
+- **[Documentation API](./api/README.md)** - 44 routes documentées avec patterns système
 
 ### 📊 [Services](./services/) - Services internes
 Les services internes et alertes.
@@ -174,8 +174,8 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 ## 📋 État du Projet
 
 ### ✅ v2.0 - Architecture Modulaire (2026-03-01)
-- **Restructuration complète** : 76 fichiers modulaires (+24)
-- **Métriques actuelles** : 22,532 LOC Python
+- **Restructuration complète** : 87 fichiers de production (dans `src/` et `scripts/`)
+- **Métriques actuelles** : 14 177 LOC Python (20 837 LOC avec tests)
 - **Nouvelle CLI** : `./bin/kimi-proxy` avec sous-commandes
 - **Tests structurés** : Unit, integration, E2E
 - **Setup script** : Installation via `pip install -e .`
@@ -224,5 +224,5 @@ Voir [Contributing](./development/contributing.md) pour les guidelines de contri
 
 ---
 
-*Dernière mise à jour : 2026-05-12*
+*Dernière mise à jour : 2026-06-04*
 *Version: 2.0.5*

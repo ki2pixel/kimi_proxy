@@ -31,10 +31,10 @@ Primary backend files:
 - `features/compaction/auto_trigger.py`
 - `features/compaction/auto_trigger.py`
 
-### Phase 2: Auto-memory and session-aware memory metrics
+### Phase 2: Context-aware memory metrics
 
 - memory metrics in `metrics`, `memory_metrics`, `memory_segments`
-- auto-memory broadcasts such as `auto_memory_stored`
+- memory broadcasts such as `auto_memory_stored`
 - advanced memory stats surfaced in API
 
 ### Phase 3: Standardized MCP persistence
@@ -126,7 +126,6 @@ from kimi_proxy.features.mcp.memory import get_memory_manager
 
 manager = get_memory_manager()
 entry = await manager.store_memory(
-    session_id=123,
     content="Important context",
     memory_type="episodic",
     metadata={"source": "manual"},
@@ -154,7 +153,6 @@ MCP-related context features now coexist with a richer analytics pipeline.
 
 `src/kimi_proxy/main.py` starts `create_log_watcher(...)` and provides normalized log-derived metrics. This is relevant for MCP documentation because:
 
-- auto-session decisions may correlate provider/model/session metadata
 - health endpoints surface log watcher state and sources
 
 ## Database Schema Notes
@@ -171,7 +169,7 @@ When touching MCP documentation, keep these schema facts synchronized:
 - Presenting Phase 4 external tools as fully wrapped Python helper methods if only gateway/RPC access is guaranteed
 - Omitting current SQLite schema tables introduced after the original Phase 3 write-up
 - Ignoring `MCPClientError` / `MCPConnectionError` / `MCPTimeoutError`
-- Treating log watcher analytics as unrelated to the current MCP/auto-session ecosystem
+- Treating log watcher analytics as unrelated to the current MCP ecosystem
 
 ## Golden Rule
 

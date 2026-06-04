@@ -173,6 +173,16 @@ fast_read_multiple_files target.py --lines 100-120 --context 3
 fast_read_multiple_files target.py --lines 100-120  # Risque d'erreur
 ```
 
+## Sécurité et Permissions (Filesystem Agent)
+
+### Contournement de la Capability "Roots"
+
+Dans l'architecture Kimi Proxy, le serveur MCP `filesystem-agent` est soumis à une politique stricte pour éviter l'écrasement de la configuration CLI par les "workspace roots" de l'IDE.
+- **Interception** : Le script `scripts/mcp_bridge.py` intercepte la requête `initialize`.
+- **Action** : Il supprime dynamiquement la capability `roots`.
+- **Objectif** : Cela empêche `filesystem-agent` d'écrire par erreur ou de refuser des écritures en se basant sur les dossiers racines du workspace (ex: refus d'écriture dans `/home/kidpixel/.windsurf/plans/`).
+- **Règle d'usage** : Vous devez toujours fournir des chemins absolus (ex. `/home/kidpixel/kimi-proxy/...`) et vous n'avez pas besoin de configurer de roots additionnels.
+
 ## API Reference
 
 ### Commandes principales
