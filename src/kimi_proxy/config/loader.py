@@ -601,3 +601,72 @@ def get_mcp_tool_pruning_config(config: Dict[str, Any]) -> MCPToolPruningConfig:
             include_markers=include_markers,
         ),
     )
+
+
+@dataclass(frozen=True)
+class MCPGatewayConfig:
+    """Configuration de la passerelle MCP (circuit breaker)."""
+    cb_enabled: bool = True
+    cb_max_failures: int = 5
+    cb_similarity_threshold: float = 0.85
+
+
+def get_mcp_gateway_config(config: Dict[str, Any]) -> MCPGatewayConfig:
+    """
+    Extrait la configuration de la passerelle MCP (gateway) depuis la section [mcp.gateway].
+    
+    Args:
+        config: Configuration chargée
+        
+    Returns:
+        Configuration de la passerelle MCP
+    """
+    from ..core.constants import DEFAULT_MCP_CB_ENABLED, DEFAULT_MCP_CB_MAX_FAILURES, DEFAULT_MCP_CB_SIM_THRESHOLD
+    
+    defaults = MCPGatewayConfig(
+        cb_enabled=DEFAULT_MCP_CB_ENABLED,
+        cb_max_failures=DEFAULT_MCP_CB_MAX_FAILURES,
+        cb_similarity_threshold=DEFAULT_MCP_CB_SIM_THRESHOLD
+    )
+    
+    mcp_obj = config.get("mcp")
+    if not isinstance(mcp_obj, dict):
+        return defaults
+    
+    gateway_obj = mcp_obj.get("gateway")
+    if not isinstance(gateway_obj, dict):
+        return defaults
+        
+    cb_enabled = bool(gateway_obj.get("cb_enabled", defaults.cb_enabled))
+    
+    def _clamp_int(value: object, *, default: int, min_value: int) -> int:
+        if isinstance(value, int) and not isinstance(value, bool):
+            return max(min_value, value)
+        if isinstance(value, float) and not isinstance(value, bool):
+            return max(min_value, int(value))
+        return default
+        
+    def _clamp_float(value: object, *, default: float, min_value: float, max_value: float) -> float:
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            v = float(value)
+            return max(min_value, min(max_value, v))
+        return default
+
+    cb_max_failures = _clamp_int(
+        gateway_obj.get("cb_max_failures", defaults.cb_max_failures),
+        default=defaults.cb_max_failures,
+        min_value=1
+    )
+    
+    cb_similarity_threshold = _clamp_float(
+        gateway_obj.get("cb_similarity_threshold", defaults.cb_similarity_threshold),
+        default=defaults.cb_similarity_threshold,
+        min_value=0.0,
+        max_value=1.0
+    )
+    
+    return MCPGatewayConfig(
+        cb_enabled=cb_enabled,
+        cb_max_failures=cb_max_failures,
+        cb_similarity_threshold=cb_similarity_threshold
+    )

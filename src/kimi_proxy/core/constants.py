@@ -53,6 +53,11 @@ DEFAULT_SANITIZER_CONFIG = {
 # ============================================================================
 MCP_MIN_MEMORY_TOKENS = 20  # Seuil minimum pour considérer du contenu comme mémoire
 
+# Configuration du circuit breaker de la passerelle MCP
+DEFAULT_MCP_CB_ENABLED = True
+DEFAULT_MCP_CB_MAX_FAILURES = 5
+DEFAULT_MCP_CB_SIM_THRESHOLD = 0.85
+
 # Patterns de détection MCP (utilisés dans detector.py)
 MCP_PATTERNS = {
     # Balises explicites de mémoire MCP

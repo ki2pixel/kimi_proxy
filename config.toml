@@ -120,6 +120,16 @@ max_consecutive_auto_compactions = 3
 # Active l'integration MCP Phase 3
 enabled = true
 
+[mcp.gateway]
+# Active ou désactive le circuit breaker protégeant contre les boucles d'appels MCP
+cb_enabled = true
+
+# Nombre maximal d'appels similaires consécutifs tolérés avant ouverture (défaut: 5)
+cb_max_failures = 5
+
+# Seuil de similarité Jaccard entre les tokens des arguments (0.0 - 1.0, défaut: 0.85)
+cb_similarity_threshold = 0.85
+
 # Serveur Qdrant MCP (github.com/qdrant/mcp-server-qdrant)
 [mcp.qdrant]
 enabled = true

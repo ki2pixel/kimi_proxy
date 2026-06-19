@@ -1,6 +1,18 @@
 > 📦 **Archives (pré-2026-04-04)** : [progress_archive.md](file:///home/kidpixel/kimi-proxy/memory-bank/archives/progress_archive.md)
 
 ## Tâche en cours
+### [2026-06-19 20:15:00] **Paramétrage et assouplissement du Circuit Breaker MCP — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Configurer dynamiquement le circuit breaker MCP via `config.toml` et assouplir son comportement par défaut (HTTP 429) pour éviter les limitations intempestives sur les outils MCP locaux.
+
+**Actions réalisées** :
+- Ajout des constantes par défaut dans `constants.py` (`DEFAULT_MCP_CB_MAX_FAILURES = 5`).
+- Surcharge supportée via `config.toml` sous la section `[mcp.gateway]`.
+- Implémentation du parsing dans `loader.py` et intégration dynamique à chaque appel tools/call dans `mcp_gateway.py`.
+- Ajout de tests unitaires et d'intégration dans `test_mcp_gateway.py`.
+- Validation complète via `./bin/kimi-proxy test` (192/192 succès).
+
 ### [2026-06-04 13:01:00] **Mise à Jour de la Documentation (docs-updater) — TERMINÉ**
 **Statut** : ✅ COMPLETÉ
 

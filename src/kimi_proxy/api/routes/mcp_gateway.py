@@ -13,7 +13,7 @@ import hashlib
 import json
 import time
 
-from ...config.loader import get_config, get_mcp_tool_pruning_config
+from ...config.loader import get_config, get_mcp_tool_pruning_config, get_mcp_gateway_config, MCPGatewayConfig
 from ...features.mcp.gateway import MCPGatewayService
 from ...features.mcp.detector import MCPCircuitBreaker
 from ...features.mcp_tool_pruning import (
@@ -79,8 +79,33 @@ def _as_dict(obj: object) -> dict[str, object] | None:
 
 
 def _check_circuit_breaker(server_name: str, request_json: dict, request_json_obj: dict, service: MCPGatewayService) -> JSONResponse | None:
+    try:
+        config = get_mcp_gateway_config(get_config())
+    except Exception:
+        # Fallback défensif en cas d'erreur de config
+        from ...core.constants import DEFAULT_MCP_CB_MAX_FAILURES, DEFAULT_MCP_CB_SIM_THRESHOLD, DEFAULT_MCP_CB_ENABLED
+        config = MCPGatewayConfig(
+            cb_enabled=DEFAULT_MCP_CB_ENABLED,
+            cb_max_failures=DEFAULT_MCP_CB_MAX_FAILURES,
+            cb_similarity_threshold=DEFAULT_MCP_CB_SIM_THRESHOLD
+        )
+
+    if not config.cb_enabled:
+        return None
+
     if server_name not in _CIRCUIT_BREAKERS:
-        _CIRCUIT_BREAKERS[server_name] = MCPCircuitBreaker()
+        _CIRCUIT_BREAKERS[server_name] = MCPCircuitBreaker(
+            max_failures=config.cb_max_failures,
+            similarity_threshold=config.cb_similarity_threshold,
+            enabled=config.cb_enabled
+        )
+    else:
+        # Permettre le changement dynamique de configuration sans redémarrer le serveur
+        cb = _CIRCUIT_BREAKERS[server_name]
+        cb.max_failures = config.cb_max_failures
+        cb.similarity_threshold = config.cb_similarity_threshold
+        cb.enabled = config.cb_enabled
+
     cb = _CIRCUIT_BREAKERS[server_name]
     if request_json.get("method") == "tools/call":
         params = request_json.get("params")

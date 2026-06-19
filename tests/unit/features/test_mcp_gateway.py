@@ -319,3 +319,80 @@ async def test_gateway_pruner_timeout_is_fail_open(monkeypatch, async_client: ht
     assert calls["pruner"] == 1
     # Fail-open: la réponse reste exploitable et ne casse pas le contrat JSON-RPC.
     assert body["result"]["content"][0]["text"] == "ORIGINAL_SAFE"
+
+
+def test_mcp_circuit_breaker_similarity():
+    from kimi_proxy.features.mcp.detector import MCPCircuitBreaker
+    
+    cb = MCPCircuitBreaker(max_failures=1, similarity_threshold=0.8)
+    
+    # Premier appel
+    assert cb.check_call({"path": "/home/user/file.txt", "content": "hello"}) is False
+    
+    # Deuxième appel très similaire (Jaccard >= 0.8)
+    # Tokens premier: {'path', 'home', 'user', 'file', 'txt', 'content', 'hello'} (7 tokens)
+    # Tokens deuxième: {'path', 'home', 'user', 'file', 'txt', 'content', 'hello', 'world'} (8 tokens)
+    # Intersection: 7, Union: 8, Jaccard: 7/8 = 0.875
+    assert cb.check_call({"path": "/home/user/file.txt", "content": "hello world"}) is True
+
+
+def test_mcp_circuit_breaker_disabled():
+    from kimi_proxy.features.mcp.detector import MCPCircuitBreaker
+    
+    cb = MCPCircuitBreaker(max_failures=1, similarity_threshold=0.8, enabled=False)
+    assert cb.check_call({"path": "/home/user/file.txt", "content": "hello"}) is False
+    assert cb.check_call({"path": "/home/user/file.txt", "content": "hello world"}) is False
+
+
+@pytest.mark.asyncio
+async def test_gateway_circuit_breaker_triggered(monkeypatch, async_client: httpx.AsyncClient):
+    # Activer le CB avec des seuils bas
+    monkeypatch.setattr(
+        "kimi_proxy.api.routes.mcp_gateway.get_mcp_gateway_config",
+        lambda config: mcp_gateway.MCPGatewayConfig(
+            cb_enabled=True,
+            cb_max_failures=1,
+            cb_similarity_threshold=0.8
+        )
+    )
+    
+    # Reset local circuit breakers for the test to avoid pollution
+    monkeypatch.setitem(mcp_gateway._CIRCUIT_BREAKERS, "fast-filesystem", mcp_gateway.MCPCircuitBreaker(
+        max_failures=1,
+        similarity_threshold=0.8,
+        enabled=True
+    ))
+    
+    # Mock forward_jsonrpc pour simuler un serveur MCP opérationnel
+    async def _fake_forward_jsonrpc(server_name: str, request_json: object, *, timeout_s: float = 30.0) -> object:
+        return {
+            "jsonrpc": "2.0",
+            "id": "req-cb",
+            "result": {"content": [{"type": "text", "text": "OK"}]}
+        }
+    monkeypatch.setattr(mcp_gateway, "forward_jsonrpc", _fake_forward_jsonrpc)
+    
+    req1 = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {"name": "read_file", "arguments": {"path": "/tmp/test.txt"}},
+        "id": "req-cb-1"
+    }
+    
+    req2 = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {"name": "read_file", "arguments": {"path": "/tmp/test.txt"}},
+        "id": "req-cb-2"
+    }
+    
+    # Premier appel: passe à travers (CB pas encore ouvert)
+    resp1 = await async_client.post("/api/mcp-gateway/fast-filesystem/rpc", json=req1)
+    assert resp1.status_code == 200
+    
+    # Deuxième appel: identique, doit ouvrir le CB et renvoyer 429
+    resp2 = await async_client.post("/api/mcp-gateway/fast-filesystem/rpc", json=req2)
+    assert resp2.status_code == 429
+    body = resp2.json()
+    assert body["error"]["code"] == -32000
+    assert "Circuit Breaker" in body["error"]["message"]

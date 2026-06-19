@@ -196,12 +196,14 @@ def get_detected_mcp_servers(content: str, min_tokens: int = MCP_MIN_MEMORY_TOKE
         "has_mcp_content": detector.has_memory(content) or detector.has_phase4_tools(content)
     }
 
+
 class MCPCircuitBreaker:
     """Détecte les boucles infinies d'appels MCP via similarité Jaccard."""
     
-    def __init__(self, max_failures: int = 3, similarity_threshold: float = 0.85):
+    def __init__(self, max_failures: int = 5, similarity_threshold: float = 0.85, enabled: bool = True):
         self.max_failures = max_failures
         self.similarity_threshold = similarity_threshold
+        self.enabled = enabled
         self.call_history: List[set[str]] = []
         
     def _tokenize(self, params_str: str) -> set[str]:
@@ -214,6 +216,9 @@ class MCPCircuitBreaker:
         Vérifie si l'appel actuel ressemble trop aux appels précédents.
         Retourne True si le circuit doit s'ouvrir (bloquer l'appel), False sinon.
         """
+        if not self.enabled:
+            return False
+            
         import json
         params_str = json.dumps(params, sort_keys=True)
         current_tokens = self._tokenize(params_str)
@@ -237,3 +242,5 @@ class MCPCircuitBreaker:
             self.call_history.pop(0)
             
         return similar_count >= self.max_failures
+
+
