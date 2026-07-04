@@ -229,32 +229,33 @@ def _compute_keep_ids_by_last_k_per_tool(
 
 
 def _looks_like_error_tool_content(content: object) -> bool:
+    """Détecte si un tool result ressemble à une erreur.
+
+    Heuristiques consolidées:
+    1. Marqueurs structurels forts (traceback Python, stack trace).
+    2. JSON parseable avec clé ``error`` ou ``status: "error"``.
+
+    Note: les mots-clés faibles (timeout, connection refused) ont été retirés
+    car ils provoquaient des faux positifs dans du contenu légitime.
+    """
     if not isinstance(content, str) or not content:
         return False
 
-    # Heuristique 1: mots clés fréquents
-    lowered = content.lower()
-    if "traceback" in lowered:
-        return True
-    if "exception" in lowered:
-        return True
-    if "timeout" in lowered:
-        return True
-    if "connect_error" in lowered:
-        return True
-    if "connection refused" in lowered:
-        return True
+    # Heuristique 1: marqueurs structurels forts dans le texte brut
+    _STRUCTURAL_ERROR_MARKERS = frozenset({
+        "traceback (most recent call last)",
+        "raise ",
+        "error: ",
+        "fatal error",
+    })
 
-    # Attention aux faux positifs: tester patterns "error" plus stricts
-    if "\nerror" in lowered or "\rerror" in lowered:
+    lowered = content[:2000].lower()
+    if any(marker in lowered for marker in _STRUCTURAL_ERROR_MARKERS):
         return True
 
     # Heuristique 2: JSON {"error": ...} / {"status":"error"}
     stripped = content.lstrip()
-    if not stripped:
-        return False
-
-    if stripped[0] not in "{[":
+    if not stripped or stripped[0] not in "{[":
         return False
 
     try:

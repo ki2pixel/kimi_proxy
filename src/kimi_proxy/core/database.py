@@ -13,20 +13,51 @@ from .exceptions import DatabaseError
 
 
 
+import os
+import time
+
+# Cache pour la session active en mémoire
+_cached_active_session: Optional[Dict[str, Any]] = None
+_cached_active_session_time: float = 0.0
+_ACTIVE_SESSION_CACHE_TTL = 2.0  # TTL minimal de 2 secondes
+
+# Connexion globale pour la DB SQLite en mémoire partagée
+_mem_conn: Optional[sqlite3.Connection] = None
+
+def _should_persist() -> bool:
+    try:
+        from ..config.loader import get_config, get_database_config
+        cfg = get_database_config(get_config())
+        env_val = os.environ.get("KIMI_PERSIST_SESSIONS")
+        if env_val is not None:
+            return env_val.lower() == "true"
+        return cfg.persist_sessions
+    except Exception:
+        return False
+
+def _invalidate_session_cache():
+    global _cached_active_session
+    _cached_active_session = None
+
+
 @contextmanager
-def get_db() -> Generator[sqlite3.Row, None, None]:
+def get_db() -> Generator[sqlite3.Connection, None, None]:
     """
     Context manager pour les connexions DB.
     
     Yields:
         Connection SQLite avec row_factory=sqlite3.Row
     """
-    conn = sqlite3.connect(DATABASE_FILE)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     try:
         yield conn
     finally:
-        conn.close()
+        if _should_persist():
+            conn.close()
+        else:
+            # En mémoire partagée, on ne ferme pas la connexion principale
+            # mais on peut fermer les connexions secondaires.
+            conn.close()
 
 
 def get_db_connection() -> sqlite3.Connection:
@@ -36,16 +67,38 @@ def get_db_connection() -> sqlite3.Connection:
     Returns:
         Connection SQLite
     """
-    conn = sqlite3.connect(DATABASE_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+    global _mem_conn
+    if _should_persist():
+        conn = sqlite3.connect(DATABASE_FILE)
+        conn.row_factory = sqlite3.Row
+        return conn
+    else:
+        if _mem_conn is None:
+            _mem_conn = sqlite3.connect("file:kimi_mem?mode=memory&cache=shared", uri=True)
+            _mem_conn.row_factory = sqlite3.Row
+            _init_database_conn(_mem_conn)
+        conn = sqlite3.connect("file:kimi_mem?mode=memory&cache=shared", uri=True)
+        conn.row_factory = sqlite3.Row
+        return conn
 
 
 def init_database():
     """
     Initialise la base de données SQLite avec toutes les tables et migrations.
     """
+    if not _should_persist():
+        # Force l'initialisation de la DB en mémoire
+        get_db_connection()
+        return
+
     conn = sqlite3.connect(DATABASE_FILE)
+    _init_database_conn(conn)
+    conn.close()
+    print("✅ Base de données SQLite initialisée")
+
+
+def _init_database_conn(conn: sqlite3.Connection):
+    """Initialise la connexion passée en paramètre."""
     cursor = conn.cursor()
     
     # Table providers (cache configuration)
@@ -91,7 +144,6 @@ def init_database():
             FOREIGN KEY (session_id) REFERENCES sessions(id)
         )
     """)
-
 
     
     # Table masked_content (Sanitizer Phase 1)
@@ -243,9 +295,6 @@ def init_database():
     
     # Migrations (ajout de colonnes si elles n'existent pas)
     _run_migrations(cursor, conn)
-    
-    conn.close()
-    print("✅ Base de données initialisée")
 
 
 def _run_migrations(cursor: sqlite3.Cursor, conn: sqlite3.Connection):
@@ -362,14 +411,22 @@ def _run_migrations(cursor: sqlite3.Cursor, conn: sqlite3.Connection):
 # ============================================================================
 
 def get_active_session() -> Optional[Dict[str, Any]]:
-    """Récupère la session active."""
+    """Récupère la session active (avec cache en mémoire TTL)."""
+    global _cached_active_session, _cached_active_session_time
+    now = time.time()
+    if _cached_active_session is not None and (now - _cached_active_session_time) < _ACTIVE_SESSION_CACHE_TTL:
+        return _cached_active_session
+
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
             "SELECT * FROM sessions WHERE is_active = 1 ORDER BY id DESC LIMIT 1"
         )
         row = cursor.fetchone()
-        return dict(row) if row else None
+        res = dict(row) if row else None
+        _cached_active_session = res
+        _cached_active_session_time = now
+        return res
 
 
 def get_session_by_id(session_id: int) -> Optional[Dict[str, Any]]:
@@ -396,6 +453,7 @@ def create_session(
     external_session_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Crée une nouvelle session et la rend active."""
+    _invalidate_session_cache()
     with get_db() as conn:
         cursor = conn.cursor()
         
@@ -425,6 +483,7 @@ def create_session(
 
 def update_session_model(session_id: int, model: str) -> bool:
     """Met à jour le modèle d'une session."""
+    _invalidate_session_cache()
     with get_db() as conn:
         cursor = conn.cursor()
         try:
@@ -441,6 +500,7 @@ def update_session_model(session_id: int, model: str) -> bool:
 
 def update_session_external_id(session_id: int, external_session_id: Optional[str]) -> bool:
     """Met à jour l'identifiant de session externe d'une session."""
+    _invalidate_session_cache()
     normalized_external_id = external_session_id.strip() if isinstance(external_session_id, str) else None
     if normalized_external_id == "":
         normalized_external_id = None
@@ -461,6 +521,7 @@ def update_session_external_id(session_id: int, external_session_id: Optional[st
 
 def update_session_first_prompt(session_id: int, prompt: str):
     """Met à jour le nom de la session avec le premier prompt si c'est un nom générique."""
+    _invalidate_session_cache()
     with get_db() as conn:
         cursor = conn.cursor()
         
@@ -478,6 +539,7 @@ def update_session_first_prompt(session_id: int, prompt: str):
 
 def set_active_session(session_id: int) -> bool:
     """Active une session spécifique."""
+    _invalidate_session_cache()
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("UPDATE sessions SET is_active = 0")
@@ -1044,6 +1106,7 @@ def delete_session(session_id: int) -> bool:
     Returns:
         True si supprimée avec succès
     """
+    _invalidate_session_cache()
     with get_db() as conn:
         cursor = conn.cursor()
         try:

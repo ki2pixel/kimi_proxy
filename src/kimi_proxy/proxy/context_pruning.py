@@ -21,7 +21,7 @@ import json
 from typing import Literal
 
 from ..config.loader import ContextPruningConfig
-from .mcp_gateway_rpc import forward_jsonrpc, MCPGatewayUpstreamError
+from ..api.routes.mcp_gateway import forward_jsonrpc, MCPGatewayUpstreamError
 
 
 ChatMessage = dict[str, object]

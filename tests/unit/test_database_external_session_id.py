@@ -8,6 +8,7 @@ from kimi_proxy.core import database as db
 def test_init_database_adds_external_session_id_and_supports_session_crud(tmp_path, monkeypatch) -> None:
     tmp_db = tmp_path / "sessions.sqlite3"
     monkeypatch.setattr(db, "DATABASE_FILE", str(tmp_db))
+    monkeypatch.setenv("KIMI_PERSIST_SESSIONS", "true")
 
     db.init_database()
 

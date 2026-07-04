@@ -96,11 +96,11 @@ async def test_gateway_upstream_timeout_returns_jsonrpc_error(monkeypatch, async
     def _fake_async_client(*args, **kwargs) -> _FakeTimeoutClient:
         return _FakeTimeoutClient()
 
-    # ⚠️ Important: patch only the Proxy layer's AsyncClient symbol to avoid
+    # ⚠️ Important: patch only the Gateway module's AsyncClient symbol to avoid
     # impacting the httpx.AsyncClient used by the ASGI test client.
-    import kimi_proxy.proxy.mcp_gateway_rpc as mcp_gateway_rpc
+    import kimi_proxy.api.routes.mcp_gateway as mcp_gw_mod
 
-    monkeypatch.setattr(mcp_gateway_rpc.httpx, "AsyncClient", _fake_async_client)
+    monkeypatch.setattr(mcp_gw_mod.httpx, "AsyncClient", _fake_async_client)
 
     req = {"jsonrpc": "2.0", "method": "health", "params": {}, "id": "req-2"}
     resp = await async_client.post("/api/mcp-gateway/fast-filesystem/rpc", json=req)

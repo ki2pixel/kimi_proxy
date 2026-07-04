@@ -25,6 +25,22 @@ keep_last_k_per_tool = 0
 placeholder_template = "[Observation masquee: resultat d'outil ancien (tool_call_id={tool_call_id}, outil={tool_name}, chars={original_chars})]"
 
 # ============================================
+# LOG WATCHER
+# ============================================
+
+[log_watcher]
+# Desactive par defaut pour un middleware minimaliste
+enabled = false
+
+# ============================================
+# DATABASE
+# ============================================
+
+[database]
+# Active/desactive la persistance des sessions SQLite. Par defaut: false (in-memory)
+persist_sessions = false
+
+# ============================================
 # CONTEXT PRUNING — MCP Pruner (Lot C2)
 # ============================================
 
@@ -44,6 +60,14 @@ min_keep_lines = 40
 timeout_ms = 1500
 annotate_lines = true
 include_markers = true
+
+# ============================================
+# MCP TOOL PRUNING — Elagage des reponses MCP Tools/Call
+# ============================================
+
+[mcp_tool_pruning]
+# Desactive par defaut pour un middleware minimaliste
+enabled = true
 
 # ============================================
 # MCP PRUNER — Backend selection (env > toml)

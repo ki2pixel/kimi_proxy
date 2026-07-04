@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.database import init_database, create_session, get_active_session
-from .config.loader import load_config
+from .config.loader import load_config, get_log_watcher_config
 
 from .features.log_watcher import create_log_watcher
 from .api.router import api_router
@@ -205,6 +205,11 @@ def _startup(app: FastAPI):
     
     # Initialise la base de données
     init_database()
+    from .core.database import _should_persist
+    if _should_persist():
+        print("💾 Mode persistance SQLite (fichier)")
+    else:
+        print("⚡ Mode sessions en mémoire (SQLite :memory:)")
     
     # Session par defaut uniquement en mode legacy (providers configures)
     if providers and not get_active_session():
@@ -272,9 +277,17 @@ def _startup(app: FastAPI):
     # Enregistre pour le health check
     set_log_watcher(log_watcher)
     
-    # Démarre le watcher (dans la lifespan async)
-    import asyncio
-    asyncio.create_task(log_watcher.start())
+    # Démarre le watcher (dans la lifespan async) uniquement si activé
+    log_watcher_cfg = get_log_watcher_config(config)
+    env_enabled_str = os.environ.get("LOG_WATCHER_ENABLED", "false").lower()
+    log_watcher_enabled = (env_enabled_str == "true") or (log_watcher_cfg.enabled and env_enabled_str != "false")
+    
+    if log_watcher_enabled:
+        import asyncio
+        asyncio.create_task(log_watcher.start())
+        print("✅ Log Watcher démarré avec succès")
+    else:
+        print("ℹ️ Log Watcher désactivé par défaut")
     
     print(f"🌐 Kimi Proxy MCP disponible sur http://localhost:8000")
 

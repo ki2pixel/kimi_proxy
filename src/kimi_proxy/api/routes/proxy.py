@@ -30,7 +30,7 @@ from ...proxy.router import get_target_url_for_session, get_provider_host_header
 from ...proxy.stream import stream_generator, extract_usage_from_response
 from ...proxy.client import create_proxy_client
 from ...proxy.tool_utils import fix_tool_calls_in_request, normalize_tool_call_arguments
-from ...features.observation_masking import MaskPolicy, mask_old_tool_results
+from ...features.observation_masking import mask_old_tool_results, build_mask_policy_from_config
 from ...features.pruner_goal_hint import derive_goal_hint
 from ...proxy.context_pruning import prune_tool_messages_best_effort
 
@@ -180,13 +180,7 @@ async def proxy_chat(request: Request):
 
 def _apply_observation_masking(messages: list, sanitized_body_json: dict, original_body: bytes, config: dict):
     schema1_cfg = get_observation_masking_schema1_config(config)
-    schema1_policy = MaskPolicy(
-        enabled=schema1_cfg.enabled,
-        window_turns=schema1_cfg.window_turns,
-        keep_errors=schema1_cfg.keep_errors,
-        keep_last_k_per_tool=schema1_cfg.keep_last_k_per_tool,
-        placeholder_template=schema1_cfg.placeholder_template,
-    )
+    schema1_policy = build_mask_policy_from_config(schema1_cfg)
     if not schema1_policy.enabled:
         return messages, (json.dumps(sanitized_body_json).encode("utf-8") if sanitized_body_json else original_body)
 

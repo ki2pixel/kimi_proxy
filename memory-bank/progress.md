@@ -1,6 +1,25 @@
 > 📦 **Archives (pré-2026-04-04)** : [progress_archive.md](file:///home/kidpixel/kimi-proxy/memory-bank/archives/progress_archive.md)
 
 ## Tâche en cours
+Aucune tâche active.
+
+## Dernière session terminée
+### [2026-07-04 12:30:00] **Transition Minimaliste Kimi Proxy (Audit Backend) — TERMINÉ**
+**Statut** : ✅ COMPLÉTÉ (5/5 tâches)
+
+**Objectif** : Transformer Kimi Proxy en middleware minimal et performant selon les recommandations de `docs/audit/audit_backend_kimi-proxy.md`.
+
+**Actions réalisées** :
+- **Task 1 - Log Watcher** : Désactivé par défaut (`LOG_WATCHER_ENABLED=false`), configurable via env/TOML.
+- **Task 2 - MCP Pruning** : `[mcp_tool_pruning] enabled = false` explicite dans les configs.
+- **Task 3 - Session Persistence** : SQLite optionnel, mode in-memory par défaut (SQLite `:memory:` partagée), cache TTL 2s sur `get_active_session()`, configurable via `KIMI_PERSIST_SESSIONS`.
+- **Task 4 - MCP Gateway** : `forward_jsonrpc` + `MCPGatewayUpstreamError` consolidés dans `api/routes/mcp_gateway.py`. Stub rétro-compat dans `proxy/mcp_gateway_rpc.py`.
+- **Task 5 - Observation Masking** : `_looks_like_error_tool_content` simplifié (frozenset structurel, faux positifs éliminés). Helper `build_mask_policy_from_config()` centralisé.
+
+**Fichiers modifiés** : `config.toml`, `config.toml.minimal`, `loader.py`, `main.py`, `database.py`, `mcp_gateway.py`, `mcp_gateway_rpc.py`, `context_pruning.py`, `schema1.py`, `__init__.py`, `proxy.py`, `passthrough.py`.
+**Fichiers de test ajoutés** : `test_config_log_watcher.py`, `test_database_optional_persistence.py`, `test_observation_masking_consolidated.py`.
+**Validation** : 233/233 tests passés.
+
 ### [2026-06-19 20:15:00] **Paramétrage et assouplissement du Circuit Breaker MCP — TERMINÉ**
 **Statut** : ✅ COMPLETÉ
 

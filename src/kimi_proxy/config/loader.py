@@ -670,3 +670,54 @@ def get_mcp_gateway_config(config: Dict[str, Any]) -> MCPGatewayConfig:
         cb_max_failures=cb_max_failures,
         cb_similarity_threshold=cb_similarity_threshold
     )
+
+
+@dataclass(frozen=True)
+class LogWatcherConfig:
+    """Configuration du Log Watcher."""
+    enabled: bool = False
+
+
+def get_log_watcher_config(config: Dict[str, Any]) -> LogWatcherConfig:
+    """
+    Extrait la configuration du Log Watcher depuis la section [log_watcher].
+    
+    Args:
+        config: Configuration chargée
+        
+    Returns:
+        Configuration du Log Watcher
+    """
+    defaults = LogWatcherConfig()
+    obj = config.get("log_watcher")
+    if not isinstance(obj, dict):
+        return defaults
+    
+    enabled = bool(obj.get("enabled", defaults.enabled))
+    return LogWatcherConfig(enabled=enabled)
+
+
+@dataclass(frozen=True)
+class DatabaseConfig:
+    """Configuration de la base de données."""
+    persist_sessions: bool = False
+
+
+def get_database_config(config: Dict[str, Any]) -> DatabaseConfig:
+    """
+    Extrait la configuration de la base de données depuis la section [database].
+    
+    Args:
+        config: Configuration chargée
+        
+    Returns:
+        Configuration de la base de données
+    """
+    defaults = DatabaseConfig()
+    obj = config.get("database")
+    if not isinstance(obj, dict):
+        return defaults
+    
+    persist_sessions = bool(obj.get("persist_sessions", defaults.persist_sessions))
+    return DatabaseConfig(persist_sessions=persist_sessions)
+

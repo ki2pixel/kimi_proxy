@@ -20,7 +20,7 @@ from ..config.loader import (
     get_context_pruning_config,
 )
 from ..core.constants import DEFAULT_PROVIDER
-from ..features.observation_masking import MaskPolicy, mask_old_tool_results
+from ..features.observation_masking import mask_old_tool_results, build_mask_policy_from_config
 from ..features.pruner_goal_hint import derive_goal_hint
 from .tool_utils import fix_tool_calls_in_request, normalize_tool_call_arguments
 from .context_pruning import prune_tool_messages_best_effort
@@ -151,15 +151,9 @@ class PassthroughProcessor:
 
         # 2. Observation Masking Schema 1
         schema1_cfg = get_observation_masking_schema1_config(self.config)
-        if schema1_cfg.enabled:
+        policy = build_mask_policy_from_config(schema1_cfg)
+        if policy.enabled:
             try:
-                policy = MaskPolicy(
-                    enabled=schema1_cfg.enabled,
-                    window_turns=schema1_cfg.window_turns,
-                    keep_errors=schema1_cfg.keep_errors,
-                    keep_last_k_per_tool=schema1_cfg.keep_last_k_per_tool,
-                    placeholder_template=schema1_cfg.placeholder_template,
-                )
                 masked_messages = mask_old_tool_results(messages, policy)
                 body_json = dict(body_json)
                 body_json["messages"] = masked_messages
