@@ -67,6 +67,7 @@ GATEWAY_HTTP_SERVERS: frozenset[str] = frozenset(
         "sequential-thinking",
         "fast-filesystem",
         "json-query",
+        "mcp-pruner",
     }
 )
 
@@ -737,7 +738,8 @@ def _get_workspace_root_for_roots_list() -> Path:
 
 def _get_gateway_url(server_name: str) -> str:
     base = os.getenv("MCP_GATEWAY_BASE_URL", "http://localhost:8000").rstrip("/")
-    return f"{base}/api/mcp-gateway/{server_name}/rpc"
+    mapped_name = "pruner" if server_name == "mcp-pruner" else server_name
+    return f"{base}/api/mcp-gateway/{mapped_name}/rpc"
 
 
 def _get_default_path_env() -> str:
