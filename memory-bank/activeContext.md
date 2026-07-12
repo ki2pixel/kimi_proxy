@@ -2,9 +2,10 @@
 Aucune tâche active.
 
 ## Dernière Session Terminée
-- [2026-07-04 12:30:00] **Transition Minimaliste Kimi Proxy (5 tâches audit) — TERMINÉ** : Exécution complète des recommandations de l'audit backend. Log Watcher désactivé par défaut, MCP Pruning désactivé, persistance SQLite optionnelle (mode in-memory par défaut), passerelles MCP consolidées, observation masking simplifié. 233/233 tests au vert.
+- [2026-07-12 23:35:00] **Correction routage mcp-pruner dans le pont MCP — TERMINÉ** : Ajout de mcp-pruner dans les serveurs HTTP du pont (mcp_bridge) et routage du nom vers `pruner` pour correspondre à l'API Gateway. Validation par tests unitaires passés.
 
 ## Historique
+- [2026-07-04 12:30:00] **Transition Minimaliste Kimi Proxy (5 tâches audit) — TERMINÉ** : Exécution complète des recommandations de l'audit backend. Log Watcher désactivé par défaut, MCP Pruning désactivé, persistance SQLite optionnelle (mode in-memory par défaut), passerelles MCP consolidées, observation masking simplifié. 233/233 tests au vert.
 - [2026-06-19 20:15:00] **Paramétrage et assouplissement du Circuit Breaker MCP — TERMINÉ** : Circuit breaker rendu configurable via `config.toml` (section `[mcp.gateway]`) et valeur par défaut de `max_failures` augmentée à 5 pour éviter les faux positifs 429 lors d'appels d'outils répétés.
 - [2026-06-04 13:01:00] **Mise à Jour de la Documentation (docs-updater) — TERMINÉ** : Audit statique complet (87 fichiers de production, 14 177 LOC Python de production, complexité A (3.95)) et mise à jour des documentations (`README.md`, `docs/README.md`, `docs/architecture/README.md`, `docs/api/README.md`, `docs/core/README.md`). Harmonisation des routes (44 routes effectives) et des migrations DB (14 ALTER TABLEs). Validation par tests unitaires (189 passed).
 - [2026-06-04 12:56:00] **Audit et Mise à Jour des Compétences Kimi Proxy — TERMINÉ** : Mise en conformité des fichiers `.agents/skills/SKILL.md` avec la Phase 3 (Architecture Session-less, contournement capability roots filesystem-agent, validation dynamique des métriques). Validation par tests unitaires (189 passed). Le suivi d'état des compétences est assuré pour les futurs agents.

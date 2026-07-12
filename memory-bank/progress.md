@@ -4,6 +4,16 @@
 Aucune tâche active.
 
 ## Dernière session terminée
+### [2026-07-12 23:35:00] **Correction routage mcp-pruner dans le pont MCP — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Configurer et router correctement le serveur `mcp-pruner` via `mcp_bridge.py`.
+
+**Actions réalisées** :
+- Ajout de `mcp-pruner` dans `GATEWAY_HTTP_SERVERS` dans `scripts/mcp_bridge.py`.
+- Routage du nom `mcp-pruner` vers `pruner` dans `_get_gateway_url` pour correspondre à l'API Gateway.
+- Validation par exécution de la suite de tests unitaires (197 tests passés).
+
 ### [2026-07-04 12:30:00] **Transition Minimaliste Kimi Proxy (Audit Backend) — TERMINÉ**
 **Statut** : ✅ COMPLÉTÉ (5/5 tâches)
 
