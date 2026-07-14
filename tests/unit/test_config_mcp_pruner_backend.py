@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Dict, Any
 
-import pytest
 
 from kimi_proxy.config.loader import MCPPrunerBackendConfig, get_mcp_pruner_backend_config
 

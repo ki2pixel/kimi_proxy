@@ -824,7 +824,7 @@ def _response_content_contains_excluded_path(
         try:
             parsed = json.loads(text_obj)
         except Exception:
-            continue
+            continue  # nosec B112
         paths = _extract_candidate_paths_from_json(parsed, max_depth=max_depth, max_nodes=max_nodes)
         if _contains_excluded_path(paths, excluded_dirs):
             return True

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Callable, List, Sequence, Dict
 
-import aiofiles
+import aiofiles  # type: ignore
 
 from .parser import KimiGlobalLogParser, KimiSessionParser, LogParser
 from ...core.constants import (
@@ -443,8 +443,8 @@ class LogWatcher:
 
     def __init__(
         self,
-        log_path: str = None,
-        broadcast_callback: Callable = None,
+        log_path: Optional[str] = None,
+        broadcast_callback: Optional[Callable] = None,
         sources: Optional[Sequence[AnalyticsSource]] = None,
         poll_interval_seconds: float = 0.5,
     ):
@@ -545,8 +545,8 @@ class LogWatcher:
 
 
 def create_log_watcher(
-    log_path: str = None,
-    broadcast_callback: Callable = None,
+    log_path: Optional[str] = None,
+    broadcast_callback: Optional[Callable] = None,
     sources: Optional[Sequence[AnalyticsSource]] = None,
 ) -> LogWatcher:
     """

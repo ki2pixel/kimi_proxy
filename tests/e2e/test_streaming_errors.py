@@ -116,7 +116,7 @@ async def test_streaming_extracts_partial_tokens():
             pass
         
         # Vérifie que le broadcast de tokens a été fait
-        token_broadcasts = [
+        token_broadcasts = [  # noqa
             c for c in manager.broadcast.call_args_list 
             if c[0][0].get("type") == "metric_updated"
         ]

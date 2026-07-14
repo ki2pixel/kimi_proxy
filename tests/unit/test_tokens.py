@@ -1,7 +1,6 @@
 """
 Tests unitaires pour le module de tokenization.
 """
-import pytest
 
 from kimi_proxy.core.tokens import count_tokens_text, count_tokens_tiktoken
 

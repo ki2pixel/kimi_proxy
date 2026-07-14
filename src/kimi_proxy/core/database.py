@@ -3,11 +3,9 @@ Gestion de la base de données SQLite avec migrations.
 """
 import sqlite3
 from contextlib import contextmanager
-from pathlib import Path
-from typing import Generator, Optional, List, Dict, Any, TypedDict
+from typing import Generator, Optional, List, Dict, Any
 
 from .constants import DATABASE_FILE
-from .exceptions import DatabaseError
 
 
 
@@ -449,7 +447,7 @@ def get_all_sessions() -> List[Dict[str, Any]]:
 def create_session(
     name: str,
     provider: str = "managed:kimi-code",
-    model: str = None,
+    model: Optional[str] = None,
     external_session_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Crée une nouvelle session et la rend active."""
@@ -578,7 +576,7 @@ def save_metric(
              is_estimated, source, memory_tokens, chat_tokens, memory_ratio)
         )
         conn.commit()
-        return cursor.lastrowid
+        return cursor.lastrowid  # type: ignore
 
 
 def update_metric_with_real_tokens(
@@ -851,7 +849,7 @@ def save_compaction_history(
         )
         
         conn.commit()
-        return history_id
+        return history_id  # type: ignore
 
 
 def get_compaction_history(session_id: int, limit: int = 50) -> List[Dict[str, Any]]:
@@ -1152,10 +1150,10 @@ def delete_sessions_bulk(session_ids: List[int]) -> Dict[str, Any]:
     
     for session_id in session_ids:
         if delete_session(session_id):
-            results['deleted_count'] += 1
+            results['deleted_count'] += 1  # type: ignore
         else:
             results['success'] = False
-            results['failed_ids'].append(session_id)
+            results['failed_ids'].append(session_id)  # type: ignore
     
     return results
 
@@ -1175,15 +1173,14 @@ def vacuum_database() -> Dict[str, Any]:
     import time
     
     # Cache pour éviter les VACUUM répétés (délai minimum de 30 secondes)
-    if not hasattr(vacuum_database, '_last_vacuum'):
-        vacuum_database._last_vacuum = 0
-    
+    last_vacuum = getattr(vacuum_database, '_last_vacuum', 0)
     current_time = time.time()
-    if current_time - vacuum_database._last_vacuum < 30:  # 30 secondes minimum
+    
+    if current_time - last_vacuum < 30:  # 30 secondes minimum
         return {
             "message": "VACUUM ignoré (délai minimum non écoulé)",
             "skipped": True,
-            "next_available": vacuum_database._last_vacuum + 30
+            "next_available": last_vacuum + 30
         }
     
     try:
@@ -1203,7 +1200,7 @@ def vacuum_database() -> Dict[str, Any]:
         conn.close()
         
         # Met à jour le cache
-        vacuum_database._last_vacuum = current_time
+        setattr(vacuum_database, '_last_vacuum', current_time)
         
         # Récupère la taille après VACUUM
         size_after = os.path.getsize(DATABASE_FILE)

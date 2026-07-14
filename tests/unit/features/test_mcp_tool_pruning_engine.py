@@ -13,22 +13,24 @@ from kimi_proxy.features.mcp_tool_pruning import (
 
 
 def _build_cfg(*, min_chars: int = 1, excluded_dirs: tuple[str, ...] | None = None):
-    return resolve_mcp_tool_pruning_config(
-        MCPToolPruningConfig(
-            enabled=True,
-            min_chars=min_chars,
-            timeout_ms=1500,
-            max_chars_fallback=0,
-            excluded_dirs=excluded_dirs or (".agents", ".cline", ".clinerules", ".windsurf"),
-            options=MCPToolPruningOptionsConfig(
-                max_prune_ratio=0.55,
-                min_keep_lines=1,
-                timeout_ms=1500,
-                annotate_lines=True,
-                include_markers=True,
-            ),
+    from unittest.mock import patch
+    with patch("os.getenv", return_value=None):
+        return resolve_mcp_tool_pruning_config(
+            MCPToolPruningConfig(
+                enabled=True,
+                min_chars=min_chars,
+                timeout_ms=15000,
+                max_chars_fallback=0,
+                excluded_dirs=excluded_dirs or (".agents", ".cline", ".clinerules", ".windsurf"),
+                options=MCPToolPruningOptionsConfig(
+                    max_prune_ratio=0.55,
+                    min_keep_lines=1,
+                    timeout_ms=15000,
+                    annotate_lines=True,
+                    include_markers=True,
+                ),
+            )
         )
-    )
 
 
 @pytest.mark.asyncio

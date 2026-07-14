@@ -3,7 +3,6 @@ Routes API pour la compaction (Phase 2 Fonctionnalités Utilisateur).
 """
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from typing import List, Dict, Any
 
 from ...features.compaction import (
     SimpleCompaction,
@@ -16,15 +15,13 @@ from ...features.compaction import (
 )
 from ...features.compaction.auto_trigger import (
     get_auto_trigger,
-    AutoTriggerConfig,
 )
 from ...core.database import (
     get_session_by_id,
     get_active_session,
     get_session_total_tokens,
     update_session_auto_compaction,
-    update_session_auto_threshold,
-    get_session_compaction_state,
+    get_recent_metrics,
 )
 from ...config.display import get_max_context_for_session
 from ...config.loader import get_config
@@ -75,21 +72,32 @@ async def api_compact_session(session_id: int, request: Request):
                 "content": "Réponse de l'assistant..."
             })
     
-    # Si pas assez de messages, utilise des messages de test
+    # Si pas assez de messages réels, on refuse la compaction en production
     if len(messages) < 6:
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Hello, how are you?"},
-            {"role": "assistant", "content": "I'm doing well, thank you! How can I help you today?"},
-            {"role": "user", "content": "Can you tell me about machine learning?"},
-            {"role": "assistant", "content": "Machine learning is a subset of artificial intelligence that focuses on algorithms that can learn from data..."},
-            {"role": "user", "content": "That's interesting. What are some common applications?"},
-            {"role": "assistant", "content": "Common applications include image recognition, natural language processing, recommendation systems..."},
-            {"role": "user", "content": "Thank you for the explanation."},
-            {"role": "assistant", "content": "You're welcome! Is there anything else you'd like to know?"},
-            {"role": "user", "content": "No, that's all for now."}
-        ]
-        print(f"[DEBUG] Using test messages for compaction: {len(messages)} messages")
+        import os
+        env = os.getenv("KIMI_ENV", "development").strip().lower()
+        if env == "production":
+            return {
+                "success": False,
+                "message": f"Nombre de messages réels insuffisant pour effectuer une compaction ({len(messages)}/6 messages requis)",
+                "session_id": session_id,
+                "reason": "insufficient_messages"
+            }
+        else:
+            # Mode dev: utilise les messages de test
+            messages = [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hello, how are you?"},
+                {"role": "assistant", "content": "I'm doing well, thank you! How can I help you today?"},
+                {"role": "user", "content": "Can you tell me about machine learning?"},
+                {"role": "assistant", "content": "Machine learning is a subset of artificial intelligence that focuses on algorithms that can learn from data..."},
+                {"role": "user", "content": "That's interesting. What are some common applications?"},
+                {"role": "assistant", "content": "Common applications include image recognition, natural language processing, recommendation systems..."},
+                {"role": "user", "content": "Thank you for the explanation."},
+                {"role": "assistant", "content": "You're welcome! Is there anything else you'd like to know?"},
+                {"role": "user", "content": "No, that's all for now."}
+            ]
+            print(f"[DEBUG] Using test messages for compaction in dev mode: {len(messages)} messages")
     
     # Crée le compacteur
     config = CompactionConfig(max_preserved_messages=preserve_messages)
@@ -113,12 +121,10 @@ async def api_compact_session(session_id: int, request: Request):
     print(f"[DEBUG] Compaction result: compacted={result.compacted}, reason={getattr(result, 'reason', 'N/A')}")
     
     if result.compacted:
-        print(f"[DEBUG] Persisting compaction result...")
+        print("[DEBUG] Persisting compaction result...")
         # Persiste le résultat
         await persist_compaction_result(result, trigger_reason="manual")
-        print(f"[DEBUG] Compaction persisted successfully")
-        # Persiste le résultat
-        await persist_compaction_result(result, trigger_reason="manual")
+        print("[DEBUG] Compaction persisted successfully")
         
         # Notifie via WebSocket
         try:
@@ -565,7 +571,10 @@ async def api_get_auto_compaction_status(session_id: int):
         current_tokens = cumulative_totals["total_tokens"]
     except Exception as e:
         print(f"[DEBUG] Auto-status API: Error getting cumulative tokens: {e}")
-        current_tokens = totals["total_tokens"]
+        try:
+            current_tokens = get_session_total_tokens(session_id).get("total_tokens", 0)
+        except Exception:
+            current_tokens = 0
     
     config = get_config()
     models = config.get("models", {})
@@ -697,4 +706,4 @@ async def api_get_compaction_history_chart(session_id: int):
     }
 
 
-from datetime import datetime
+from datetime import datetime  # noqa

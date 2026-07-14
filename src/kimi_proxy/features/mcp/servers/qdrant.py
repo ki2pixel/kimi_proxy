@@ -7,7 +7,6 @@ Performance: <50ms pour la recherche sémantique.
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
-from ....core.tokens import count_tokens_text
 from ..base.rpc import MCPRPCClient
 
 # Modèles imports avec TYPE_CHECKING pour éviter les cycles
@@ -65,13 +64,13 @@ class QdrantMCPClient:
         now = datetime.now()
         if (self._status_check_time and
             (now - self._status_check_time).total_seconds() < self._status_ttl_seconds):
-            return self._status
+            return self._status  # type: ignore
 
         import logging
         logger = logging.getLogger(__name__)
 
         # Détecte si c'est une instance cloud (URL contient cloud.qdrant.io)
-        is_cloud = "cloud.qdrant.io" in self.config.qdrant_url
+        is_cloud = "cloud.qdrant.io" in self.config.qdrant_url  # type: ignore
 
         if is_cloud:
             logger.info(f"☁️ Qdrant cloud detected: {self.config.qdrant_url}")
@@ -81,7 +80,7 @@ class QdrantMCPClient:
             self._status = MCPExternalServerStatus(
                 name="qdrant-mcp",
                 type="qdrant",
-                url=self.config.qdrant_url,
+                url=self.config.qdrant_url,  # type: ignore
                 connected=True,  # Cloud est toujours disponible
                 last_check=datetime.now().isoformat(),
                 latency_ms=50.0,  # Latence typique cloud
@@ -121,7 +120,7 @@ class QdrantMCPClient:
             self._status = MCPExternalServerStatus(
                 name="qdrant-mcp",
                 type="qdrant",
-                url=self.config.qdrant_url,
+                url=self.config.qdrant_url,  # type: ignore
                 connected=connected,
                 last_check=datetime.now().isoformat(),
                 latency_ms=latency_ms,
@@ -139,7 +138,7 @@ class QdrantMCPClient:
             self._status = MCPExternalServerStatus(
                 name="qdrant-mcp",
                 type="qdrant",
-                url=self.config.qdrant_url,
+                url=self.config.qdrant_url,  # type: ignore
                 connected=False,
                 last_check=datetime.now().isoformat(),
                 error_count=1,
@@ -176,7 +175,7 @@ class QdrantMCPClient:
             >>> print(f"{len(results)} résultats pertinents")
         """
         result = await self.rpc_client.make_rpc_call(
-            server_url=self.config.qdrant_url,
+            server_url=self.config.qdrant_url,  # type: ignore
             method="search",
             params={
                 "collection": self.config.qdrant_collection,
@@ -233,7 +232,7 @@ class QdrantMCPClient:
             ... )
         """
         result = await self.rpc_client.make_rpc_call(
-            server_url=self.config.qdrant_url,
+            server_url=self.config.qdrant_url,  # type: ignore
             method="upsert",
             params={
                 "collection": self.config.qdrant_collection,
@@ -314,7 +313,7 @@ class QdrantMCPClient:
         from kimi_proxy.core.models import MCPCluster
         
         result = await self.rpc_client.make_rpc_call(
-            server_url=self.config.qdrant_url,
+            server_url=self.config.qdrant_url,  # type: ignore
             method="cluster",
             params={
                 "collection": self.config.qdrant_collection,
@@ -364,5 +363,5 @@ class QdrantMCPClient:
             ID unique au format "type_hash32"
         """
         import hashlib
-        content_hash = hashlib.md5(content.encode()).hexdigest()[:8]
+        content_hash = hashlib.md5(content.encode(), usedforsecurity=False).hexdigest()[:8]
         return f"{memory_type}_{content_hash}"

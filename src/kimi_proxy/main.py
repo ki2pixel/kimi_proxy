@@ -6,10 +6,10 @@ Frontend Dashboard déprécié — utiliser les serveurs MCP via scripts/start-m
 """
 import os
 import time
+import json
 from contextlib import asynccontextmanager
-from datetime import datetime
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -160,14 +160,74 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
     
-    # CORS
+    # CORS durci selon le profil
+    env = os.getenv("KIMI_ENV", "development").strip().lower()
+    allow_credentials = False
+    allow_origins = []
+    allow_origin_regex = None
+    
+    if env == "production":
+        origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
+        if origins_str:
+            allow_origins = [o.strip() for o in origins_str.split(",") if o.strip()]
+        else:
+            allow_origins = []  # Par défaut, aucune origine en prod sans config
+    else:
+        # En développement (local-dev), on autorise localhost/127.0.0.1 avec tout port
+        allow_origin_regex = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+        
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=allow_origins,
+        allow_origin_regex=allow_origin_regex,
+        allow_credentials=allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    
+    # Limitation de la taille du payload (anti-DoS)
+    max_body_size = int(os.getenv("KIMI_MAX_BODY_SIZE", 10 * 1024 * 1024)) # 10 Mo par défaut
+    
+    class LimitUploadSizeMiddleware:
+        def __init__(self, app_asgi, limit_size: int):
+            self.app = app_asgi
+            self.limit_size = limit_size
+
+        async def __call__(self, scope, receive, send) -> None:
+            if scope["type"] != "http":
+                await self.app(scope, receive, send)
+                return
+
+            total_bytes = 0
+
+            async def custom_receive() -> dict:
+                nonlocal total_bytes
+                message = await receive()
+                if message["type"] == "http.request":
+                    body_len = len(message.get("body", b""))
+                    total_bytes += body_len
+                    if total_bytes > self.limit_size:
+                        raise HTTPException(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail=f"La taille de la requête dépasse la limite de {self.limit_size} octets."
+                        )
+                return message
+
+            try:
+                await self.app(scope, custom_receive, send)
+            except HTTPException as exc:
+                await send({
+                    "type": "http.response.start",
+                    "status": exc.status_code,
+                    "headers": [(b"content-type", b"application/json")]
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": json.dumps({"error": "Payload Too Large", "message": exc.detail}).encode("utf-8"),
+                    "more_body": False
+                })
+
+    app.add_middleware(LimitUploadSizeMiddleware, limit_size=max_body_size)
     
     # Inclusion des routes API
     app.include_router(api_router)
@@ -243,7 +303,7 @@ def _startup(app: FastAPI):
             elif metrics.is_api_error:
                 source_type = "api_error"
         source_family = _get_log_source_family(source_type, metrics)
-        source_label = _get_log_source_label(source_type, source_family)
+        _get_log_source_label(source_type, source_family)
         
 
         
@@ -289,7 +349,7 @@ def _startup(app: FastAPI):
     else:
         print("ℹ️ Log Watcher désactivé par défaut")
     
-    print(f"🌐 Kimi Proxy MCP disponible sur http://localhost:8000")
+    print("🌐 Kimi Proxy MCP disponible sur http://localhost:8000")
 
 
 async def _shutdown(app: FastAPI):

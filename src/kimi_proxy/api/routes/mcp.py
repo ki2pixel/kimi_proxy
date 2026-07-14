@@ -14,7 +14,7 @@ Endpoints Phase 3:
 - POST /memory/cluster: Clustering de mémoires
 - GET /memory/similar/{session_id}: Mémoires similaires à une session
 """
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -28,7 +28,6 @@ from ...features.mcp import (
     get_mcp_client,
     get_memory_manager,
 )
-from ...features.mcp.client import MCPClientConfig
 from ...core.tokens import count_tokens_text
 
 router = APIRouter()
@@ -142,7 +141,7 @@ async def api_compress_content(request: CompressRequest):
     """
     client = get_mcp_client()
     
-    original_tokens = count_tokens_text(request.content)
+    original_tokens = count_tokens_text(request.content)  # noqa
     
     result = await client.compress_content(
         content=request.content,

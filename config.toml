@@ -67,7 +67,7 @@ include_markers = true
 
 [mcp_tool_pruning]
 # Desactive par defaut pour un middleware minimaliste
-enabled = true
+enabled = false
 
 # ============================================
 # MCP PRUNER — Backend selection (env > toml)

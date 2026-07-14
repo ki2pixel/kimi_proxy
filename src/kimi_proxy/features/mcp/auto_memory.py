@@ -14,12 +14,11 @@ Patterns détectés:
 """
 import re
 import hashlib
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 
 from ...core.tokens import count_tokens_tiktoken
-from ...core.database import get_db
 
 
 # Seuils de détection
@@ -299,7 +298,7 @@ class AutomaticMemoryDetector:
     
     def _hash_content(self, content: str) -> str:
         """Génère un hash pour le contenu"""
-        return hashlib.md5(content.encode()).hexdigest()[:16]
+        return hashlib.md5(content.encode(), usedforsecurity=False).hexdigest()[:16]
 
 
 # Singleton

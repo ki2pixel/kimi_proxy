@@ -6,7 +6,6 @@ Valide:
 """
 from __future__ import annotations
 
-import pytest
 
 from kimi_proxy.features.observation_masking.schema1 import _looks_like_error_tool_content
 from kimi_proxy.features.observation_masking import build_mask_policy_from_config, MaskPolicy

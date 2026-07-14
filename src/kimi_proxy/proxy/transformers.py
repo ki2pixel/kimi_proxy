@@ -1,29 +1,34 @@
 """
 Transformations de format entre OpenAI et autres APIs (Gemini, etc.).
 """
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 
 def build_gemini_endpoint(
     base_url: str,
     model: str,
-    api_key: str,
+    api_key_or_stream: Optional[Any] = None,
     stream: bool = False
 ) -> str:
     """
-    Construit l'endpoint Gemini avec la clé API en query param.
+    Construit l'endpoint Gemini (sans clé API en query param pour la sécurité).
+    La clé doit être passée via le header 'x-goog-api-key'.
     
     Args:
         base_url: URL de base de l'API
         model: Nom du modèle
-        api_key: Clé API
+        api_key_or_stream: Clé API (legacy) ou booléen pour le stream
         stream: Si True, utilise streamGenerateContent
         
     Returns:
         URL complète
     """
-    action = "streamGenerateContent" if stream else "generateContent"
-    return f"{base_url}/models/{model}:{action}?key={api_key}"
+    actual_stream = stream
+    if isinstance(api_key_or_stream, bool):
+        actual_stream = api_key_or_stream
+        
+    action = "streamGenerateContent" if actual_stream else "generateContent"
+    return f"{base_url.rstrip('/')}/models/{model}:{action}"
 
 
 def convert_to_gemini_format(openai_body: Dict[str, Any]) -> Dict[str, Any]:
@@ -64,7 +69,7 @@ def convert_to_gemini_format(openai_body: Dict[str, Any]) -> Dict[str, Any]:
         generation_config["maxOutputTokens"] = openai_body["max_tokens"]
     
     if generation_config:
-        gemini_body["generationConfig"] = generation_config
+        gemini_body["generationConfig"] = generation_config  # type: ignore
     
     return gemini_body
 
@@ -100,7 +105,7 @@ def convert_from_gemini_response(gemini_response: Dict[str, Any]) -> Dict[str, A
             if "text" in part:
                 text += part["text"]
         
-        openai_response["choices"].append({
+        openai_response["choices"].append({  # type: ignore
             "index": 0,
             "message": {
                 "role": "assistant",

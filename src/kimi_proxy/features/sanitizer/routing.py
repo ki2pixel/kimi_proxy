@@ -4,7 +4,7 @@ Routing dynamique - Context Window Fallback (Phase 1).
 from typing import Optional, Tuple, Dict, Any
 
 from ...core.constants import DEFAULT_MAX_CONTEXT, CONTEXT_FALLBACK_THRESHOLD, DEFAULT_PROVIDER
-from ...core.database import get_db, get_session_by_id
+from ...core.database import get_db
 
 
 def find_heavy_duty_model(
@@ -78,7 +78,7 @@ async def route_dynamic_model(
         return session, None
     
     # Cherche un modèle plus grand
-    fallback_model = find_heavy_duty_model(provider_key, current_model, prompt_tokens, models)
+    fallback_model = find_heavy_duty_model(provider_key, current_model, prompt_tokens, models)  # type: ignore
     
     if not fallback_model:
         # Aucun modèle plus grand disponible

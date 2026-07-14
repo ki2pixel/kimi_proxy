@@ -8,8 +8,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
-from ...core.tokens import count_tokens_tiktoken, count_tokens_text
-from ...core.constants import DEFAULT_COMPACTION_CONFIG
+from ...core.tokens import count_tokens_tiktoken
 from ...core.exceptions import CompactionError
 
 
@@ -131,7 +130,7 @@ class SimpleCompaction:
             return False, "insufficient_tokens"
         
         # Vérifie s'il y a assez de messages à résumer
-        system_messages = [m for m in messages if m.get("role") == "system"]
+        system_messages = [m for m in messages if m.get("role") == "system"]  # noqa
         non_system = [m for m in messages if m.get("role") != "system"]
         
         preserve_count = self.config.max_preserved_messages * 2

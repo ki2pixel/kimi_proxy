@@ -21,16 +21,16 @@ class EmbeddingModel:
         if model_name in cls._instances:
             return cls._instances[model_name]
         instance = super().__new__(cls)
-        instance._model_name = model_name
-        instance._model = None
+        instance._model_name = model_name  # type: ignore
+        instance._model = None  # type: ignore
         cls._instances[model_name] = instance
         return instance
 
     def _load(self) -> None:
-        if self._model is None:
+        if self._model is None:  # type: ignore
             # Import paresseux pour ne pas ralentir le démarrage si inutilisé
-            from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(self._model_name)
+            from sentence_transformers import SentenceTransformer  # type: ignore
+            self._model = SentenceTransformer(self._model_name)  # type: ignore
 
     def embed(self, texts: list[str]) -> Any: # Returns np.ndarray
         self._load()
@@ -58,7 +58,7 @@ class VectorStore:
         return len(self._documents)
 
     def add(self, embeddings: Any, documents: list[str]) -> None:
-        import numpy as np
+        import numpy as np  # type: ignore
         if len(embeddings) != len(documents):
             raise ValueError(f"Mismatch: {len(embeddings)} embeddings vs {len(documents)} documents")
         

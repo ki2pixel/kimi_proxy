@@ -12,27 +12,22 @@ import httpx
 from ...core.database import (
     get_active_session,
     save_metric,
-    update_metric_with_real_tokens,
-    get_session_total_tokens,
     get_session_cumulative_tokens,
-    get_session_by_id,
-    is_system_message,
-    update_session_first_prompt,
 )
 from ...core.tokens import count_tokens_tiktoken
-from ...core.constants import DEFAULT_MAX_CONTEXT, MCP_MAX_RESPONSE_TOKENS
+from ...core.constants import DEFAULT_MAX_CONTEXT
 from ...config.loader import get_config, get_observation_masking_schema1_config, get_context_pruning_config
 from ...config.display import get_max_context_for_session
 from ...services.websocket_manager import get_connection_manager
 from ...services.rate_limiter import get_rate_limiter
-from ...services.alerts import check_threshold_alert, create_context_limit_alert
 from ...proxy.router import get_target_url_for_session, get_provider_host_header, map_model_name
-from ...proxy.stream import stream_generator, extract_usage_from_response
-from ...proxy.client import create_proxy_client
+from ...proxy.stream import stream_generator
 from ...proxy.tool_utils import fix_tool_calls_in_request, normalize_tool_call_arguments
 from ...features.observation_masking import mask_old_tool_results, build_mask_policy_from_config
 from ...features.pruner_goal_hint import derive_goal_hint
 from ...proxy.context_pruning import prune_tool_messages_best_effort
+from ...proxy.transformers import build_gemini_endpoint, convert_to_gemini_format
+from ...features.mcp.auto_memory import detect_and_store_memories
 
 router = APIRouter()
 
@@ -128,10 +123,10 @@ async def proxy_chat(request: Request):
         
     session, new_session_created = process_auto_session(json_body, current_session)
     if new_session_created:
-        print(f"🔄 [AUTO SESSION] Nouvelle session créée: #{session['id']}")
+        print(f"🔄 [AUTO SESSION] Nouvelle session créée: #{session['id']}")  # type: ignore
         
-    max_context = get_max_context_for_session(session, models, DEFAULT_MAX_CONTEXT)
-    target_url = get_target_url_for_session(session, providers)
+    max_context = get_max_context_for_session(session, models, DEFAULT_MAX_CONTEXT)  # type: ignore
+    target_url = get_target_url_for_session(session, providers)  # type: ignore
     provider_key = session.get("provider", "managed:kimi-code") if session else "managed:kimi-code"
 
     sanitized_body_json = dict(json_body) if isinstance(json_body, dict) else {}
@@ -157,7 +152,7 @@ async def proxy_chat(request: Request):
             status_code=413
         )
         
-    metric_id = await _handle_metrics_and_compaction(session, estimated_tokens, max_context, effective_messages, json_body)
+    metric_id = await _handle_metrics_and_compaction(session, estimated_tokens, max_context, effective_messages, json_body)  # type: ignore
 
     print(f"📊 [PROXY] {estimated_tokens:,} tokens → {provider_key}")
 
@@ -172,8 +167,8 @@ async def proxy_chat(request: Request):
         providers=providers,
         models=models,
         target_url=target_url,
-        session=session,
-        metric_id=metric_id,
+        session=session,  # type: ignore
+        metric_id=metric_id,  # type: ignore
         max_context=max_context,
         request_tokens=estimated_tokens
     )
@@ -243,7 +238,7 @@ async def _handle_metrics_and_compaction(session: dict, estimated_tokens: int, m
             if msg.get("role") == "user" and msg.get("content"):
                 content_preview = str(msg.get("content"))[:100]
                 break
-    except Exception as e:
+    except Exception:
         content_preview = "Parse error"
     
     metric_id = save_metric(
@@ -255,7 +250,6 @@ async def _handle_metrics_and_compaction(session: dict, estimated_tokens: int, m
         source='proxy'
     )
     
-    from ...core.database import get_session_cumulative_tokens
     from ...features.compaction.auto_trigger import get_auto_trigger
     
     cumulative_tokens = get_session_cumulative_tokens(session["id"])["total_tokens"]
@@ -331,10 +325,11 @@ async def _proxy_to_provider(
     
     # Injection de la clé API
     if provider_api_key:
-        if provider_type != "gemini":
+        if provider_type == "gemini":
+            proxy_headers["x-goog-api-key"] = provider_api_key
+        else:
             proxy_headers["Authorization"] = f"Bearer {provider_api_key}"
-        masked_key = provider_api_key[:10] + "..." if len(provider_api_key) > 10 else "***"
-        print(f"🔑 Clé API {provider_key} injectée: {masked_key}")
+        print(f"🔑 Clé API {provider_key} injectée: [PRÉSENTE]")
     else:
         print(f"⚠️ Aucune clé API configurée pour {provider_key}")
     
@@ -383,7 +378,7 @@ async def _proxy_to_provider(
         # Construction URL et body
         if provider_type == "gemini":
             target_endpoint = build_gemini_endpoint(
-                target_url, body_json.get('model'), provider_api_key, body_json.get('stream', False)
+                target_url, str(body_json.get('model') or ""), body_json.get('stream', False)
             )
             clean_body = json.dumps(convert_to_gemini_format(body_json))
         else:
@@ -391,7 +386,7 @@ async def _proxy_to_provider(
             clean_body = json.dumps(body_json)
     except Exception as e:
         print(f"⚠️ Erreur parsing body: {e}")
-        clean_body = body
+        clean_body = body  # type: ignore
         target_endpoint = f"{target_url}/chat/completions"
     
     # Envoie la requête
@@ -645,6 +640,23 @@ async def _proxy_to_provider(
                     },
                     status_code=500
                 )
+
+            if response.status_code < 400:
+                try:
+                    resp_json = response.json()
+                    return JSONResponse(
+                        content=resp_json,
+                        status_code=response.status_code,
+                        headers=_filter_response_headers(dict(response.headers))
+                    )
+                except Exception:
+                    from fastapi import Response
+                    return Response(
+                        content=response.content,
+                        status_code=response.status_code,
+                        headers=_filter_response_headers(dict(response.headers)),
+                        media_type=response.headers.get("content-type")
+                    )
 
             return JSONResponse(
                 content={"error": response.text},

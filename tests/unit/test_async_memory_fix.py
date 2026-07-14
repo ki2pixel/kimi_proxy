@@ -9,9 +9,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 from kimi_proxy.features.mcp.auto_memory import (
-    AutomaticMemoryDetector,
-    detect_and_store_memories,
-    get_memory_detector
+    detect_and_store_memories
 )
 from kimi_proxy.features.mcp.memory import MemoryManager, get_memory_manager
 

@@ -232,24 +232,37 @@ def _check_circuit_breaker(server_name: str, request_json: dict, request_json_ob
     return None
 
 def _get_from_cache(server_name: str, request_json: dict) -> tuple[str | None, bool, JSONResponse | None]:
+    import copy
     is_read = _is_read_operation(request_json)
     cache_key = _get_cache_key(server_name, request_json) if is_read else None
     if is_read and cache_key in _GATEWAY_CACHE:
         ts, cached_resp = _GATEWAY_CACHE[cache_key]
         if time.time() - ts < _GATEWAY_CACHE_TTL:
             if isinstance(cached_resp, dict):
-                cached_resp["_gateway_cached"] = True
+                # Copie profonde pour éviter d'altérer la référence originale en cache
+                cached_resp_copy = copy.deepcopy(cached_resp)
+                cached_resp_copy["_gateway_cached"] = True
+                return cache_key, is_read, JSONResponse(content=cached_resp_copy)
             return cache_key, is_read, JSONResponse(content=cached_resp)
     return cache_key, is_read, None
 
 def _update_cache(server_name: str, cache_key: str | None, is_read: bool, masked: dict):
+    import copy
     if is_read and cache_key:
-        _GATEWAY_CACHE[cache_key] = (time.time(), masked)
+        # Borner le cache global à 512 entrées maximum (FIFO eviction)
+        if len(_GATEWAY_CACHE) >= 512:
+            try:
+                oldest_key = next(iter(_GATEWAY_CACHE))
+                _GATEWAY_CACHE.pop(oldest_key, None)
+            except (StopIteration, KeyError):
+                pass
+        # Copie profonde pour la thread-safety
+        _GATEWAY_CACHE[cache_key] = (time.time(), copy.deepcopy(masked))
     elif not is_read:
         prefix = f"{server_name}:"
         keys_to_del = [k for k in _GATEWAY_CACHE.keys() if k.startswith(prefix)]
         for k in keys_to_del:
-            del _GATEWAY_CACHE[k]
+            _GATEWAY_CACHE.pop(k, None)
 
 async def _pruner_callable(*, request_id: int, text: str, goal_hint: str, source_type: SourceType, options: PruneOptionsDict, call_timeout_ms: int):
     req = build_prune_text_request_jsonrpc(
@@ -270,7 +283,7 @@ async def _apply_pruning(server_name: str, request_json: dict, upstream_response
     try:
         toml_cfg = get_mcp_tool_pruning_config(get_config())
         pruning_cfg = resolve_mcp_tool_pruning_config(toml_cfg)
-        return await maybe_prune_jsonrpc_response(
+        return await maybe_prune_jsonrpc_response(  # type: ignore
             server_name=server_name,
             request_json=request_json,
             response_json=upstream_response,
@@ -307,16 +320,16 @@ async def api_mcp_gateway_rpc(server_name: str, request: Request):
         return JSONResponse(content=error_payload, status_code=400)
 
     cb_response = _check_circuit_breaker(server_name, request_json, request_json_obj, service)
-    if cb_response: return cb_response
+    if cb_response: return cb_response  # noqa
 
     cache_key, is_read, cached_response = _get_from_cache(server_name, request_json)
-    if cached_response: return cached_response
+    if cached_response: return cached_response  # noqa
 
     try:
         upstream_response = await forward_jsonrpc(server_name, request_json)
-        pruned_response = await _apply_pruning(server_name, request_json, upstream_response)
+        pruned_response = await _apply_pruning(server_name, request_json, upstream_response)  # type: ignore
         masked = service.mask_jsonrpc_response(pruned_response)
-        _update_cache(server_name, cache_key, is_read, masked)
+        _update_cache(server_name, cache_key, is_read, masked)  # type: ignore
         return JSONResponse(content=masked)
     except MCPGatewayUpstreamError as e:
         return _handle_gateway_error(e, request_json, service)

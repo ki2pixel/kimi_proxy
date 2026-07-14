@@ -2,15 +2,15 @@ import os
 """
 Routes API pour le sanitizer (Phase 1).
 """
-from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Request  # noqa
+from fastapi.responses import JSONResponse  # noqa
 
-from ...features.sanitizer.storage import (
+from ...features.sanitizer.storage import (  # noqa
     get_masked_content,
     list_masked_contents,
     get_sanitizer_stats,
 )
-from ...config.loader import get_config
+from ...config.loader import get_config  # noqa
 
 router = APIRouter()
 

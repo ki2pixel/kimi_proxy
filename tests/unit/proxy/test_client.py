@@ -4,9 +4,6 @@ Tests unitaires pour le client proxy HTTPX.
 Pourquoi: le client gère les timeouts, retries et connexions.
 Ces tests vérifient la robustesse réseau.
 """
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-import httpx
 
 from kimi_proxy.proxy.client import (
     ProxyClient,

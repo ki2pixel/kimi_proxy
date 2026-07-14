@@ -1,12 +1,10 @@
-import os
 """
 Logique de masking pour le sanitizer.
 """
-import hashlib
-from typing import List, Tuple, Dict, Any, Optional
+import os
+from typing import List, Tuple, Optional
 
 from ...core.tokens import count_tokens_text
-from ...core.database import get_db
 from .storage import save_masked_content, extract_tags_from_content
 
 
@@ -57,7 +55,7 @@ class ContentMasker:
         
         return False, "", content_tokens
     
-    def mask_message(self, message: dict, session_id: int = None) -> Tuple[dict, Optional[dict]]:
+    def mask_message(self, message: dict, session_id: Optional[int] = None) -> Tuple[dict, Optional[dict]]:
         """
         Masque un message si nécessaire.
         
@@ -115,7 +113,7 @@ Utilisez GET /api/mask/{content_hash} pour récupérer le contenu complet."""
         
         return masked_message, metadata
     
-    def sanitize_messages(self, messages: List[dict], session_id: int = None) -> Tuple[List[dict], dict]:
+    def sanitize_messages(self, messages: List[dict], session_id: Optional[int] = None) -> Tuple[List[dict], dict]:
         """
         Analyse et sanitize une liste de messages.
         
@@ -173,8 +171,8 @@ def create_preview(content: str, max_length: int = 200) -> str:
 
 def sanitize_messages(
     messages: List[dict],
-    session_id: int = None,
-    config: dict = None
+    session_id: Optional[int] = None,
+    config: Optional[dict] = None
 ) -> Tuple[List[dict], dict]:
     """
     Fonction utilitaire pour sanitizer des messages.

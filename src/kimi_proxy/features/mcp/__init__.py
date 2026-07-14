@@ -32,12 +32,14 @@ from .storage import (
 # Phase 3 - Avancé
 from .client import (
     MCPExternalClient,
-    MCPClientConfig,
+    get_mcp_client,
+    reset_mcp_client,
+)
+from .base.config import MCPClientConfig
+from .base.rpc import (
     MCPClientError,
     MCPConnectionError,
     MCPTimeoutError,
-    get_mcp_client,
-    reset_mcp_client,
 )
 from .memory import (
     MemoryManager,
@@ -99,4 +101,11 @@ __all__ = [
     # Phase 4
     "extract_phase4_tools",
     "get_detected_mcp_servers",
+    "ShrimpTaskMasterTask",
+    "ShrimpTaskMasterStats",
+    "SequentialThinkingStep",
+    "FileSystemResult",
+    "JsonQueryResult",
+    "MCPToolCall",
+    "MCPPhase4ServerStatus",
 ]

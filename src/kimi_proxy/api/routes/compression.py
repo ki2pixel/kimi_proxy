@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse
 from ...features.compression.storage import (
     compress_session_history,
     get_compression_stats,
-    get_session_compression_logs,
 )
 from ...core.database import get_session_by_id, get_session_total_tokens
 from ...config.display import get_max_context_for_session

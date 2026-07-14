@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 
 from kimi_proxy.features.pruner_goal_hint import GoalHintConfig, derive_goal_hint
 

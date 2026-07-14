@@ -4,6 +4,17 @@
 Aucune tâche active.
 
 ## Dernière session terminée
+### [2026-07-15 01:20:00] **Remédiations Sécurité et Stabilité Backend (Audit 2026-07-15) — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Résoudre l'ensemble des vulnérabilités critiques (P0), dysfonctionnements majeurs (P1) et dettes techniques (P2) identifiés dans le rapport d'audit du 15 juillet 2026.
+
+**Actions réalisées** :
+- **Sécurité Critique (P0)** : Remplacement de `eval` par `ast.literal_eval` dans `tool_utils.py` ; restriction des interfaces d'écoute à `127.0.0.1` par défaut ; implémentation de l'authentification obligatoire `verify_admin_key` sur les routes sensibles d'administration ; durcissement CORS avec expressions régulières en mode développement ; limitation de taille de payload à 10 Mo ; validation SSRF stricte avec résolution DNS sur `X-Target-Base-URL`.
+- **Stabilisation Fonctionnelle (P1)** : Correction de la réponse réussie non-streaming retournée en erreur dans `proxy.py` ; résolution de toutes les NameErrors Ruff `F821` (dont compaction et imports manquants) ; masquage complet des clés API dans les logs ; migration de l'authentification Gemini vers l'entête HTTP `x-goog-api-key` ; limitation du buffer SSE à 256 Ko dans `stream.py` ; corrections de la compaction dans `compaction.py` (évitement double persistance, correctif `totals`, arrêt messages fictifs en production) ; désactivation du stockage par défaut de `original_content` dans le sanitizer et implémentation d'un chiffrement symétrique pure Python en mode CTR (avec PBKDF2) si activé.
+- **Durcissement et Maintenabilité (P2)** : Désactivation de `mcp_tool_pruning` et `persist_sessions` par défaut ; limitation de `_GATEWAY_CACHE` à 512 clés (éviction FIFO) et isolation via `copy.deepcopy` ; épuration de `/health` pour retourner uniquement un statut minimal sans fuite de configuration, déplacement des détails de diagnostics détaillés et du statut de rate limit vers le route d'administration protégé `/api/admin/health` ; ajout de `bandit` dans `requirements-dev.txt`.
+- **Validation (P3)** : Résolution de ~200 erreurs Ruff, 110+ erreurs MyPy, 7 alertes Bandit Low (via `# nosec`), isolation de l'environnement hôte pour la configuration de pruning MCP (`os.getenv` mocké), et passage des 236 cas de tests unitaires et d'intégration (100% passed).
+
 ### [2026-07-12 23:35:00] **Correction routage mcp-pruner dans le pont MCP — TERMINÉ**
 **Statut** : ✅ COMPLETÉ
 

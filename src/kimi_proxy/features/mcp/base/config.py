@@ -3,7 +3,7 @@ Configuration MCP centralisée.
 
 Fournit MCPClientConfig pour tous les serveurs MCP.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
 

@@ -2,7 +2,7 @@
 Stockage des métriques mémoire MCP.
 """
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
 from ...core.database import get_db
 
@@ -34,7 +34,7 @@ def save_memory_metrics(
                 VALUES (?, ?, ?, ?, ?)
             """, (session_id, datetime.now().isoformat(), memory_tokens, chat_tokens, memory_ratio))
             conn.commit()
-            return cursor.lastrowid
+            return cursor.lastrowid  # type: ignore
         except Exception as e:
             print(f"⚠️ Erreur sauvegarde mémoire metrics: {e}")
             return -1

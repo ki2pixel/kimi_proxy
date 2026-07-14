@@ -5,7 +5,6 @@ Contrat attendu dans ce repo:
 - `/api/models` : liste JSON (format dashboard/interne)
 - `/models` : format OpenAI-compatible minimal {object:"list", data:[...]}
 """
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

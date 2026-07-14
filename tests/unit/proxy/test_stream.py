@@ -5,9 +5,7 @@ Pourquoi: le streaming est critique et complexe (async, erreurs réseau,
 extraction tokens). Ces tests vérifient la robustesse.
 """
 import pytest
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
-import asyncio
 
 import httpx
 
@@ -15,7 +13,6 @@ from kimi_proxy.proxy.stream import (
     stream_generator,
     extract_usage_from_stream,
     extract_usage_from_response,
-    _iter_stream_with_error_handling,
     STREAMING_ERROR_TYPES
 )
 

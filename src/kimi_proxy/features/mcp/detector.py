@@ -1,7 +1,7 @@
 """Détection des balises MCP et contenus mémoire."""
 import re
-from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass, field
+from typing import List, Dict, Any, Tuple
+from dataclasses import dataclass
 
 from ...core.constants import MCP_PATTERNS, MCP_MIN_MEMORY_TOKENS
 from ...core.tokens import count_tokens_text
@@ -51,7 +51,7 @@ class MCPDetector:
         Returns:
             Liste des segments détectés
         """
-        segments = []
+        segments = []  # type: ignore
         
         if not content or not isinstance(content, str):
             return segments
@@ -95,7 +95,7 @@ class MCPDetector:
         Returns:
             Liste des segments d'outils Phase 4 détectés
         """
-        segments = []
+        segments = []  # type: ignore
         
         if not content or not isinstance(content, str):
             return segments
@@ -193,7 +193,7 @@ def get_detected_mcp_servers(content: str, min_tokens: int = MCP_MIN_MEMORY_TOKE
     
     return {
         "phase4_servers": detector.get_detected_phase4_servers(content),
-        "has_mcp_content": detector.has_memory(content) or detector.has_phase4_tools(content)
+        "has_mcp_content": detector.has_memory(content) or detector.has_phase4_tools(content)  # type: ignore
     }
 
 

@@ -127,7 +127,7 @@ class MCPRPCClient:
         # Boucle de retry avec backoff exponentiel
         for attempt in range(self.max_retries):
             try:
-                start_time = datetime.now()
+                start_time = datetime.now()  # noqa
                 
                 # Appel HTTP POST vers /rpc
                 response = await client.post(

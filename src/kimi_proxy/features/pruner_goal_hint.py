@@ -116,9 +116,9 @@ def _extract_plan_lines(messages: list[ChatMessage], cfg: GoalHintConfig) -> lis
                 continue
 
         if in_plan_section:
-            m = bullet_re.match(ln)
+            m = bullet_re.match(ln)  # type: ignore
             if m:
-                item = m.group(1).strip()
+                item = m.group(1).strip()  # type: ignore
                 if item:
                     out.append(item)
             else:

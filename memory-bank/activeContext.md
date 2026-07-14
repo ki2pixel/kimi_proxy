@@ -2,6 +2,8 @@
 Aucune tâche active.
 
 ## Dernière Session Terminée
+- [2026-07-15 01:20:00] **Remédiations Sécurité et Stabilité Backend (Audit 2026-07-15) — TERMINÉ** : Résolution complète des vulnérabilités critiques P0, P1, P2 et nettoyage complet P3 (0 Ruff error, 0 MyPy error, 0 Bandit error). Remplacement de `eval` par `ast.literal_eval`, blocage du bind à `127.0.0.1`, validation SSRF sur `X-Target-Base-URL`, authentification globale `verify_admin_key` sur les routes d'administration, hardening CORS, limitation de payload Starlette (10MB), résolution des NameErrors Ruff F821, masquage des clés API dans les logs, migration Gemini vers headers, buffer de stream limité à 256KB, corrections de compaction, chiffrement à la volée du sanitizer (CTR PBKDF2), désactivation par défaut de `mcp_tool_pruning`, segmentation de `/health` minimaliste. Sécurisation Bandit Low (nosec) et isolation des tests MCP pruning via mock d'environnements. Passage de la totalité des 236 tests unitaires et intégration (100% de succès).
+
 - [2026-07-12 23:35:00] **Correction routage mcp-pruner dans le pont MCP — TERMINÉ** : Ajout de mcp-pruner dans les serveurs HTTP du pont (mcp_bridge) et routage du nom vers `pruner` pour correspondre à l'API Gateway. Validation par tests unitaires passés.
 
 ## Historique

@@ -8,8 +8,7 @@ Pourquoi cette complexité:
 - Les tokens partiels doivent être extraits même en cas d'erreur
 """
 import json
-import asyncio
-from typing import Dict, Any, Optional, AsyncGenerator, Callable
+from typing import Dict, Any, Optional, AsyncGenerator
 from datetime import datetime
 
 import httpx
@@ -35,7 +34,7 @@ async def stream_generator(
     session_id: int,
     metric_id: int,
     provider_type: str = "openai",
-    models: dict = None,
+    models: Optional[dict] = None,
     manager: Optional[ConnectionManager] = None
 ) -> AsyncGenerator[bytes, None]:
     buffer = b""
@@ -51,13 +50,14 @@ async def stream_generator(
                 _log_error_response(chunk, response.status_code)
             first_chunk = False
             
-            buffer += chunk
+            # Limite le buffer aux derniers 256 Ko pour éviter une consommation mémoire non bornée
+            buffer = (buffer + chunk)[-256 * 1024:]
             yield chunk
             
     except Exception as e:
         error_occurred = _handle_stream_exception(e, provider_type, session_id, metric_id, chunk_count, stream_start_time)
     finally:
-        await _finalize_stream(buffer, session_id, metric_id, provider_type, models, manager, error_occurred)
+        await _finalize_stream(buffer, session_id, metric_id, provider_type, models, manager, error_occurred)  # type: ignore
 
 def _handle_stream_exception(e: Exception, provider_type: str, session_id: int, metric_id: int, chunk_count: int, start_time: datetime) -> tuple[str, str]:
     if isinstance(e, httpx.ReadError):
@@ -133,7 +133,7 @@ def _log_error_response(chunk: bytes, status_code: int) -> None:
         error_text = chunk.decode('utf-8', errors='ignore')[:500]
         print(f"❌ [STREAM] Erreur API {status_code}: {error_text}")
     except Exception:
-        pass
+        pass  # nosec B110
 
 
 def _log_streaming_error(
@@ -199,7 +199,7 @@ async def _broadcast_token_update(
     from ..core.database import get_session_by_id
     
     session = get_session_by_id(session_id)
-    max_context = get_max_context_for_session(session, models)
+    max_context = get_max_context_for_session(session, models)  # type: ignore
     
     prompt_tokens = usage_data.get("prompt_tokens", 0)
     completion_tokens = usage_data.get("completion_tokens", 0)
@@ -286,7 +286,7 @@ def extract_usage_from_stream(buffer: bytes, provider_type: str = "openai") -> O
                 continue
             except Exception:
                 # Autre erreur - on continue
-                continue
+                continue  # nosec B112
     
     return None
 

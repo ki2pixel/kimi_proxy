@@ -10,7 +10,7 @@ Note d'architecture:
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Any, Optional, Literal
+from typing import Dict, Any, Optional
 
 from ..core.exceptions import ConfigurationError
 
@@ -259,9 +259,9 @@ def get_mcp_pruner_backend_config(config: Dict[str, Any]) -> MCPPrunerBackendCon
             parts = [p.strip() for p in raw.split(",")]
             mapped = []
             for p in parts:
-                if p in {"cloud", "deepinfra"}: mapped.append("deepinfra")
-                elif p in {"local", "rag", "local_rag"}: mapped.append("local_rag")
-                elif p in {"heuristic"}: mapped.append("heuristic")
+                if p in {"cloud", "deepinfra"}: mapped.append("deepinfra")  # noqa
+                elif p in {"local", "rag", "local_rag"}: mapped.append("local_rag")  # noqa
+                elif p in {"heuristic"}: mapped.append("heuristic")  # noqa
             if mapped:
                 backend = ",".join(mapped)
 

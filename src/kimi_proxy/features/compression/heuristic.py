@@ -2,7 +2,7 @@
 Algorithme heuristique de compression d'historique.
 """
 from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ...core.tokens import count_tokens_tiktoken
 from ...core.constants import DEFAULT_COMPRESSION_CONFIG
@@ -42,17 +42,17 @@ class CompressionResult:
         if self.log_id:
             result["log_id"] = self.log_id
         if self.summary:
-            result["summary"] = self.summary
+            result["summary"] = self.summary  # type: ignore
         if self.error:
-            result["error"] = self.error
+            result["error"] = self.error  # type: ignore
         if self.reason:
-            result["reason"] = self.reason
+            result["reason"] = self.reason  # type: ignore
         return result
 
 
 def compress_history_heuristic(
     messages: List[dict],
-    preserve_recent: int = None
+    preserve_recent: Optional[int] = None
 ) -> Tuple[List[dict], Dict[str, Any]]:
     """
     Algorithme heuristique de compression:

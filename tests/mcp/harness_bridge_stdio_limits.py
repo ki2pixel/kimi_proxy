@@ -1,5 +1,5 @@
-import tempfile
 #!/usr/bin/env python3
+from __future__ import annotations
 """Harness: verify scripts/mcp_bridge.py behavior under nominal + oversized stdout.
 
 This script starts the bridge in stdio relay mode but replaces the child command
@@ -13,15 +13,11 @@ Goals:
 Usage:
     python3 tests/mcp/harness_bridge_stdio_limits.py
 """
-
-from __future__ import annotations
-
-import json
-import os
-import subprocess
-import sys
-from pathlib import Path
-
+import json  # noqa
+import os  # noqa
+import subprocess  # noqa
+import tempfile  # noqa
+from pathlib import Path  # noqa
 
 def _send(proc: subprocess.Popen[bytes], msg: dict[str, object]) -> None:
     proc.stdin.write((json.dumps(msg, ensure_ascii=False) + "\n").encode("utf-8"))

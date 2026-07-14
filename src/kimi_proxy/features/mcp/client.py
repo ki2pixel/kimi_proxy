@@ -31,18 +31,12 @@ from kimi_proxy.core.models import (
     MCPCluster,
     MCPCompressionResult,
     MCPExternalServerStatus,
-    MCPPhase4ServerStatus,
-    ShrimpTaskMasterTask,
-    ShrimpTaskMasterStats,
-    SequentialThinkingStep,
-    FileSystemResult,
-    JsonQueryResult,
     MCPToolCall,
 )
 from kimi_proxy.core.tokens import count_tokens_text
 from kimi_proxy.core.constants import MCP_MAX_RESPONSE_TOKENS, MCP_CHUNK_OVERLAP_TOKENS
 from .base.config import MCPClientConfig
-from .base.rpc import MCPRPCClient, MCPClientError, MCPConnectionError, MCPTimeoutError
+from .base.rpc import MCPRPCClient
 from .servers import (
     QdrantMCPClient,
     CompressionMCPClient,
@@ -260,7 +254,7 @@ class MCPExternalClient:
         
         # Génère une clé unique pour cette opération chunkée
         key_data = f"{server_type}:{tool_name}:{str(params)}:{datetime.now().isoformat()}"
-        cache_key = hashlib.md5(key_data.encode()).hexdigest()[:16]
+        cache_key = hashlib.md5(key_data.encode(), usedforsecurity=False).hexdigest()[:16]
         
         # Stocke les métadonnées et chunks
         self._chunk_cache[cache_key] = {
@@ -335,7 +329,7 @@ class MCPExternalClient:
         """
         import hashlib
         key_data = f"{server_type}:{tool_name}:{json.dumps(params, sort_keys=True)}"
-        return hashlib.md5(key_data.encode()).hexdigest()[:16]
+        return hashlib.md5(key_data.encode(), usedforsecurity=False).hexdigest()[:16]
     
     def _should_cache_tool_result(self, tool_name: str, result: Dict[str, Any]) -> bool:
         """
@@ -394,7 +388,7 @@ class MCPExternalClient:
                     target_ratio=0.7  # Compression à 70%
                 )
                 
-                if compressed_result.success and compressed_result.compressed_content:
+                if compressed_result.success and compressed_result.compressed_content:  # type: ignore
                     print(f"🗜️ [COMPRESSION] Contenu compressé: {len(content)} → {len(compressed_result.compressed_content)} chars")
                     return f"[COMPRESSED CONTENT - {compressed_result.compression_ratio:.1%} saved]\n{compressed_result.compressed_content}"
             

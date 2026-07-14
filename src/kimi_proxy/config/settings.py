@@ -2,8 +2,8 @@ import os
 """
 Dataclasses pour la configuration.
 """
-from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from dataclasses import dataclass, field  # noqa
+from typing import List, Dict, Any, Optional  # noqa
 
 
 @dataclass

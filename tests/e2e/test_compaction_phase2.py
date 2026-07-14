@@ -9,20 +9,11 @@ Ces tests vérifient:
 - Les WebSocket events
 """
 import pytest
-import asyncio
-import json
-from datetime import datetime
-from typing import Dict, Any
 
 from fastapi.testclient import TestClient
-from fastapi import FastAPI
 
 from src.kimi_proxy.main import create_app
 from src.kimi_proxy.core.database import init_database, get_db, create_session
-from src.kimi_proxy.features.compaction.auto_trigger import (
-    AutoTriggerConfig,
-    get_auto_trigger,
-)
 
 
 @pytest.fixture(scope="module")
@@ -160,7 +151,7 @@ class TestCompactionIntegration:
         # 3. Verifie le statut auto-compaction
         response = client.get(f"/api/compaction/{session_id}/auto-status")
         assert response.status_code == 200
-        auto_status = response.json()
+        response.json()
         
         # 4. Bascule l'auto-compaction
         response = client.post(

@@ -5,8 +5,6 @@ Valide que les opérations CRUD de session fonctionnent correctement
 en mode in-memory (persist_sessions=false) et en mode SQLite fichier.
 """
 import os
-import sqlite3
-import time
 from unittest.mock import patch
 
 import pytest
@@ -159,7 +157,7 @@ class TestInMemorySessionCRUD:
             create_session, set_active_session, get_active_session
         )
         s1 = create_session("S1", provider="p1")
-        s2 = create_session("S2", provider="p2")
+        create_session("S2", provider="p2")
         # s2 est active, activons s1
         set_active_session(s1["id"])
         active = get_active_session()

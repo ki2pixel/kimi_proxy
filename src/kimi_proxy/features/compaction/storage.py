@@ -1,7 +1,7 @@
 """
 Stockage et persistance pour les opérations de compaction.
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 from ...core.database import (
     save_compaction_history,

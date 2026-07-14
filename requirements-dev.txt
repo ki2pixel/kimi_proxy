@@ -12,6 +12,7 @@ httpx>=0.24.0  # Pour les tests API
 black>=23.0.0
 ruff>=0.1.0
 mypy>=1.5.0
+bandit>=1.7.5
 
 # Documentation
 mkdocs>=1.5.0

@@ -57,7 +57,7 @@ def analyze_mcp_memory_in_messages(
     detector = MCPDetector(min_tokens=min_tokens)
     
     for msg in messages:
-        role = msg.get('role', '')
+        role = msg.get('role', '')  # noqa
         content = msg.get('content', '')
         
         if not isinstance(content, str):

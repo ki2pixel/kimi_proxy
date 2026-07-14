@@ -25,7 +25,7 @@ from typing import Literal
 
 from kimi_proxy.core.tokens import count_tokens_text
 
-from .deepinfra_client import DeepInfraClient
+from .deepinfra_client import DeepInfraClient, DeepInfraError
 
 
 JsonDict = dict[str, object]
@@ -65,7 +65,7 @@ async def compute_deepinfra_keep_set(
     try:
         setattr(deepinfra_client, "last_latency_ms", int(getattr(rerank_result, "elapsed_ms", 0)))
     except Exception:
-        pass
+        pass  # nosec B110
     
     new_keep_set = set()
     # On garde les meilleurs scores.

@@ -1,8 +1,7 @@
 """
 Résumé LLM pour la compression.
 """
-import json
-from typing import List, Dict, Any, Optional
+from typing import List
 
 import httpx
 
@@ -25,7 +24,6 @@ async def summarize_with_llm(messages: List[dict], session: dict) -> str:
     if not messages:
         return "[Historique précédent réservé]"
     
-    from ...config.display import get_max_context_for_session
     from ...proxy.router import get_target_url_for_session, get_provider_host_header
     
     # Construit le prompt de résumé
@@ -46,7 +44,7 @@ RÉSUMÉ:"""
     providers = config.get("providers", {})
     provider = providers.get(provider_key, {})
     provider_api_key = provider.get("api_key", "")
-    provider_type = provider.get("type", "openai")
+    provider_type = provider.get("type", "openai")  # noqa
     target_url = get_target_url_for_session(session, providers)
     
     if not provider_api_key:

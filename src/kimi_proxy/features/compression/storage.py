@@ -2,19 +2,18 @@
 Stockage des logs de compression.
 """
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Optional, Dict, Any, List
 
-from ...core.database import get_db, get_session_by_id, get_session_total_tokens
+from ...core.database import get_db, get_session_by_id
 from ...core.tokens import count_tokens_tiktoken
-from ...config.display import get_max_context_for_session
 from .heuristic import compress_history_heuristic, CompressionResult
 from .summarizer import summarize_with_llm
 
 
 async def compress_session_history(
     session_id: int,
-    config: dict = None,
-    models: dict = None,
+    config: Optional[dict] = None,
+    models: Optional[dict] = None,
     force: bool = False
 ) -> CompressionResult:
     """
@@ -150,7 +149,7 @@ async def compress_session_history(
     )
 
 
-def get_compression_stats(session_id: int = None) -> Dict[str, Any]:
+def get_compression_stats(session_id: Optional[int] = None) -> Dict[str, Any]:
     """
     Récupère les statistiques de compression.
     

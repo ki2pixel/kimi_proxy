@@ -12,8 +12,7 @@ Stockage:
 """
 import hashlib
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Tuple
-from collections import defaultdict
+from typing import Dict, Any, List, Optional
 
 from ...core.database import get_db
 from ...core.tokens import count_tokens_text
@@ -104,7 +103,7 @@ class MemoryManager:
         existing = self._get_db_memory_by_hash(content_hash)
         if existing:
             # Incrémente le compteur d'accès
-            await self._increment_access(existing.id)
+            await self._increment_access(existing.id)  # type: ignore
             return existing
         
         # Stocke dans Qdrant si disponible et type sémantique
@@ -407,9 +406,9 @@ class MemoryManager:
             cursor.execute("""
                 DELETE FROM mcp_memory_entries
                 WHERE memory_type = 'episodic'
-                AND datetime(created_at) < datetime('now', '-{} days')
+                AND datetime(created_at) < datetime('now', ?)
                 AND access_count < ?
-            """.format(max_age_days), (FREQUENT_ACCESS_THRESHOLD,))
+            """, (f"-{max_age_days} days", FREQUENT_ACCESS_THRESHOLD))
             deleted = cursor.rowcount
             conn.commit()
             return deleted
@@ -471,7 +470,7 @@ class MemoryManager:
             return self._get_db_memory_by_hash(self._generate_content_hash(compressed_content))
 
 
-import json  # Import manquant
+import json  # Import manquant  # noqa
 
 
 # Singleton

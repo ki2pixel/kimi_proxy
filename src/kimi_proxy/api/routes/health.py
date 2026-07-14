@@ -1,16 +1,17 @@
 """
 Routes API pour le health check.
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from ...core.database import get_active_session
 from ...config.display import get_max_context_for_session
 from ...config.loader import get_config
 from ...services.rate_limiter import get_rate_limiter
 from ...features.log_watcher import LogWatcher
+from ..dependencies import verify_admin_key
 
 # Instance globale du log watcher (sera injectée depuis main.py)
-_log_watcher: LogWatcher = None
+_log_watcher: LogWatcher = None  # type: ignore
 
 router = APIRouter()
 
@@ -23,7 +24,18 @@ def set_log_watcher(watcher: LogWatcher):
 
 @router.get("/health")
 async def health_check():
-    """Health check avec infos sur la session et le log watcher."""
+    """Health check public minimal."""
+    return {
+        "status": "ok",
+        "version": "2.0.0-mcp"
+    }
+
+
+@router.get("/api/admin/health")
+async def admin_health_check(
+    _ = Depends(verify_admin_key)
+):
+    """Health check détaillé protégé avec les états internes."""
     import os
     import dataclasses
     
@@ -72,12 +84,9 @@ async def health_check():
             "max_rpm": rate_limiter.max_rpm,
             "percentage": round(rate_limiter.get_rpm_percentage(), 1)
         }
-
     }
 
     # Phase 2D (observabilité): métriques pruning MCP tools/call.
-    # IMPORTANT: metadata-only; aucune fuite de payload.
-    # Exposition opt-in via env pour éviter de gonfler le /health en prod.
     expose_mcp_tool_pruning = os.getenv("KIMI_MCP_TOOL_PRUNING_METRICS_HEALTH", "").strip().lower() in {
         "1",
         "true",
@@ -93,16 +102,16 @@ async def health_check():
             snapshot = await collector.snapshot()
             payload["mcp_tool_pruning_metrics"] = dataclasses.asdict(snapshot)
         except Exception:
-            # Fail-open: le health check ne doit pas échouer si les métriques ne sont
-            # pas disponibles.
             payload["mcp_tool_pruning_metrics"] = {"error": "unavailable"}
 
     return payload
 
 
 @router.get("/api/rate-limit")
-async def get_rate_limit_status():
-    """Retourne le statut du rate limiting."""
+async def get_rate_limit_status(
+    _ = Depends(verify_admin_key)
+):
+    """Retourne le statut du rate limiting (protégé)."""
     rate_limiter = get_rate_limiter()
     rpm = rate_limiter.get_current_rpm()
     percentage = rate_limiter.get_rpm_percentage()

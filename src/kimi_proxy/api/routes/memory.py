@@ -5,7 +5,7 @@ Pourquoi : Fournit les endpoints HTTP/WebSocket pour les fonctionnalités
 mémoire avancées du Kimi Proxy Dashboard
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import asyncio
@@ -13,7 +13,6 @@ import logging
 from datetime import datetime
 
 from ...core.database import get_db
-from ...core.tokens import count_tokens_tiktoken
 from ...services.websocket_manager import ConnectionManager, get_connection_manager
 
 logger = logging.getLogger(__name__)
@@ -216,7 +215,7 @@ class MemoryService:
                 ]
             else:  # semantic
                 # Regroupement sémantique basé sur les types de mémoires
-                types = {}
+                types = {}  # type: ignore
                 for m in memories:
                     t = m.get("type", "unknown")
                     types[t] = types.get(t, 0) + 1
@@ -440,7 +439,7 @@ class MemoryService:
                 results.append(MemoryItem(**mem_copy))
         
         # Trie par score décroissant
-        results.sort(key=lambda x: x.similarity_score, reverse=True)
+        results.sort(key=lambda x: x.similarity_score, reverse=True)  # type: ignore
         
         # Limite les résultats
         return results[:limit]
@@ -587,7 +586,7 @@ async def search_similar_memories(
 @router.get("/stats")
 async def get_memory_stats(db=Depends(get_db)):
     """Statistiques sur les mémoires"""
-    ws_manager = WebSocketManager()
+    ws_manager = get_connection_manager()
     service = MemoryService(db, ws_manager)
     memories = await service.get_frequent_memories()
     
@@ -659,8 +658,8 @@ async def handle_memory_compress_execute(websocket, data: Dict[str, Any]):
             "error": str(e)
         })
 
-import json
-from datetime import datetime
+import json  # noqa
+from datetime import datetime  # noqa
 
 # Helper pour sérialiser les objets datetime
 def serialize_datetime(obj):

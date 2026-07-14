@@ -2,7 +2,6 @@
 Dataclasses métier pour Kimi Proxy Dashboard.
 """
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 

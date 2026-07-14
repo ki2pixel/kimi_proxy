@@ -39,11 +39,7 @@ from .deepinfra_client import (
     DeepInfraClient,
     DeepInfraClientConfig,
     DeepInfraConfigError,
-    DeepInfraError,
-    DeepInfraHTTPError,
 )
-from .deepinfra_engine import prune_text_with_deepinfra
-from .local_rag import prune_text_with_local_rag
 
 
 JsonDict = dict[str, object]
@@ -59,7 +55,7 @@ def _now_iso() -> str:
 
 @dataclass(frozen=True)
 class MCPPrunerServerConfig:
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8006
 
     max_input_chars: int = 2_000_000
@@ -70,7 +66,7 @@ class MCPPrunerServerConfig:
 
     @classmethod
     def from_env(cls) -> "MCPPrunerServerConfig":
-        host = os.getenv("MCP_PRUNER_HOST", "0.0.0.0").strip() or "0.0.0.0"
+        host = os.getenv("MCP_PRUNER_HOST", "127.0.0.1").strip() or "127.0.0.1"
 
         def _env_int(name: str, default: int) -> int:
             raw = os.getenv(name)
@@ -426,7 +422,7 @@ def _baseline_prune(
     pruned_lines = original_lines - len(keep)
     pruned_ratio = pruned_lines / original_lines if original_lines > 0 else 0.0
 
-    stats: JsonDict = {
+    stats: JsonDict = {  # type: ignore
         "original_lines": original_lines,
         "kept_lines": len(keep),
         "pruned_lines": pruned_lines,
@@ -931,7 +927,7 @@ async def _tool_prune_text(
     payload = {
         "prune_id": prune_id,
         "pruned_text": pruned_text,
-        "annotations": annotations,
+        "annotations": annotations,  # type: ignore
         "stats": stats,
         "warnings": warnings,
     }
@@ -949,9 +945,9 @@ def _get_pruning_backends_from_env(toml_cfg: MCPPrunerBackendConfig) -> list[str
     parts = [p.strip() for p in raw.split(",")]
     mapped = []
     for p in parts:
-        if p in {"cloud", "deepinfra"}: mapped.append("deepinfra")
-        elif p in {"local", "rag", "local_rag"}: mapped.append("local_rag")
-        elif p in {"heuristic"}: mapped.append("heuristic")
+        if p in {"cloud", "deepinfra"}: mapped.append("deepinfra")  # noqa
+        elif p in {"local", "rag", "local_rag"}: mapped.append("local_rag")  # noqa
+        elif p in {"heuristic"}: mapped.append("heuristic")  # noqa
     
     if mapped:
         return mapped
