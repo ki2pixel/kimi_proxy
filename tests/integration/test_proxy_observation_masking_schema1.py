@@ -1,16 +1,4 @@
-"""Tests d’intégration — Observation Masking Schéma 1 sur /chat/completions.
-
-Objectif:
-- Valider que le proxy applique (ou non) `mask_old_tool_results` sur `messages`
-  selon la config TOML (feature flag) avant l’envoi upstream.
-
-Stratégie:
-- App FastAPI minimale incluant uniquement `kimi_proxy.api.routes.proxy.router`
-- Patch local de `_proxy_to_provider` pour capturer le body réellement envoyé,
-  sans faire de réseau.
-- Patch local de `get_config` + helpers pour isoler le test.
-"""
-
+"""Tests d'intégration — Observation Masking Schéma 1 sur /v1/chat/completions."""
 from __future__ import annotations
 
 import json
@@ -18,10 +6,8 @@ from typing import AsyncGenerator
 
 import httpx
 import pytest
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
 
-import kimi_proxy.api.routes.proxy as proxy_routes
+from .passthrough_test_utils import make_app, patch_passthrough, target_headers
 
 
 def _make_tool_heavy_body() -> dict[str, object]:
@@ -61,60 +47,22 @@ def _make_tool_heavy_body() -> dict[str, object]:
 
 
 @pytest.fixture
-def app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(proxy_routes.router)
-    return app
-
-
-@pytest.fixture
-async def async_client(app: FastAPI) -> AsyncGenerator[httpx.AsyncClient, None]:
-    transport = httpx.ASGITransport(app=app)
+async def async_client() -> AsyncGenerator[httpx.AsyncClient, None]:
+    transport = httpx.ASGITransport(app=make_app())
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
-
-
-def _patch_proxy_for_test(monkeypatch, *, config: dict[str, object], captured_bodies: list[bytes]) -> None:
-    # Config isolée
-    monkeypatch.setattr(proxy_routes, "get_config", lambda: config)
-
-    # Évite DB / sessions / auto-session
-    monkeypatch.setattr(proxy_routes, "get_active_session", lambda: None)
-
-    import kimi_proxy.core.auto_session as auto_session
-
-    monkeypatch.setattr(auto_session, "process_auto_session", lambda _json, _current: (None, False))
-
-    # Évite le routing/config display
-    monkeypatch.setattr(proxy_routes, "get_target_url_for_session", lambda *_a, **_kw: "http://provider.test")
-    monkeypatch.setattr(proxy_routes, "get_max_context_for_session", lambda *_a, **_kw: 999999)
-
-    async def _fake_proxy_to_provider(**kwargs) -> JSONResponse:  # type: ignore[override]
-        body = kwargs.get("body")
-        if isinstance(body, (bytes, bytearray)):
-            captured_bodies.append(bytes(body))
-        elif isinstance(body, str):
-            captured_bodies.append(body.encode("utf-8"))
-        else:
-            captured_bodies.append(b"")
-        return JSONResponse({"ok": True})
-
-    monkeypatch.setattr(proxy_routes, "_proxy_to_provider", _fake_proxy_to_provider)
 
 
 @pytest.mark.asyncio
 async def test_schema1_disabled_keeps_messages_unchanged(monkeypatch, async_client: httpx.AsyncClient):
     captured: list[bytes] = []
     body = _make_tool_heavy_body()
-
-    config: dict[str, object] = {
-        "providers": {"managed:kimi-code": {"type": "openai", "base_url": "http://unused", "api_key": ""}},
-        "models": {"nvidia/kimi-k2.5": {"provider": "nvidia", "model": "moonshotai/kimi-k2.5", "max_context_size": 262144}},
+    config = {
         "observation_masking": {"schema1": {"enabled": False}},
     }
-    _patch_proxy_for_test(monkeypatch, config=config, captured_bodies=captured)
+    patch_passthrough(monkeypatch=monkeypatch, config=config, captured=captured)
 
-    resp = await async_client.post("/chat/completions", json=body)
+    resp = await async_client.post("/v1/chat/completions", json=body, headers=target_headers())
     assert resp.status_code == 200
 
     assert len(captured) == 1
@@ -126,10 +74,7 @@ async def test_schema1_disabled_keeps_messages_unchanged(monkeypatch, async_clie
 async def test_schema1_enabled_masks_old_tool_results(monkeypatch, async_client: httpx.AsyncClient):
     captured: list[bytes] = []
     body = _make_tool_heavy_body()
-
-    config: dict[str, object] = {
-        "providers": {"managed:kimi-code": {"type": "openai", "base_url": "http://unused", "api_key": ""}},
-        "models": {"nvidia/kimi-k2.5": {"provider": "nvidia", "model": "moonshotai/kimi-k2.5", "max_context_size": 262144}},
+    config = {
         "observation_masking": {
             "schema1": {
                 "enabled": True,
@@ -139,25 +84,21 @@ async def test_schema1_enabled_masks_old_tool_results(monkeypatch, async_client:
             }
         },
     }
-    _patch_proxy_for_test(monkeypatch, config=config, captured_bodies=captured)
+    patch_passthrough(monkeypatch=monkeypatch, config=config, captured=captured)
 
-    resp = await async_client.post("/chat/completions", json=body)
+    resp = await async_client.post("/v1/chat/completions", json=body, headers=target_headers())
     assert resp.status_code == 200
 
     assert len(captured) == 1
     sent = json.loads(captured[0].decode("utf-8"))
     messages = sent["messages"]
 
-    assert len(messages) == len(body["messages"])  # invariants length
-    assert messages[2]["tool_call_id"] == "call_1"  # id preserved
-
-    # call_1 old => masked
+    assert len(messages) == len(body["messages"])
+    assert messages[2]["tool_call_id"] == "call_1"
     assert isinstance(messages[2]["content"], str)
     assert "Observation masquée" in messages[2]["content"]
     assert "call_1" in messages[2]["content"]
     assert "fast_read_file" in messages[2]["content"]
-
-    # call_2 in window => kept
     assert messages[5]["content"] == "OK"
 
 
@@ -185,15 +126,10 @@ async def test_proxy_normalizes_tool_call_arguments_before_upstream(monkeypatch,
             {"role": "user", "content": "continue"},
         ],
     }
+    config = {"observation_masking": {"schema1": {"enabled": False}}}
+    patch_passthrough(monkeypatch=monkeypatch, config=config, captured=captured)
 
-    config: dict[str, object] = {
-        "providers": {"managed:kimi-code": {"type": "openai", "base_url": "http://unused", "api_key": ""}},
-        "models": {"nvidia/kimi-k2.5": {"provider": "nvidia", "model": "moonshotai/kimi-k2.5", "max_context_size": 262144}},
-        "observation_masking": {"schema1": {"enabled": False}},
-    }
-    _patch_proxy_for_test(monkeypatch, config=config, captured_bodies=captured)
-
-    resp = await async_client.post("/chat/completions", json=body)
+    resp = await async_client.post("/v1/chat/completions", json=body, headers=target_headers())
     assert resp.status_code == 200
 
     assert len(captured) == 1

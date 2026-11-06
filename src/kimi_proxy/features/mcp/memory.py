@@ -11,6 +11,7 @@ Stockage:
 - Qdrant: Vecteurs sémantiques
 """
 import hashlib
+import json
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
@@ -22,7 +23,6 @@ from .client import get_mcp_client, MCPExternalClient
 
 # Seuils de configuration
 FREQUENT_ACCESS_THRESHOLD = 3  # Nombre d'accès pour considérer comme fréquent
-FREQUENT_MEMORY_MIN_TOKENS = 100  # Tokens minimum pour mémoire fréquente
 EPISODIC_MEMORY_MAX_AGE_DAYS = 30  # Âge max mémoire épisodique
 
 
@@ -363,7 +363,8 @@ class MemoryManager:
                         SUM(CASE WHEN memory_type = 'episodic' THEN 1 ELSE 0 END) as episodic,
                         SUM(CASE WHEN memory_type = 'semantic' THEN 1 ELSE 0 END) as semantic,
                         SUM(token_count) as total_tokens,
-                        AVG(access_count) as avg_access
+                        AVG(access_count) as avg_access,
+                        COUNT(DISTINCT session_id) as distinct_sessions
                     FROM mcp_memory_entries
                     WHERE session_id = ?
                 """, (session_id,))
@@ -375,7 +376,8 @@ class MemoryManager:
                         SUM(CASE WHEN memory_type = 'episodic' THEN 1 ELSE 0 END) as episodic,
                         SUM(CASE WHEN memory_type = 'semantic' THEN 1 ELSE 0 END) as semantic,
                         SUM(token_count) as total_tokens,
-                        AVG(access_count) as avg_access
+                        AVG(access_count) as avg_access,
+                        COUNT(DISTINCT session_id) as distinct_sessions
                     FROM mcp_memory_entries
                 """)
             
@@ -388,6 +390,7 @@ class MemoryManager:
                 "semantic_memories": row[3] or 0,
                 "total_tokens": row[4] or 0,
                 "average_access_count": round(row[5] or 0, 2),
+                "distinct_sessions": row[6] or 0,
                 "qdrant_connected": self.mcp_client.is_qdrant_available()
             }
     
@@ -413,66 +416,6 @@ class MemoryManager:
             conn.commit()
             return deleted
     
-    async def compress_memory_if_beneficial(
-        self,
-        memory_id: int,
-        min_token_threshold: int = 500
-    ) -> Optional[MCPMemoryEntry]:
-        """
-        Compresse une mémoire si c'est bénéfique.
-        
-        Args:
-            memory_id: ID de la mémoire
-            min_token_threshold: Tokens minimum pour considérer la compression
-            
-        Returns:
-            Mémoire compressée ou None
-        """
-        with get_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT full_content, token_count, memory_type
-                FROM mcp_memory_entries
-                WHERE id = ?
-            """, (memory_id,))
-            row = cursor.fetchone()
-            
-            if not row or row[1] < min_token_threshold:
-                return None
-            
-            content, original_tokens, mem_type = row
-            
-            # Compression via MCP
-            compression_result = await self.mcp_client.compress_content(
-                content=content,
-                algorithm="context_aware",
-                target_ratio=0.5
-            )
-            
-            if compression_result.compression_ratio < 0.2:
-                # Pas assez de gain, abandonne
-                return None
-            
-            # Met à jour la mémoire avec le contenu compressé
-            compressed_content = compression_result.compressed_content
-            new_token_count = compression_result.compressed_tokens
-            
-            cursor.execute("""
-                UPDATE mcp_memory_entries
-                SET full_content = ?,
-                    token_count = ?,
-                    metadata = json_set(COALESCE(metadata, '{}'), '$.compressed', 'true')
-                WHERE id = ?
-            """, (compressed_content, new_token_count, memory_id))
-            conn.commit()
-            
-            # Retourne l'entrée mise à jour
-            return self._get_db_memory_by_hash(self._generate_content_hash(compressed_content))
-
-
-import json  # Import manquant  # noqa
-
-
 # Singleton
 _memory_manager: Optional[MemoryManager] = None
 
@@ -483,9 +426,3 @@ def get_memory_manager(mcp_client: Optional[MCPExternalClient] = None) -> Memory
     if _memory_manager is None:
         _memory_manager = MemoryManager(mcp_client)
     return _memory_manager
-
-
-def reset_memory_manager():
-    """Réinitialise le gestionnaire de mémoire (pour tests)."""
-    global _memory_manager
-    _memory_manager = None

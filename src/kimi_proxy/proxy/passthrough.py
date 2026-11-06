@@ -7,10 +7,9 @@ sont appliquees avant envoi au provider.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
-import re
-import socket
 import urllib.parse
 import ipaddress
 from typing import Dict, Any
@@ -24,7 +23,6 @@ from ..config.loader import (
     get_observation_masking_schema1_config,
     get_context_pruning_config,
 )
-from ..core.constants import DEFAULT_PROVIDER
 from ..features.observation_masking import mask_old_tool_results, build_mask_policy_from_config
 from ..features.pruner_goal_hint import derive_goal_hint
 from .tool_utils import fix_tool_calls_in_request, normalize_tool_call_arguments
@@ -35,16 +33,7 @@ from .router import get_provider_host_header
 from .transformers import build_gemini_endpoint, convert_to_gemini_format
 
 
-def sanitize_url(url: str) -> str:
-    """Masque les clés d'API et jetons sensibles dans les URLs."""
-    if not url:
-        return url
-    url = re.sub(r'([?&]key=)[^&]*', r'\1[MASQUÉ]', url)
-    url = re.sub(r'([?&]api_key=)[^&]*', r'\1[MASQUÉ]', url)
-    return url
-
-
-def validate_and_normalize_target_url(url_str: str) -> str:
+async def validate_and_normalize_target_url(url_str: str) -> str:
     """
     Normalise et valide une URL cible pour éviter les failles SSRF.
     - Utilise urllib.parse pour découper l'URL.
@@ -76,9 +65,12 @@ def validate_and_normalize_target_url(url_str: str) -> str:
     elif scheme != "https":
         raise ValueError(f"Protocole non supporté : {scheme}. Seuls HTTP (dev local uniquement) et HTTPS sont autorisés.")
 
-    # 2. Résolution DNS & Protection SSRF (IP check)
+    # 2. Résolution DNS & Protection SSRF (IP check, non bloquante)
     try:
-        addr_info = socket.getaddrinfo(host, port or (443 if scheme == "https" else 80))
+        loop = asyncio.get_running_loop()
+        addr_info = await loop.getaddrinfo(
+            host, port or (443 if scheme == "https" else 80)
+        )
         resolved_ips = {info[4][0] for info in addr_info}
     except Exception as dns_err:
         raise ValueError(f"Impossible de résoudre l'hôte '{host}' : {dns_err}")
@@ -131,93 +123,31 @@ def validate_and_normalize_target_url(url_str: str) -> str:
     return rebuilt
 
 
-def resolve_target(
+async def resolve_target(
     request: Request,
     body_json: Dict[str, Any],
-    providers: Dict[str, Any],
 ) -> tuple[str, str, str | None]:
-    """Resout la cule finale (base_url, provider_type, api_key).
+    """Résout la cible finale (base_url, provider_type, api_key).
 
-    Architecture radicale (priorite):
-        1. Header X-Target-Base-URL → cible directe (agnostique provider)
+    Architecture radicale :
+        1. Header X-Target-Base-URL → cible directe
         2. Header X-Provider-Type → type de provider (openai/gemini/...)
-        3. Legacy: resolution provider depuis config.toml (fallback)
-
-    Args:
-        request: Requete FastAPI entrante.
-        body_json: Body JSON deja parse.
-        providers: Dictionnaire des providers depuis config.toml.
-
-    Returns:
-        Tuple (base_url, provider_type, api_key_optionnel).
+        3. Authorization → clé provider du client
     """
-    # === Architecture radicale : Cline envoie la cible ===
     target_base_url = request.headers.get("x-target-base-url")
-    if target_base_url and isinstance(target_base_url, str):
-        provider_type = request.headers.get("x-provider-type", "openai")
-        # Validation SSRF de la cible
-        validated_url = validate_and_normalize_target_url(target_base_url)
-        # Cline envoie sa propre cle dans Authorization
-        auth_header = request.headers.get("authorization")
-        api_key = None
-        if auth_header and auth_header.startswith("Bearer "):
-            api_key = auth_header[7:]
-        print(f"🎯 [PASSTHROUGH] Cible radicale valide: {validated_url} (type={provider_type})")
-        return validated_url, provider_type.strip(), api_key
+    if not target_base_url or not isinstance(target_base_url, str):
+        return "", "openai", None
 
-    # === Legacy : resolution depuis config.toml ===
-    provider_key = _resolve_provider_legacy(request, body_json)
-    provider_cfg = providers.get(provider_key, {}) if isinstance(providers, dict) else {}
-    if not isinstance(provider_cfg, dict):
-        provider_cfg = {}
-    base_url = provider_cfg.get("base_url", "")
-    provider_type = provider_cfg.get("type", "openai")
-    api_key_raw = provider_cfg.get("api_key", "")
-    api_key = api_key_raw.strip() if isinstance(api_key_raw, str) else None
-    return base_url, provider_type, api_key
+    provider_type = request.headers.get("x-provider-type", "openai")
+    validated_url = await validate_and_normalize_target_url(target_base_url)
 
+    auth_header = request.headers.get("authorization")
+    api_key = None
+    if auth_header and auth_header.startswith("Bearer "):
+        api_key = auth_header[7:]
 
-def _resolve_provider_legacy(request: Request, body_json: Dict[str, Any]) -> str:
-    """Resolution provider legacy (config.toml) — fallback.
-
-    Ordre:
-        1. Header X-Provider
-        2. Champ "provider" dans le body JSON
-        3. Prefix du nom du modele ("provider/model")
-        4. DEFAULT_PROVIDER
-    """
-    provider_header = request.headers.get("x-provider")
-    if provider_header and isinstance(provider_header, str):
-        return provider_header.strip()
-
-    body_provider = body_json.get("provider")
-    if isinstance(body_provider, str) and body_provider:
-        return body_provider.strip()
-
-    model = body_json.get("model", "")
-    if isinstance(model, str) and "/" in model:
-        return model.split("/", 1)[0]
-
-    return DEFAULT_PROVIDER
-
-
-def _map_model_for_provider(model_name: str, provider_key: str) -> str:
-    """Mappe le nom du modele pour le provider.
-
-    Si le modele commence par 'provider_key/', retire le prefix.
-    Sinon, passe le nom tel quel au provider.
-
-    Args:
-        model_name: Nom du modele envoye par le client.
-        provider_key: Cle du provider cible.
-
-    Returns:
-        Nom du modele a envoyer au provider.
-    """
-    prefix = f"{provider_key}/"
-    if model_name.startswith(prefix):
-        return model_name[len(prefix):]
-    return model_name
+    print(f"🎯 [PASSTHROUGH] Cible radicale valide: {validated_url} (type={provider_type})")
+    return validated_url, provider_type.strip(), api_key
 
 
 class PassthroughProcessor:
@@ -225,8 +155,6 @@ class PassthroughProcessor:
 
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.providers = config.get("providers", {})
-        self.models = config.get("models", {})
 
     async def apply_features(self, body_json: Dict[str, Any]) -> Dict[str, Any]:
         """Applique les features MCP au body de la requete.
@@ -297,8 +225,7 @@ class PassthroughProcessor:
     ) -> JSONResponse | StreamingResponse:
         """Forward la requete vers le provider avec gestion streaming/non-streaming.
 
-        Architecture radicale: Cline envoie X-Target-Base-URL et Authorization.
-        Fallback legacy: utilise la config providers de config.toml.
+        Le client envoie X-Target-Base-URL et Authorization.
 
         Args:
             body_json: Body JSON OpenAI-compatible (deja nettoye par apply_features).
@@ -309,9 +236,7 @@ class PassthroughProcessor:
             StreamingResponse ou JSONResponse selon le mode demande.
         """
         try:
-            base_url, provider_type, api_key = resolve_target(
-                request, body_json, self.providers
-            )
+            base_url, provider_type, api_key = await resolve_target(request, body_json)
         except ValueError as val_err:
             return JSONResponse(
                 content={
@@ -327,8 +252,7 @@ class PassthroughProcessor:
                     "error": "Cible manquante",
                     "message": (
                         "Aucune cible specifiee. "
-                        "Envoyez X-Target-Base-URL (architecture radicale) "
-                        "ou configurez le provider dans config.toml (legacy)."
+                        "Envoyez X-Target-Base-URL avec votre requete."
                     ),
                 },
                 status_code=503,
@@ -359,18 +283,6 @@ class PassthroughProcessor:
         for h in ("x-request-id",):
             if h in raw_headers:
                 proxy_headers[h] = raw_headers[h]
-
-        # Mapping du modele (retire le prefix provider/ si present)
-        model_name = body_json.get("model", "")
-        if isinstance(model_name, str) and "/" in model_name:
-            # En mode radicale, le modele est envoye tel quel par Cline
-            # On ne mappe que si un prefix legacy est detecte
-            parts = model_name.split("/", 1)
-            if parts[0] in self.providers:
-                mapped_model = parts[1]
-                body_json = dict(body_json)
-                body_json["model"] = mapped_model
-                print(f"📝 [PASSTHROUGH] Modele legacy mappe: {model_name} -> {mapped_model}")
 
         is_streaming = bool(body_json.get("stream", False))
 
@@ -410,14 +322,7 @@ class PassthroughProcessor:
                     )
 
                 return StreamingResponse(
-                    stream_generator(
-                        response,
-                        session_id=0,
-                        metric_id=0,
-                        provider_type=provider_type,
-                        models=self.models,
-                        manager=None,
-                    ),
+                    stream_generator(response),
                     status_code=response.status_code,
                     headers={
                         "Content-Type": response.headers.get(

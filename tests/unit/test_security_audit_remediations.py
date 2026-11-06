@@ -15,35 +15,30 @@ def test_eval_replacement():
 
 
 # Test SSRF protection
-def test_ssrf_protection(monkeypatch):
+@pytest.mark.asyncio
+async def test_ssrf_protection(monkeypatch):
     from kimi_proxy.proxy.passthrough import validate_and_normalize_target_url
-    
+
     # 1. En mode developpement
     monkeypatch.setenv("KIMI_ENV", "development")
-    # Loopback doit passer
-    url_dev_ok = validate_and_normalize_target_url("http://localhost:8000")
+    url_dev_ok = await validate_and_normalize_target_url("http://localhost:8000")
     assert "localhost:8000" in url_dev_ok
-    
-    # Hôte externe HTTP non-sécurisé doit être rejeté
+
     with pytest.raises(ValueError, match="HTTP non sécurisé est interdit"):
-        validate_and_normalize_target_url("http://api.openai.com")
+        await validate_and_normalize_target_url("http://api.openai.com")
 
     # 2. En mode production
     monkeypatch.setenv("KIMI_ENV", "production")
-    # Loopback/adresses privées doivent être rejetées
     with pytest.raises(ValueError, match="Le protocole HTTP non sécurisé est interdit"):
-         validate_and_normalize_target_url("http://127.0.0.1")
-         
+        await validate_and_normalize_target_url("http://127.0.0.1")
+
     with pytest.raises(ValueError, match="Accès à une adresse IP interdite/privée"):
-         # 127.0.0.1 résolu ou passé directement
-         validate_and_normalize_target_url("https://127.0.0.1")
-         
-    # Hôtes non autorisés par l'allowlist par défaut
+        await validate_and_normalize_target_url("https://127.0.0.1")
+
     with pytest.raises(ValueError, match="pas autorisé par l'allowlist"):
-         validate_and_normalize_target_url("https://evil-domain.com/api")
-         
-    # Hôtes autorisés par l'allowlist
-    url_prod_ok = validate_and_normalize_target_url("https://api.openai.com/v1")
+        await validate_and_normalize_target_url("https://evil-domain.com/api")
+
+    url_prod_ok = await validate_and_normalize_target_url("https://api.openai.com/v1")
     assert url_prod_ok == "https://api.openai.com/v1"
 
 

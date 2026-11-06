@@ -1,8 +1,6 @@
-"""
-Kimi Proxy MCP - Application FastAPI Factory.
-Proxy streaming + SQLite + WebSockets pour monitoring temps réel.
-Intégration Log Watcher pour PyCharm/Continue.
-Frontend Dashboard déprécié — utiliser les serveurs MCP via scripts/start-mcp-servers.sh.
+"""Kimi Proxy Middleware MCP - Application FastAPI Factory.
+
+Proxy streaming SSE, gateway MCP et log watcher optionnel.
 """
 import os
 import time
@@ -13,12 +11,11 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from .core.database import init_database, create_session, get_active_session
+from .core.database import init_database
 from .config.loader import load_config, get_log_watcher_config
 
 from .features.log_watcher import create_log_watcher
 from .api.router import api_router
-from .api.routes.health import set_log_watcher
 
 
 def _get_log_source_family(source_type: str, metrics) -> str:
@@ -125,10 +122,10 @@ def create_app() -> FastAPI:
         await _shutdown(app)
     
     app = FastAPI(
-        title="Kimi Proxy Dashboard",
-        description="Proxy transparent avec monitoring temps réel de tokens LLM",
+        title="Kimi Proxy Middleware MCP",
+        description="Middleware MCP session-less avec streaming SSE",
         version="2.0.0",
-        lifespan=lifespan
+        lifespan=lifespan,
     )
     
     # CORS durci selon le profil
@@ -203,14 +200,13 @@ def create_app() -> FastAPI:
     # Inclusion des routes API
     app.include_router(api_router)
     
-    # Route racine MCP (frontend déprécié)
     @app.get("/")
     async def root():
         return JSONResponse({
             "status": "opérationnel",
-            "service": "Kimi Proxy MCP",
-            "message": "Frontend Dashboard déprécié. Utilisez /api/* ou les serveurs MCP via scripts/start-mcp-servers.sh.",
-            "version": "2.0.0-mcp"
+            "service": "Kimi Proxy Middleware MCP",
+            "message": "Utilisez /v1/chat/completions, /models ou les serveurs MCP.",
+            "version": "2.0.0-mcp",
         })
     
 
@@ -240,28 +236,17 @@ def _startup(app: FastAPI):
     if _should_persist():
         print("💾 Mode persistance SQLite (fichier)")
     else:
-        print("⚡ Mode sessions en mémoire (SQLite :memory:)")
-    
-    # Session par defaut uniquement en mode legacy (providers configures)
-    if providers and not get_active_session():
-        provider_key = "managed:kimi-code"
-        create_session("Session par défaut", provider_key)
-        print(f"✅ Session par défaut créée (provider: {provider_key})")
-    
+        print("⚡ Mode mémoire SQLite (:memory:)")
+
     # Démarre le Log Watcher
     error_log_cache: dict[str, float] = {}
     
     async def broadcast_log_metrics(metrics, watcher):
         """Callback pour diffuser les métriques du log watcher."""
-        from .core.database import get_active_session
         from .config.display import get_max_context_for_session
-        
-        session = get_active_session()
-        if not session:
-            return
-        
+
         max_context = watcher.get_max_context(
-            get_max_context_for_session(session, models)
+            get_max_context_for_session(None, models)
         )
         total_tokens = metrics.total_tokens
         percentage = (total_tokens / max_context) * 100 if max_context > 0 else 0
@@ -288,11 +273,7 @@ def _startup(app: FastAPI):
         elif source_family == "kimi_global":
             print(f"📊 [KIMI GLOBAL] Context: {metrics.context_length} ({percentage:.1f}%)")
         elif source_family == "kimi_session":
-            # En architecture radicale, les sessions sont gerees par Cline
-            # Ne logger que si une session legacy existe
-            active = get_active_session()
-            if active:
-                print(f"📊 [KIMI SESSION] Tokens: {total_tokens} ({percentage:.1f}%)")
+            print(f"📊 [KIMI SESSION] Tokens: {total_tokens} ({percentage:.1f}%)")
         elif total_tokens > 100:
             print(f"📊 [LOGS] Tokens: {total_tokens} ({percentage:.1f}%)")
     
@@ -301,10 +282,7 @@ def _startup(app: FastAPI):
     # Stocke le log watcher dans l'app state
     app.state.log_watcher = log_watcher
     app.state.config = config
-    
-    # Enregistre pour le health check
-    set_log_watcher(log_watcher)
-    
+
     # Démarre le watcher (dans la lifespan async) uniquement si activé
     log_watcher_cfg = get_log_watcher_config(config)
     env_enabled_str = os.environ.get("LOG_WATCHER_ENABLED", "false").lower()

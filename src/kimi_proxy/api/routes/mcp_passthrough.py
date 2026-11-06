@@ -4,8 +4,8 @@ Pourquoi: permettre a n'importe quel modele de transiter via le proxy
 sans session pre-configuree. Les features MCP (tool fixing,
 observation masking, context pruning) sont appliquees avant envoi.
 
-Retro-compatibilite: la route /chat/completions existante est conservee
-et inchangee.
+La route historique /chat/completions a été retirée ; /v1/chat/completions
+est l'unique point d'entrée OpenAI-compatible.
 """
 from __future__ import annotations
 

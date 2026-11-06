@@ -6,7 +6,7 @@ Pourquoi cette complexité:
 - Le streaming nécessite des timeouts plus longs
 - Les retries doivent être intelligents (pas sur les 4xx)
 """
-from typing import Dict, Optional
+from typing import Dict
 import asyncio
 
 import httpx
@@ -65,10 +65,9 @@ class ProxyClient:
         """
         Envoie une requête en mode streaming avec retry.
         
-        Pourquoi retry seulement sur certaines erreurs:
-        - 5xx: peut être temporaire, on retry
-        - ReadError/ConnectError: problème réseau, on retry
-        - 4xx: erreur client, on ne retry pas
+        Retry uniquement sur les erreurs réseau (ReadError, ConnectError,
+        TimeoutException). Les réponses 4xx/5xx sont retournées telles quelles
+        et traitées par la couche appelante.
         """
         timeout = PROVIDER_TIMEOUTS.get(provider_type, self.timeout)
         last_error = None

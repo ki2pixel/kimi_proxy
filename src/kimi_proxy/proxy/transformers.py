@@ -1,33 +1,15 @@
 """
 Transformations de format entre OpenAI et autres APIs (Gemini, etc.).
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
-def build_gemini_endpoint(
-    base_url: str,
-    model: str,
-    api_key_or_stream: Optional[Any] = None,
-    stream: bool = False
-) -> str:
+def build_gemini_endpoint(base_url: str, model: str, stream: bool = False) -> str:
+    """Construit l'endpoint Gemini sans clé API en query param.
+
+    La clé est passée via le header ``x-goog-api-key``.
     """
-    Construit l'endpoint Gemini (sans clé API en query param pour la sécurité).
-    La clé doit être passée via le header 'x-goog-api-key'.
-    
-    Args:
-        base_url: URL de base de l'API
-        model: Nom du modèle
-        api_key_or_stream: Clé API (legacy) ou booléen pour le stream
-        stream: Si True, utilise streamGenerateContent
-        
-    Returns:
-        URL complète
-    """
-    actual_stream = stream
-    if isinstance(api_key_or_stream, bool):
-        actual_stream = api_key_or_stream
-        
-    action = "streamGenerateContent" if actual_stream else "generateContent"
+    action = "streamGenerateContent" if stream else "generateContent"
     return f"{base_url.rstrip('/')}/models/{model}:{action}"
 
 

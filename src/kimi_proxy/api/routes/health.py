@@ -1,25 +1,7 @@
-"""
-Routes API pour le health check.
-"""
-from fastapi import APIRouter, Depends
-
-from ...core.database import get_active_session
-from ...config.display import get_max_context_for_session
-from ...config.loader import get_config
-from ...services.rate_limiter import get_rate_limiter
-from ...features.log_watcher import LogWatcher
-from ..dependencies import verify_admin_key
-
-# Instance globale du log watcher (sera injectée depuis main.py)
-_log_watcher: LogWatcher = None  # type: ignore
+"""Routes API pour le health check."""
+from fastapi import APIRouter
 
 router = APIRouter()
-
-
-def set_log_watcher(watcher: LogWatcher):
-    """Définit l'instance du log watcher pour le health check."""
-    global _log_watcher
-    _log_watcher = watcher
 
 
 @router.get("/health")
@@ -27,106 +9,5 @@ async def health_check():
     """Health check public minimal."""
     return {
         "status": "ok",
-        "version": "2.0.0-mcp"
-    }
-
-
-@router.get("/api/admin/health")
-async def admin_health_check(
-    _ = Depends(verify_admin_key)
-):
-    """Health check détaillé protégé avec les états internes."""
-    import os
-    import dataclasses
-    
-    config = get_config()
-    models = config.get("models", {})
-    
-    session = get_active_session()
-    max_context = get_max_context_for_session(session, models)
-    
-    # Vérifie si le log watcher est actif
-    log_watcher_status = "running" if _log_watcher and _log_watcher.running else "stopped"
-    log_file_exists = os.path.exists(_log_watcher.log_path) if _log_watcher else False
-    source_states = []
-    source_summary = {
-        "total": 0,
-        "available": 0,
-        "healthy": 0,
-        "source_ids": [],
-        "source_kinds": [],
-    }
-    if _log_watcher:
-        source_states = [state.to_dict() for state in _log_watcher.get_source_states()]
-        source_summary = {
-            "total": len(source_states),
-            "available": sum(1 for state in source_states if state.get("available")),
-            "healthy": sum(1 for state in source_states if state.get("healthy")),
-            "source_ids": [state.get("source_id") for state in source_states],
-            "source_kinds": sorted({state.get("source_kind") for state in source_states if state.get("source_kind")}),
-        }
-    
-    rate_limiter = get_rate_limiter()
-
-    payload: dict[str, object] = {
-        "status": "ok",
-        "max_context": max_context,
-        "active_session": session,
-        "log_watcher": {
-            "status": log_watcher_status,
-            "log_file_exists": log_file_exists,
-            "log_path": _log_watcher.log_path if _log_watcher else None,
-            "sources": source_states,
-            "summary": source_summary,
-        },
-        "rate_limit": {
-            "current_rpm": rate_limiter.get_current_rpm(),
-            "max_rpm": rate_limiter.max_rpm,
-            "percentage": round(rate_limiter.get_rpm_percentage(), 1)
-        }
-    }
-
-    # Phase 2D (observabilité): métriques pruning MCP tools/call.
-    expose_mcp_tool_pruning = os.getenv("KIMI_MCP_TOOL_PRUNING_METRICS_HEALTH", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "y",
-        "on",
-    }
-    if expose_mcp_tool_pruning:
-        try:
-            from .mcp_gateway import get_mcp_tool_pruning_metrics_collector
-
-            collector = get_mcp_tool_pruning_metrics_collector()
-            snapshot = await collector.snapshot()
-            payload["mcp_tool_pruning_metrics"] = dataclasses.asdict(snapshot)
-        except Exception:
-            payload["mcp_tool_pruning_metrics"] = {"error": "unavailable"}
-
-    return payload
-
-
-@router.get("/api/rate-limit")
-async def get_rate_limit_status(
-    _ = Depends(verify_admin_key)
-):
-    """Retourne le statut du rate limiting (protégé)."""
-    rate_limiter = get_rate_limiter()
-    rpm = rate_limiter.get_current_rpm()
-    percentage = rate_limiter.get_rpm_percentage()
-    
-    status = "normal"
-    if rpm >= rate_limiter.critical_threshold:
-        status = "critical"
-    elif rpm >= rate_limiter.warning_threshold:
-        status = "warning"
-    elif rpm >= rate_limiter.max_rpm * 0.5:
-        status = "elevated"
-    
-    return {
-        "status": status,
-        "current_rpm": rpm,
-        "max_rpm": rate_limiter.max_rpm,
-        "percentage": round(percentage, 1)
+        "version": "2.0.0-mcp",
     }

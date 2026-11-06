@@ -1,24 +1,15 @@
-"""
-Routes API par domaine.
-"""
+"""Routes API par domaine."""
 
-from . import proxy
 from . import sanitizer
 from . import mcp
-from . import compression
-from . import compaction
 from . import health
-
 from . import models
 from . import mcp_gateway
 from . import mcp_passthrough
 
 __all__ = [
-    "proxy",
     "sanitizer",
     "mcp",
-    "compression",
-    "compaction",
     "health",
     "models",
     "mcp_gateway",

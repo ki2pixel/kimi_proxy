@@ -6,15 +6,6 @@ DEFAULT_MAX_CONTEXT = 262144  # 256K tokens
 DATABASE_FILE = "sessions.db"
 DEFAULT_PROVIDER = "managed:kimi-code"
 
-# MCP tool response chunking
-MCP_MAX_RESPONSE_TOKENS = 50000
-MCP_CHUNK_OVERLAP_TOKENS = 1000
-
-# Rate limiting
-MAX_RPM = 40
-RATE_LIMIT_WARNING_THRESHOLD = 0.875
-RATE_LIMIT_CRITICAL_THRESHOLD = 0.95
-
 # Sanitizer
 DEFAULT_SANITIZER_CONFIG = {
     "enabled": True,
@@ -28,21 +19,6 @@ DEFAULT_SANITIZER_CONFIG = {
 DEFAULT_MCP_CB_ENABLED = True
 DEFAULT_MCP_CB_MAX_FAILURES = 5
 DEFAULT_MCP_CB_SIM_THRESHOLD = 0.85
-
-# Compression (Phase 3)
-DEFAULT_COMPRESSION_CONFIG = {
-    "enabled": True,
-    "threshold_percentage": 85,
-    "preserve_recent_exchanges": 5,
-    "summary_max_tokens": 500,
-}
-
-# Seuils d'alertes
-ALERT_THRESHOLDS = {
-    "caution": 80,
-    "warning": 90,
-    "critical": 95,
-}
 
 # Chemins du log watcher
 DEFAULT_CONTINUE_LOG_PATH = "~/.continue/logs/core.log"

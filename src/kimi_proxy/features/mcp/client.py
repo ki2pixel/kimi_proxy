@@ -33,157 +33,12 @@ from kimi_proxy.core.models import (
     MCPExternalServerStatus,
     MCPToolCall,
 )
-from kimi_proxy.core.tokens import count_tokens_text
-from kimi_proxy.core.constants import MCP_MAX_RESPONSE_TOKENS, MCP_CHUNK_OVERLAP_TOKENS
 from .base.config import MCPClientConfig
 from .base.rpc import MCPRPCClient
 from .servers import (
     QdrantMCPClient,
     CompressionMCPClient,
 )
-
-
-def chunk_large_response(content: str, max_tokens_per_chunk: int = MCP_MAX_RESPONSE_TOKENS, overlap_tokens: int = MCP_CHUNK_OVERLAP_TOKENS) -> List[str]:
-    """
-    Chunk une réponse MCP volumineuse en morceaux plus petits.
-    
-    Args:
-        content: Contenu à chunker
-        max_tokens_per_chunk: Nombre max de tokens par chunk
-        overlap_tokens: Nombre de tokens de chevauchement entre chunks
-        
-    Returns:
-        Liste des chunks
-    """
-    if not content:
-        return [""]
-    
-    # Compte les tokens totaux
-    total_tokens = count_tokens_text(content)
-    
-    # Si ça rentre dans un seul chunk, pas besoin de chunker
-    if total_tokens <= max_tokens_per_chunk:
-        return [content]
-    
-    print(f"🔄 [MCP CHUNKING] Réponse de {total_tokens:,} tokens > {max_tokens_per_chunk:,} limite, chunking...")
-    
-    chunks = []
-    start_idx = 0
-    
-    while start_idx < len(content):
-        # Trouve la fin du chunk (par tokens, pas par caractères)
-        chunk_end_idx = _find_chunk_boundary(content, start_idx, max_tokens_per_chunk)
-        
-        if chunk_end_idx <= start_idx:
-            # Cas limite : chunk trop petit, prend tout ce qui reste
-            chunk = content[start_idx:]
-            if chunk:
-                chunks.append(chunk)
-            break
-        
-        # Extrait le chunk avec overlap
-        chunk = content[start_idx:chunk_end_idx]
-        chunks.append(chunk)
-        
-        # Avance avec overlap négatif pour éviter les coupures au milieu des mots
-        overlap_start = max(start_idx, chunk_end_idx - overlap_tokens * 4)  # Approximation caractères
-        next_start = _find_word_boundary(content, overlap_start)
-        
-        if next_start <= start_idx:
-            # Évite la boucle infinie
-            start_idx = chunk_end_idx
-        else:
-            start_idx = next_start
-    
-    print(f"✅ [MCP CHUNKING] Produit {len(chunks)} chunks")
-    return chunks
-
-
-def _find_chunk_boundary(text: str, start_idx: int, max_tokens: int) -> int:
-    """
-    Trouve la limite d'un chunk par nombre de tokens.
-    """
-    current_tokens = 0
-    current_idx = start_idx
-    
-    while current_idx < len(text) and current_tokens < max_tokens:
-        # Trouve le prochain mot
-        word_start = current_idx
-        while current_idx < len(text) and text[current_idx].isspace():
-            current_idx += 1
-        
-        word_end = current_idx
-        while word_end < len(text) and not text[word_end].isspace():
-            word_end += 1
-        
-        if word_start < word_end:
-            word = text[word_start:word_end]
-            word_tokens = count_tokens_text(word)
-            
-            if current_tokens + word_tokens > max_tokens:
-                return word_start  # Retourne au début du mot qui ferait dépasser
-            
-            current_tokens += word_tokens
-            current_idx = word_end
-    
-    return current_idx
-
-
-def _find_word_boundary(text: str, start_idx: int) -> int:
-    """
-    Trouve la limite d'un mot pour éviter les coupures.
-    """
-    idx = start_idx
-    
-    # Saute les espaces
-    while idx < len(text) and text[idx].isspace():
-        idx += 1
-    
-    # Si on est au début d'un mot, c'est bon
-    if idx == 0 or text[idx-1].isspace():
-        return idx
-    
-    # Sinon, trouve le début du mot actuel
-    while idx > 0 and not text[idx-1].isspace():
-        idx -= 1
-    
-    return idx
-
-
-def should_chunk_response(result: Dict[str, Any], tool_name: str) -> bool:
-    """
-    Détermine si une réponse MCP doit être chunkée.
-    
-    Args:
-        result: Résultat de l'outil MCP
-        tool_name: Nom de l'outil
-        
-    Returns:
-        True si chunking nécessaire
-    """
-    # Liste des outils qui peuvent produire des réponses volumineuses
-    large_response_tools = {
-        "fast_get_directory_tree",
-        "fast_search_code", 
-        "fast_search_files",
-        "fast_read_file",
-        "fast_read_multiple_files",
-        "fast_list_directory",
-        "fast_find_large_files"
-    }
-    
-    if tool_name not in large_response_tools:
-        return False
-    
-    # Vérifie si le contenu est volumineux
-    content = ""
-    if isinstance(result, dict):
-        content = str(result.get("content", ""))
-    else:
-        content = str(result)
-    
-    total_tokens = count_tokens_text(content)
-    return total_tokens > MCP_MAX_RESPONSE_TOKENS
 
 
 class MCPExternalClient:
@@ -220,101 +75,12 @@ class MCPExternalClient:
         
         # Cache statut global
         self._status_cache: Dict[str, MCPExternalServerStatus] = {}
-        self._chunk_cache: Dict[str, Dict[str, Any]] = {}  # Cache pour les chunks
         self._tool_cache: Dict[str, Dict[str, Any]] = {}  # Cache pour les résultats d'outils
-    
+
     async def close(self):
         """Ferme toutes les connexions HTTP."""
         await self._rpc_client.close()
-    
-    def _store_remaining_chunks(
-        self,
-        server_type: str,
-        tool_name: str,
-        params: Dict[str, Any],
-        remaining_chunks: List[str],
-        original_result: Dict[str, Any],
-        execution_time_ms: float
-    ) -> str:
-        """
-        Stocke les chunks restants pour récupération ultérieure.
-        
-        Args:
-            server_type: Type de serveur MCP
-            tool_name: Nom de l'outil
-            params: Paramètres originaux
-            remaining_chunks: Chunks restants à stocker
-            original_result: Résultat original
-            execution_time_ms: Temps d'exécution
-            
-        Returns:
-            Clé de cache pour récupérer les chunks
-        """
-        import hashlib
-        
-        # Génère une clé unique pour cette opération chunkée
-        key_data = f"{server_type}:{tool_name}:{str(params)}:{datetime.now().isoformat()}"
-        cache_key = hashlib.md5(key_data.encode(), usedforsecurity=False).hexdigest()[:16]
-        
-        # Stocke les métadonnées et chunks
-        self._chunk_cache[cache_key] = {
-            "server_type": server_type,
-            "tool_name": tool_name,
-            "params": params,
-            "remaining_chunks": remaining_chunks,
-            "original_result": original_result,
-            "execution_time_ms": execution_time_ms,
-            "created_at": datetime.now().isoformat(),
-            "total_chunks": len(remaining_chunks) + 1  # +1 pour le chunk déjà retourné
-        }
-        
-        print(f"💾 [MCP CHUNK CACHE] Stocké {len(remaining_chunks)} chunks sous clé {cache_key}")
-        return cache_key
-    
-    async def get_next_chunk(self, cache_key: str, chunk_number: int) -> Optional[MCPToolCall]:
-        """
-        Récupère le chunk suivant d'une opération chunkée.
-        
-        Args:
-            cache_key: Clé de cache
-            chunk_number: Numéro du chunk demandé (1-based)
-            
-        Returns:
-            MCPToolCall avec le chunk demandé, ou None si indisponible
-        """
-        if cache_key not in self._chunk_cache:
-            return None
-        
-        cache_entry = self._chunk_cache[cache_key]
-        remaining_chunks = cache_entry["remaining_chunks"]
-        
-        # Vérifie si le chunk demandé existe
-        chunk_index = chunk_number - 1  # Convertit en 0-based
-        if chunk_index < 0 or chunk_index >= len(remaining_chunks):
-            return None
-        
-        # Construit le résultat chunké
-        chunked_result = cache_entry["original_result"].copy()
-        chunked_result["chunked"] = True
-        chunked_result["total_chunks"] = cache_entry["total_chunks"]
-        chunked_result["current_chunk"] = chunk_number
-        chunked_result["content"] = remaining_chunks[chunk_index]
-        chunked_result["cache_key"] = cache_key
-        
-        # Si c'est le dernier chunk, nettoie le cache
-        if chunk_index == len(remaining_chunks) - 1:
-            del self._chunk_cache[cache_key]
-            print(f"🧹 [MCP CHUNK CACHE] Nettoyé cache pour {cache_key}")
-        
-        return MCPToolCall(
-            server_type=cache_entry["server_type"],
-            tool_name=cache_entry["tool_name"],
-            params=cache_entry["params"],
-            status="success",
-            result=chunked_result,
-            execution_time_ms=cache_entry["execution_time_ms"]
-        )
-    
+
     def _get_tool_cache_key(self, server_type: str, tool_name: str, params: Dict[str, Any]) -> str:
         """
         Génère une clé de cache pour les résultats d'outils MCP.
@@ -612,7 +378,3 @@ def get_mcp_client(config: Optional[MCPClientConfig] = None) -> MCPExternalClien
     return _mcp_client
 
 
-def reset_mcp_client():
-    """Réinitialise le client MCP global (pour tests)."""
-    global _mcp_client
-    _mcp_client = None

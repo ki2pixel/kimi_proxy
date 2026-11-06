@@ -68,12 +68,6 @@ async def api_get_models() -> List[Dict[str, Any]]:
     return _build_internal_models_list(models_config)
 
 
-@router.get("/all")
-async def api_get_models_all() -> List[Dict[str, Any]]:
-    """Alias rétro-compatible: `/api/models/all` (même payload que `/api/models`)."""
-    return await api_get_models()
-
-
 @openai_router.get("/models")
 async def openai_models() -> Dict[str, Any]:
     """Endpoint OpenAI-compatible minimal: GET /models."""

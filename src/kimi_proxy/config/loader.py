@@ -132,26 +132,6 @@ def get_sanitizer_config(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def get_compression_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Extrait la configuration de compression.
-    
-    Args:
-        config: Configuration chargée
-        
-    Returns:
-        Configuration de compression
-    """
-    from ..core.constants import DEFAULT_COMPRESSION_CONFIG
-    
-    return {
-        "enabled": DEFAULT_COMPRESSION_CONFIG["enabled"],
-        "threshold_percentage": DEFAULT_COMPRESSION_CONFIG["threshold_percentage"],
-        "preserve_recent_exchanges": DEFAULT_COMPRESSION_CONFIG["preserve_recent_exchanges"],
-        "summary_max_tokens": DEFAULT_COMPRESSION_CONFIG["summary_max_tokens"],
-    }
-
-
 @dataclass(frozen=True)
 class MCPPrunerBackendConfig:
     """Configuration du serveur MCP Pruner (fallback TOML).
@@ -312,7 +292,7 @@ def get_observation_masking_schema1_config(config: Dict[str, Any]) -> Observatio
 class ContextPruningConfig:
     """Configuration d'élagage de contexte via MCP Pruner (Lot C2).
 
-    Objectif: activer un pruning local-first dans le pipeline `/chat/completions`,
+    Objectif: activer un pruning local-first dans le pipeline `/v1/chat/completions`,
     avec rollback instantané (feature flag) et fallback no-op.
 
     Important:

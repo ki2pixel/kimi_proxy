@@ -535,7 +535,7 @@ class LogWatcher:
                 print(f"⚠️ Erreur source analytics ({source.source_id}): {error}")
 
     async def _broadcast_metrics(self, metrics: TokenMetrics):
-        """Diffuse les métriques extraites via WebSocket."""
+        """Diffuse les métriques extraites via le callback configuré."""
         if self.broadcast_callback:
             await self.broadcast_callback(metrics, self)
 

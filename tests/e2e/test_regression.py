@@ -65,10 +65,3 @@ def test_memory_stats(client: TestClient):
     assert "total_memory_tokens" in data
 
 
-def test_rate_limit_status(client: TestClient):
-    """Test l'endpoint de rate limit."""
-    response = client.get("/api/rate-limit")
-    assert response.status_code == 200
-    data = response.json()
-    assert "status" in data
-    assert "current_rpm" in data
