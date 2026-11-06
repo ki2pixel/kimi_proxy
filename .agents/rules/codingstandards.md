@@ -1,7 +1,7 @@
 ---
 trigger: always_on
 description: Kimi Proxy Middleware MCP coding standards - 5-layer architecture, async Python, SSE streaming
-globs: ["**/*.py", "**/test_*.py", "**/tests/**/*.py"]
+globs: "**/*.py"
 ---
 
 # Kimi Proxy Middleware MCP Coding Standards

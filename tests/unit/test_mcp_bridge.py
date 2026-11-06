@@ -746,6 +746,57 @@ async def test_run_gateway_http_forwards_to_expected_url(monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.unit
+async def test_run_gateway_http_suppresses_stdout_for_notifications(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+
+    notification_obj = {"jsonrpc": "2.0", "method": "notifications/initialized"}
+    response_obj = {"jsonrpc": "2.0", "result": {"ok": True}, "id": None}
+
+    class _FakeReader:
+        def __init__(self, lines: list[bytes]) -> None:
+            self._lines = lines
+
+        async def readline(self) -> bytes:
+            return self._lines.pop(0) if self._lines else b""
+
+    async def _fake_connect_stdin_reader():
+        return _FakeReader([json.dumps(notification_obj).encode("utf-8") + b"\n", b""])
+
+    monkeypatch.setattr(mcp_bridge, "_connect_stdin_reader", _fake_connect_stdin_reader)
+
+    captured: dict[str, object] = {}
+
+    class _DummyResponse:
+        def json(self) -> object:
+            return response_obj
+
+    class _DummyClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url: str, json: object):
+            captured["url"] = url
+            captured["json"] = json
+            return _DummyResponse()
+
+    monkeypatch.setattr(mcp_bridge.httpx, "AsyncClient", lambda *a, **kw: _DummyClient())
+
+    out = io.StringIO()
+    monkeypatch.setattr(mcp_bridge.sys, "stdout", out)
+
+    monkeypatch.setenv("MCP_GATEWAY_BASE_URL", "http://localhost:8000")
+    await mcp_bridge._run_gateway_http("fast-filesystem")
+
+    assert captured["json"] == notification_obj
+    assert out.getvalue() == ""
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
 async def test_run_stdio_relay_returns_jsonrpc_error_when_subprocess_fails(monkeypatch):
     mcp_bridge = _import_mcp_bridge()
 

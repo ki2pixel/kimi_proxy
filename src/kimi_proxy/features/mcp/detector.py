@@ -1,5 +1,7 @@
 """Détection des balises MCP et contenus mémoire."""
+import json
 import re
+import time
 from typing import List, Dict, Any, Tuple
 from dataclasses import dataclass
 
@@ -200,11 +202,12 @@ def get_detected_mcp_servers(content: str, min_tokens: int = MCP_MIN_MEMORY_TOKE
 class MCPCircuitBreaker:
     """Détecte les boucles infinies d'appels MCP via similarité Jaccard."""
     
-    def __init__(self, max_failures: int = 5, similarity_threshold: float = 0.85, enabled: bool = True):
+    def __init__(self, max_failures: int = 5, similarity_threshold: float = 0.85, enabled: bool = True, ttl_seconds: float = 30.0):
         self.max_failures = max_failures
         self.similarity_threshold = similarity_threshold
         self.enabled = enabled
-        self.call_history: List[set[str]] = []
+        self.ttl_seconds = ttl_seconds
+        self.call_history: List[Tuple[float, set[str]]] = []
         
     def _tokenize(self, params_str: str) -> set[str]:
         import re
@@ -213,13 +216,16 @@ class MCPCircuitBreaker:
         
     def check_call(self, params: Dict[str, Any]) -> bool:
         """
-        Vérifie si l'appel actuel ressemble trop aux appels précédents.
+        Vérifie si l'appel actuel ressemble trop aux appels récents (fenêtre temporelle).
         Retourne True si le circuit doit s'ouvrir (bloquer l'appel), False sinon.
         """
         if not self.enabled:
             return False
             
-        import json
+        now = time.time()
+        # Purge des appels expirés (> ttl_seconds)
+        self.call_history = [(ts, tok) for ts, tok in self.call_history if now - ts < self.ttl_seconds]
+        
         params_str = json.dumps(params, sort_keys=True)
         current_tokens = self._tokenize(params_str)
         
@@ -227,7 +233,7 @@ class MCPCircuitBreaker:
             return False
             
         similar_count = 0
-        for past_tokens in self.call_history:
+        for _ts, past_tokens in self.call_history:
             if not past_tokens:
                 continue
             intersection = len(current_tokens.intersection(past_tokens))
@@ -236,9 +242,9 @@ class MCPCircuitBreaker:
             if jaccard >= self.similarity_threshold:
                 similar_count += 1
                 
-        self.call_history.append(current_tokens)
+        self.call_history.append((now, current_tokens))
         
-        if len(self.call_history) > 10:
+        if len(self.call_history) > 20:
             self.call_history.pop(0)
             
         return similar_count >= self.max_failures

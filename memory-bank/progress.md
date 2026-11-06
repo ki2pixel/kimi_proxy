@@ -4,6 +4,14 @@
 Aucune tâche active.
 
 ## Dernière session terminée
+### [2026-07-15 14:20:00] **Configuration Zencoder MCP Gateway (Option A) — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+**Objectif** : Configurer l'intégration de Zencoder avec le Gateway HTTP de `kimi-proxy`.
+**Actions réalisées** :
+- Création du fichier `.zencoder/settings.json` local au projet.
+- Configuration des serveurs compatibles Gateway (`fast-filesystem`, `json-query`, `sequential-thinking`, `mcp-pruner` via `pruner/rpc`) pour attaquer l'adresse HTTP `http://localhost:8000/api/mcp-gateway/.../rpc`.
+- Préservation des serveurs d'arrière-plan/spécifiques (`filesystem-agent`, `ripgrep-agent`, `shrimp-task-manager`) en mode Direct Stdio via le script `scripts/mcp_bridge.py`.
+
 ### [2026-07-15 01:20:00] **Remédiations Sécurité et Stabilité Backend (Audit 2026-07-15) — TERMINÉ**
 **Statut** : ✅ COMPLETÉ
 

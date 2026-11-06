@@ -1177,8 +1177,7 @@ async def _drain_and_error(server_name, e, stdin_reader, monitor):
             req_id=req_id,
         )
         monitor.observe_json_obj(direction="server_to_client", obj=payload)
-        sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        sys.stdout.flush()
+        _write_stdout_json(payload)
 
 
 async def _run_stdio_relay(server_name: str) -> int:
@@ -1236,6 +1235,17 @@ async def _run_stdio_relay(server_name: str) -> int:
 
     return await _wait_and_cleanup_relay(proc, stdin_task, stdout_task, stderr_task, monitor, tool_pruner, server_name, inflight)
 
+
+def _write_stdout_json(payload: object) -> None:
+    data = json.dumps(payload, ensure_ascii=False) + "\n"
+    if hasattr(sys.stdout, "buffer"):
+        sys.stdout.buffer.write(data.encode("utf-8"))
+        sys.stdout.buffer.flush()
+    else:
+        sys.stdout.write(data)
+        sys.stdout.flush()
+
+
 async def _run_gateway_http(server_name: str) -> int:
     gateway_url = _get_gateway_url(server_name)
     stdin_reader = await _connect_stdin_reader()
@@ -1254,21 +1264,28 @@ async def _run_gateway_http(server_name: str) -> int:
                 request_obj = json.loads(line)
             except json.JSONDecodeError:
                 payload = _jsonrpc_error(code=-32700, message="Parse error", req_id=None)
-                sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-                sys.stdout.flush()
+                _write_stdout_json(payload)
                 continue
 
+            is_notification = isinstance(request_obj, dict) and "id" not in request_obj
             req_id = _extract_jsonrpc_id(request_obj)
 
             try:
                 response = await client.post(gateway_url, json=request_obj)
+                if is_notification:
+                    # JSON-RPC 2.0: les notifications n'attendent aucune réponse sur stdout
+                    continue
+
                 response_obj: object = response.json()
-                sys.stdout.write(json.dumps(response_obj, ensure_ascii=False) + "\n")
-                sys.stdout.flush()
+                if isinstance(response_obj, dict) and response_obj.get("jsonrpc") == "2.0":
+                    if response_obj.get("id") is None and req_id is not None:
+                        response_obj["id"] = req_id
+
+                _write_stdout_json(response_obj)
             except Exception as e:
-                payload = _jsonrpc_error(code=-32603, message=str(e), req_id=req_id)
-                sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-                sys.stdout.flush()
+                if not is_notification:
+                    payload = _jsonrpc_error(code=-32603, message=str(e), req_id=req_id)
+                    _write_stdout_json(payload)
 
 
 async def main() -> None:
@@ -1278,8 +1295,7 @@ async def main() -> None:
             message="Invalid params: server name required",
             req_id=None,
         )
-        sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        sys.stdout.flush()
+        _write_stdout_json(payload)
         return
 
     server_name = sys.argv[1]
@@ -1297,8 +1313,7 @@ async def main() -> None:
         message=f"Invalid params: unknown server '{server_name}'",
         req_id=None,
     )
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+    _write_stdout_json(payload)
 
 
 if __name__ == "__main__":

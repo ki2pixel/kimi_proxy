@@ -172,9 +172,12 @@ class DeepInfraClient:
             "Accept": "application/json",
         }
 
+        # Tronquer chaque document à 800 caractères pour ne jamais dépasser la limite du ré-ordonnanceur (256 tokens)
+        truncated_docs = [doc[:800] if len(doc) > 800 else doc for doc in documents]
+
         payload: JsonObject = {
             "queries": [query],
-            "documents": list(documents),
+            "documents": truncated_docs,
         }
 
         started = time.perf_counter()

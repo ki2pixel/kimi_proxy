@@ -102,3 +102,11 @@ research/
 
 # Runtime data
 debug/
+
+# Shrimp data
+shrimp_data/memory/*.json
+
+# Site statique Kid Pixel (fichiers hors kimi-proxy)
+scripts/config.js
+tests/validate-audit-remediation.js
+

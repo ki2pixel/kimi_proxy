@@ -58,10 +58,19 @@ log_error() {
 check_port() {
     local port=$1
     if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
-        return 0
-    else
-        return 1
+        if curl -s -m 2 "http://127.0.0.1:$port/health" >/dev/null 2>&1; then
+            return 0
+        else
+            # Port occupé par un processus inactif/bloqué : kill pour repartir propre
+            local pids=$(lsof -Pi :$port -sTCP:LISTEN -t 2>/dev/null)
+            if [ -n "$pids" ]; then
+                kill -9 $pids 2>/dev/null || true
+                sleep 1
+            fi
+            return 1
+        fi
     fi
+    return 1
 }
 
 kill_port() {
@@ -124,9 +133,10 @@ start_servers() {
         # Démarrer le serveur de compression
         log_info "Lancement du serveur de compression sur le port $COMPRESSION_PORT..."
         
-        # Démarrer en arrière-plan avec nohup
+        # Démarrer en arrière-plan avec nohup + disown
         WORKSPACE_PATH="$(pwd)" nohup python3 /tmp/mcp_compression_server.py > /tmp/mcp_compression.log 2>&1 &
         COMPRESSION_PID=$!
+        disown $COMPRESSION_PID 2>/dev/null || true
         
         # Attendre que le serveur démarre
         sleep 2
@@ -157,9 +167,10 @@ start_servers() {
         # Démarrer le serveur de sequential thinking
         log_info "Lancement du serveur de sequential thinking sur le port $SEQUENTIAL_THINKING_PORT..."
         
-        # Démarrer en arrière-plan avec nohup
+        # Démarrer en arrière-plan avec nohup + disown
         WORKSPACE_PATH="$(pwd)" nohup python3 /tmp/mcp_sequential_thinking_server.py > /tmp/mcp_sequential_thinking.log 2>&1 &
         SEQUENTIAL_THINKING_PID=$!
+        disown $SEQUENTIAL_THINKING_PID 2>/dev/null || true
         
         # Attendre que le serveur démarre
         sleep 2
@@ -190,10 +201,11 @@ start_servers() {
         # Démarrer le serveur
         log_info "Lancement du serveur de fast filesystem sur le port $FAST_FILESYSTEM_PORT..."
         
-        # Démarrer en arrière-plan avec nohup
+        # Démarrer en arrière-plan avec nohup + disown
         # Autorise tous les chemins sous /home/kidpixel par défaut (configurable)
         MCP_ALLOWED_ROOT="/" nohup python3 /tmp/mcp_fast_filesystem_server.py > /tmp/mcp_fast_filesystem.log 2>&1 &
         FAST_FILESYSTEM_PID=$!
+        disown $FAST_FILESYSTEM_PID 2>/dev/null || true
         
         # Attendre que le serveur démarre
         sleep 2
@@ -224,10 +236,11 @@ start_servers() {
         # Démarrer le serveur de json query
         log_info "Lancement du serveur de json query sur le port $JSON_QUERY_PORT..."
         
-        # Démarrer en arrière-plan avec nohup
+        # Démarrer en arrière-plan avec nohup + disown
         # Autorise tous les chemins sous /home/kidpixel par défaut (configurable)
         MCP_ALLOWED_ROOT="/home/kidpixel" nohup python3 /tmp/mcp_json_query_server.py > /tmp/mcp_json_query.log 2>&1 &
         JSON_QUERY_PID=$!
+        disown $JSON_QUERY_PID 2>/dev/null || true
         
         # Attendre que le serveur démarre
         sleep 2
@@ -341,6 +354,7 @@ start_pruner_server() {
         python3 -m kimi_proxy.features.mcp_pruner.server \
         > /tmp/mcp_pruner.log 2>&1 &
     PRUNER_PID=$!
+    disown $PRUNER_PID 2>/dev/null || true
 
     # Readiness: le démarrage peut dépasser 2s (imports/uvicorn).
     # On attend jusqu'à 12s et on s'arrête si le process meurt.
@@ -1190,10 +1204,17 @@ class FastFilesystemHandler(BaseHTTPRequestHandler):
                     )
                     return
 
+                if isinstance(tool_result, dict) and "content" in tool_result:
+                    text_content = str(tool_result["content"])
+                elif isinstance(tool_result, str):
+                    text_content = tool_result
+                else:
+                    text_content = json.dumps(tool_result, ensure_ascii=False, indent=2)
+
                 self._send_json_response(
                     {
                         "jsonrpc": "2.0",
-                        "result": {"content": [{"type": "text", "text": json.dumps(tool_result, ensure_ascii=False)}]},
+                        "result": {"content": [{"type": "text", "text": text_content}]},
                         "id": req_id,
                     }
                 )

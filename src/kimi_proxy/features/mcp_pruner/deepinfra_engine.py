@@ -25,7 +25,7 @@ from typing import Literal
 
 from kimi_proxy.core.tokens import count_tokens_text
 
-from .deepinfra_client import DeepInfraClient, DeepInfraError
+from .deepinfra_client import DeepInfraClient
 
 
 JsonDict = dict[str, object]
@@ -139,8 +139,15 @@ async def prune_text_with_deepinfra(
         )
         deepinfra_latency_ms = int((time.perf_counter() - deepinfra_started) * 1000)
         deepinfra_latency_ms = getattr(deepinfra_client, "last_latency_ms", deepinfra_latency_ms)
-    except DeepInfraError as e:
-        raise e
+    except Exception as e:
+        warnings.append(f"deepinfra_error:{e}")
+        from .layer1_heuristic import compute_heuristic_keep_set
+        keep_set = compute_heuristic_keep_set(
+            lines=lines,
+            current_keep_set=set(range(n)),
+            keep_target=keep_target,
+        )
+        deepinfra_latency_ms = 0
 
     pruned_text, annotations = _reconstruct_pruned_text(
         prune_id=prune_id,
