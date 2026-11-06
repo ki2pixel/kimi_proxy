@@ -114,6 +114,7 @@ tests/validate-audit-remediation.js
 .ruff_cache/
 .mypy_cache/
 .shrimp_task_manager/
+.commandcode/
 
 # Runtime artifacts
 backups/

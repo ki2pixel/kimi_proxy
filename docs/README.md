@@ -143,7 +143,7 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 ## 🔗 Liens Rapides
 
 - [**README principal**](../README.md) - Vue d'ensemble du projet
-- [**Guide agents IA**](../AGENTS.md) - Référence développeur IA
+- [**Guide agents IA**](../AGENT.md) - Configuration de l'agent et prompt système
 - [**CLI**](../bin/kimi-proxy) - Commandes de gestion (v2.0)
 
 ## 📋 État du Projet
