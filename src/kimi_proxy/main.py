@@ -45,35 +45,6 @@ def _get_log_source_family(source_type: str, metrics) -> str:
     return source_type or "logs"
 
 
-def _get_log_source_label(source_type: str, source_family: str) -> str:
-    """Retourne un libellé rétrocompatible pour la source."""
-    if source_family == "continue_compile":
-        return "CompileChat Continue"
-    if source_family == "error":
-        if source_type == "kimi_global_context_limit_error":
-            return "Limite de contexte Kimi"
-        if source_type == "kimi_global_auth_error":
-            return "Erreur auth Kimi"
-        if source_type == "kimi_global_request_error":
-            return "Erreur requête Kimi"
-        if source_type == "kimi_global_transport_error":
-            return "Erreur transport Kimi"
-        if source_type == "kimi_global_runtime_error":
-            return "Erreur runtime Kimi"
-        if source_type == "kimi_global_error":
-            return "Erreur Kimi globale"
-        if source_type == "continue_api_error":
-            return "Erreur Continue"
-        return "Erreur analytics"
-    if source_family == "continue_logs":
-        return "Logs Continue"
-    if source_family == "kimi_global":
-        return "Log global Kimi"
-    if source_family == "kimi_session":
-        return "Session Kimi"
-    return source_type or "Logs"
-
-
 def _looks_like_context_limit_error(source_type: str, metrics) -> bool:
     if source_type == "kimi_global_context_limit_error":
         return True
@@ -303,10 +274,7 @@ def _startup(app: FastAPI):
             elif metrics.is_api_error:
                 source_type = "api_error"
         source_family = _get_log_source_family(source_type, metrics)
-        _get_log_source_label(source_type, source_family)
-        
 
-        
         # Log détaillé selon le type
         if source_family == "continue_compile":
             print(f"📊 [COMPILE] Context: {metrics.context_length}, "

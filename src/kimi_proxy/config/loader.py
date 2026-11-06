@@ -42,12 +42,6 @@ def _expand_env_vars(obj: Any) -> Any:
     return obj
 
 
-def _clear_config_cache():
-    """Vide le cache de configuration."""
-    global _config_cache
-    _config_cache = None
-
-
 def load_config(config_path: str | None = None) -> Dict[str, Any]:
     """
     Charge la configuration depuis config.toml.
@@ -101,18 +95,6 @@ def load_config(config_path: str | None = None) -> Dict[str, Any]:
     return _config_cache
 
 
-def reload_config(config_path: str | None = None) -> Dict[str, Any]:
-    """
-    Recharge la configuration depuis le fichier.
-    
-    Returns:
-        Nouvelle configuration chargée
-    """
-    global _config_cache
-    _config_cache = None
-    return load_config(config_path)
-
-
 def get_config() -> Dict[str, Any]:
     """
     Retourne la configuration en cache.
@@ -124,56 +106,6 @@ def get_config() -> Dict[str, Any]:
     if _config_cache is None:
         return load_config()
     return _config_cache
-
-
-def init_providers(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    """
-    Initialise les providers depuis la configuration.
-    
-    Args:
-        config: Configuration chargée
-        
-    Returns:
-        Dictionnaire des providers
-    """
-    providers = {}
-    providers_config = config.get("providers", {})
-    
-    for provider_key, provider_data in providers_config.items():
-        providers[provider_key] = {
-            "key": provider_key,
-            "type": provider_data.get("type", "openai"),
-            "base_url": provider_data.get("base_url", ""),
-            "api_key": provider_data.get("api_key", "")
-        }
-    
-    return providers
-
-
-def init_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    """
-    Initialise les modèles depuis la configuration.
-    
-    Args:
-        config: Configuration chargée
-        
-    Returns:
-        Dictionnaire des modèles
-    """
-    models = {}
-    models_config = config.get("models", {})
-    
-    for model_key, model_data in models_config.items():
-        provider = model_data.get("provider", "nvidia")
-        models[model_key] = {
-            "key": model_key,
-            "model": model_data.get("model", model_key),
-            "provider": provider,
-            "max_context_size": model_data.get("max_context_size", 262144),
-            "capabilities": model_data.get("capabilities", [])
-        }
-    
-    return models
 
 
 def get_sanitizer_config(config: Dict[str, Any]) -> Dict[str, Any]:

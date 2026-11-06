@@ -1,7 +1,8 @@
-import os
 """
 Routes API pour le sanitizer (Phase 1).
 """
+import os
+
 from fastapi import APIRouter, Request  # noqa
 from fastapi.responses import JSONResponse  # noqa
 
@@ -93,8 +94,3 @@ def get_sanitizer_config():
         "fallback_threshold": sanitizer_config.get("routing", {}).get("fallback_threshold", 0.90),
         "heavy_duty_fallback": sanitizer_config.get("routing", {}).get("heavy_duty_fallback", True),
     }
-
-
-def is_sanitizer_enabled() -> bool:
-    """Vérifie si le sanitizer est activé."""
-    return _sanitizer_enabled

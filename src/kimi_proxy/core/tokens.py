@@ -1,8 +1,7 @@
 """
 Tokenization avec Tiktoken - Comptage précis des tokens.
 """
-import json
-from typing import List, Union
+from typing import List
 
 import tiktoken
 
@@ -74,27 +73,3 @@ def count_tokens_text(text: str) -> int:
     if not text:
         return 0
     return len(ENCODING.encode(text))
-
-
-def count_tokens_from_string(content: str) -> int:
-    """
-    Alias de count_tokens_text pour compatibilité.
-    """
-    return count_tokens_text(content)
-
-
-def estimate_tokens_json(data: Union[dict, list]) -> int:
-    """
-    Estime les tokens d'une structure JSON.
-    
-    Args:
-        data: Données JSON (dict ou list)
-        
-    Returns:
-        Nombre de tokens estimé
-    """
-    try:
-        json_str = json.dumps(data, ensure_ascii=False)
-        return count_tokens_text(json_str)
-    except (TypeError, ValueError):
-        return 0

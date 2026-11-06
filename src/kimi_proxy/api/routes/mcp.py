@@ -28,8 +28,6 @@ from ...features.mcp import (
     get_mcp_client,
     get_memory_manager,
 )
-from ...core.tokens import count_tokens_text
-
 router = APIRouter()
 
 
@@ -140,8 +138,6 @@ async def api_compress_content(request: CompressRequest):
     Compression: 20-80% selon le contenu
     """
     client = get_mcp_client()
-    
-    original_tokens = count_tokens_text(request.content)  # noqa
     
     result = await client.compress_content(
         content=request.content,

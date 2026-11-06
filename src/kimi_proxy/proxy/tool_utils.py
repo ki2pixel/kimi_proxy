@@ -103,35 +103,6 @@ def detect_and_merge_concatenated_json(json_str: str) -> str:
         return json_str
 
 
-def get_circuit_breaker_status() -> Dict[str, Any]:
-    """
-    Retourne le statut actuel du circuit breaker et les métriques.
-    
-    Returns:
-        Dictionnaire avec statut et métriques
-    """
-    return {
-        "config": CIRCUIT_BREAKER_CONFIG,
-        "metrics": JSON_FIX_METRICS.copy()
-    }
-
-
-def reset_circuit_breaker_metrics():
-    """Reset les métriques du circuit breaker."""
-    global JSON_FIX_METRICS
-    JSON_FIX_METRICS = {
-        "total_attempts": 0,
-        "success_by_strategy": {
-            "direct_fix": 0,
-            "reconstruct_basic": 0,
-            "reconstruct_complex": 0,
-            "eval_fallback": 0,
-            "all_failed": 0
-        },
-        "failure_reasons": []
-    }
-
-
 def generate_tool_call_id(length: int = 9) -> str:
     """
     Génère un ID de tool call alphanumérique valide.
@@ -151,21 +122,6 @@ def generate_tool_call_id(length: int = 9) -> str:
     # Caractères autorisés: a-z, A-Z, 0-9
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(length))
-
-
-def validate_tool_call_id(tool_id: str) -> bool:
-    """
-    Valide qu'un ID de tool call respecte le format requis.
-    
-    Args:
-        tool_id: ID à valider
-        
-    Returns:
-        True si valide, False sinon
-    """
-    # Format requis: a-z, A-Z, 0-9, longueur 9
-    pattern = r'^[a-zA-Z0-9]{9}$'
-    return bool(re.match(pattern, tool_id))
 
 
 def fix_tool_calls_in_request(body: Dict[str, Any]) -> Dict[str, Any]:
@@ -433,8 +389,6 @@ def fix_malformed_json_arguments(arguments_str: str, enable_circuit_breaker: boo
     Returns:
         String JSON corrigé ou original si correction impossible
     """
-    global JSON_FIX_METRICS
-    
     if not arguments_str or not arguments_str.strip():
         return arguments_str
 

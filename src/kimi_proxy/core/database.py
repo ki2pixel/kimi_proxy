@@ -708,46 +708,6 @@ def get_session_cumulative_tokens(session_id: int) -> Dict[str, int]:
     }
 
 
-def get_session_stats(session_id: int) -> Dict[str, Any]:
-    """Récupère les statistiques d'une session."""
-    with get_db() as conn:
-        cursor = conn.cursor()
-        
-        cursor.execute(
-            """SELECT 
-                COUNT(*) as total_requests,
-                MAX(estimated_tokens) as max_tokens,
-                AVG(estimated_tokens) as avg_tokens
-               FROM metrics WHERE session_id = ?""",
-            (session_id,)
-        )
-        stats = dict(cursor.fetchone())
-        
-        # Pour la jauge: utilise les tokens cumulés estimés pour cohérence avec compaction
-        cumulative_totals = get_session_cumulative_tokens(session_id)
-        stats["current_input_tokens"] = cumulative_totals["input_tokens"] if cumulative_totals["input_tokens"] > 0 else cumulative_totals["total_tokens"]
-        stats["current_output_tokens"] = cumulative_totals["output_tokens"]
-        stats["current_total_tokens"] = cumulative_totals["total_tokens"]
-        
-        # Pour les stats cumulées: utilise aussi les tokens cumulés pour cohérence
-        stats["cumulative_input_tokens"] = cumulative_totals["input_tokens"] if cumulative_totals["input_tokens"] > 0 else cumulative_totals["total_tokens"]
-        stats["cumulative_output_tokens"] = cumulative_totals["output_tokens"]
-        stats["cumulative_total_tokens"] = cumulative_totals["total_tokens"]
-        
-        cursor.execute(
-            """SELECT * FROM metrics 
-               WHERE session_id = ? 
-               ORDER BY timestamp DESC LIMIT 50""",
-            (session_id,)
-        )
-        recent_metrics = [dict(row) for row in cursor.fetchall()]
-        
-        return {
-            "stats": stats,
-            "recent_metrics": recent_metrics
-        }
-
-
 def get_recent_metrics(session_id: int, limit: int = 50) -> List[Dict[str, Any]]:
     """Récupère les métriques récentes d'une session."""
     with get_db() as conn:
@@ -759,41 +719,6 @@ def get_recent_metrics(session_id: int, limit: int = 50) -> List[Dict[str, Any]]
             (session_id, limit)
         )
         return [dict(row) for row in cursor.fetchall()]
-
-
-# ============================================================================
-# Utilitaires
-# ============================================================================
-
-def is_system_message(content: str) -> bool:
-    """Détecte si un message est un message système."""
-    return (
-        "You are Kimi Code CLI" in content or 
-        "interactive general AI agent" in content
-    )
-
-
-def check_threshold_alert(percentage: float) -> Optional[Dict[str, Any]]:
-    """Vérifie si un seuil d'alerte est atteint."""
-    if percentage >= 95:
-        return {
-            "level": "critical",
-            "color": "#ef4444",
-            "message": "⚠️ CONTEXTE CRITIQUE (95%)"
-        }
-    elif percentage >= 90:
-        return {
-            "level": "warning",
-            "color": "#f97316",
-            "message": "⚠️ CONTEXTE ÉLEVÉ (90%)"
-        }
-    elif percentage >= 80:
-        return {
-            "level": "caution",
-            "color": "#eab308",
-            "message": "⚡ Attention (80%)"
-        }
-    return None
 
 
 # ============================================================================
@@ -1019,31 +944,6 @@ def update_session_auto_compaction(session_id: int, enabled: bool) -> bool:
             return False
 
 
-def update_session_auto_threshold(session_id: int, threshold: float) -> bool:
-    """
-    Met à jour le seuil d'auto-compaction pour une session.
-    
-    Args:
-        session_id: ID de la session
-        threshold: Seuil entre 0.0 et 1.0
-        
-    Returns:
-        True si mis à jour avec succès
-    """
-    with get_db() as conn:
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "UPDATE sessions SET auto_compaction_threshold = ? WHERE id = ?",
-                (threshold, session_id)
-            )
-            conn.commit()
-            return cursor.rowcount > 0
-        except Exception as e:
-            print(f"⚠️ Erreur mise à jour seuil auto-compaction: {e}")
-            return False
-
-
 def increment_consecutive_auto_compactions(session_id: int) -> int:
     """
     Incrémente le compteur de compactions automatiques consécutives.
@@ -1132,92 +1032,4 @@ def delete_session(session_id: int) -> bool:
             print(f"❌ Erreur suppression session {session_id}: {e}")
             return False
 
-def delete_sessions_bulk(session_ids: List[int]) -> Dict[str, Any]:
-    """
-    Supprime plusieurs sessions en bulk.
-    
-    Args:
-        session_ids: Liste des IDs de sessions à supprimer
-        
-    Returns:
-        Résumé des suppressions {success: bool, deleted_count: int, failed_ids: List[int]}
-    """
-    results = {
-        'success': True,
-        'deleted_count': 0,
-        'failed_ids': []
-    }
-    
-    for session_id in session_ids:
-        if delete_session(session_id):
-            results['deleted_count'] += 1  # type: ignore
-        else:
-            results['success'] = False
-            results['failed_ids'].append(session_id)  # type: ignore
-    
-    return results
 
-
-
-
-
-def vacuum_database() -> Dict[str, Any]:
-    """
-    Exécute VACUUM sur la base de données pour récupérer l'espace disque.
-    Cette fonction est optimisée pour éviter les appels répétés coûteux.
-    
-    Returns:
-        Dictionnaire avec les résultats du VACUUM
-    """
-    import os
-    import time
-    
-    # Cache pour éviter les VACUUM répétés (délai minimum de 30 secondes)
-    last_vacuum = getattr(vacuum_database, '_last_vacuum', 0)
-    current_time = time.time()
-    
-    if current_time - last_vacuum < 30:  # 30 secondes minimum
-        return {
-            "message": "VACUUM ignoré (délai minimum non écoulé)",
-            "skipped": True,
-            "next_available": last_vacuum + 30
-        }
-    
-    try:
-        # Vérifie que le fichier existe
-        if not os.path.exists(DATABASE_FILE):
-            return {"error": "Base de données introuvable"}
-        
-        # Récupère la taille avant VACUUM
-        size_before = os.path.getsize(DATABASE_FILE)
-        
-        # Exécute VACUUM
-        conn = sqlite3.connect(DATABASE_FILE)
-        cursor = conn.cursor()
-        
-        cursor.execute("VACUUM")
-        conn.commit()
-        conn.close()
-        
-        # Met à jour le cache
-        setattr(vacuum_database, '_last_vacuum', current_time)
-        
-        # Récupère la taille après VACUUM
-        size_after = os.path.getsize(DATABASE_FILE)
-        space_saved = size_before - size_after
-        space_saved_mb = space_saved / (1024 * 1024)
-        
-        return {
-            "message": "VACUUM exécuté avec succès",
-            "database": {
-                "path": DATABASE_FILE,
-                "size_before_bytes": size_before,
-                "size_after_bytes": size_after,
-                "space_saved_bytes": space_saved,
-                "space_saved_mb": round(space_saved_mb, 2)
-            },
-            "skipped": False
-        }
-        
-    except Exception as e:
-        return {"error": f"Erreur lors du VACUUM: {str(e)}", "skipped": False}

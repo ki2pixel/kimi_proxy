@@ -46,26 +46,7 @@ class ProxyClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-        self._client: Optional[httpx.AsyncClient] = None
-    
-    async def __aenter__(self) -> httpx.AsyncClient:
-        # Pourquoi timeout tuple: (connect, read, write, pool)
-        # Le read timeout est critique pour le streaming
-        timeout = httpx.Timeout(self.timeout, connect=10.0)
-        self._client = httpx.AsyncClient(
-            timeout=timeout,
-            # Pourquoi ces limits: évite l'épuisement des connexions
-            limits=httpx.Limits(
-                max_keepalive_connections=20,
-                max_connections=50
-            )
-        )
-        return self._client
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self._client:
-            await self._client.aclose()
-    
+
     def build_request(
         self,
         method: str,

@@ -10,7 +10,6 @@ from . import compaction
 from . import health
 
 from . import models
-from . import memory
 from . import mcp_gateway
 from . import mcp_passthrough
 
@@ -21,9 +20,7 @@ __all__ = [
     "compression",
     "compaction",
     "health",
-
     "models",
-    "memory",
     "mcp_gateway",
     "mcp_passthrough",
 ]
