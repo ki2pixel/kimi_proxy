@@ -2,6 +2,12 @@
 Aucune tâche active.
 
 ## Dernière Session Terminée
+- [2026-11-06] **Audit code mort et nettoyage 3 lots — TERMINÉ** :
+  1. Rapport `docs/audit/audit-code-mort-2026-11-06.md` et outil `scripts/audit_dead_code.py` (AST, routes, tables, dépendances).
+  2. Lot 1 : suppression de `api/routes/memory.py`, `proxy/mcp_gateway_rpc.py`, `features/sanitizer/masking.py`, `features/sanitizer/routing.py`, `features/mcp/analyzer.py`, `config/settings.py`, et des symboles sans référence.
+  3. Lot 2 : suppression de `/chat/completions`, `/api/compaction/*`, `/api/compress/*`, `/api/sessions/*`, `/api/admin/health`, `/api/rate-limit`, `/api/models/all`, WebSocket, sessions/métriques, compaction, compression, rate limiter, alertes. SQLite réduit à `masked_content` + `mcp_memory_entries`. Relay SSE pur. Auth `/v1/chat/completions` via `X-Admin-Key`.
+  4. Lot 3 : dépendances (`websockets` retiré, `pydantic`/`tomli` ajoutés), CLI `kimi-proxy test` avec arguments, scripts redondants supprimés, `config.toml` nettoyé, documentation alignée.
+  5. Validation : `164 passed`, Ruff ciblé OK, smoke runtime (routes conservées 200, routes supprimées 404), conflit Authorization testé.
 - [2026-08-02 21:17:00] **Correction de la Structure de Réponse MCP `content[0].text` — TERMINÉ** : Diagnostic et résolution du problème "Absence de résultat / réponses silencieuses" sous Cline.
   1. La méthode `_handle_read_file` du serveur `fast-filesystem` renvoyait `{"content": content_str, "size": size_int}`, et le handler principal appliquait un `json.dumps()` supplémentaire sur cet dictionnaire. L'extension Cline recevait un JSON sérialisé dans un champ texte (`text: "{\"content\": ...}"`), ce qui la poussait à ignorer le résultat ou à rendre une réponse vide.
   2. Correction dans [start-mcp-servers.sh](file:///home/kidpixel/kimi-proxy/scripts/start-mcp-servers.sh) : extraction directe du texte brut dans `content[0].text` pour satisfaire strictement la spécification officielle du standard MCP 2024-11-05.

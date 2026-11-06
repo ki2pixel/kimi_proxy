@@ -110,3 +110,14 @@ shrimp_data/memory/*.json
 scripts/config.js
 tests/validate-audit-remediation.js
 
+# Tool caches
+.ruff_cache/
+.mypy_cache/
+.shrimp_task_manager/
+
+# Runtime artifacts
+backups/
+workspace/
+*.pid
+.server.port
+

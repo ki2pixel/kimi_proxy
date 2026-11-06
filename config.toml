@@ -1,27 +1,18 @@
 # ============================================
 # KIMI PROXY — Configuration MCP interne uniquement
-# Architecture radicale: aucun provider, aucun modele, aucune cle API
-# Cline envoie X-Target-Base-URL + Authorization dans les headers
+# Architecture session-less : le client envoie X-Target-Base-URL + Authorization.
+# Aucun provider, aucun modèle, aucune clé API dans ce fichier.
 # ============================================
 
 # ============================================
-# OBSERVATION MASKING — Schema 1 (tool results conversationnels)
+# OBSERVATION MASKING — Schéma 1
 # ============================================
 
 [observation_masking.schema1]
-# Feature flag (rollback instantane)
 enabled = false
-
-# Fenetre en nombre de "tours tool" a conserver intacts
 window_turns = 8
-
-# Conserver les tool results qui ressemblent a des erreurs
 keep_errors = true
-
-# Optionnel: conserver au moins les K derniers resultats par outil
 keep_last_k_per_tool = 0
-
-# Placeholder court (francais). Variables: {tool_call_id}, {tool_name}, {original_chars}
 placeholder_template = "[Observation masquee: resultat d'outil ancien (tool_call_id={tool_call_id}, outil={tool_name}, chars={original_chars})]"
 
 # ============================================
@@ -29,7 +20,6 @@ placeholder_template = "[Observation masquee: resultat d'outil ancien (tool_call
 # ============================================
 
 [log_watcher]
-# Desactive par defaut pour un middleware minimaliste
 enabled = false
 
 # ============================================
@@ -37,21 +27,26 @@ enabled = false
 # ============================================
 
 [database]
-# Active/desactive la persistance des sessions SQLite. Par defaut: false (in-memory)
+# Persistance SQLite des données MCP. false = base en mémoire.
 persist_sessions = false
 
 # ============================================
-# CONTEXT PRUNING — MCP Pruner (Lot C2)
+# SANITIZER (lecture seule)
+# ============================================
+
+[sanitizer]
+enabled = true
+threshold_tokens = 1000
+preview_length = 200
+# tmp_dir = "~/.kimi/tmp/kimi_proxy_masked"
+
+# ============================================
+# CONTEXT PRUNING — MCP Pruner
 # ============================================
 
 [context_pruning]
-# Feature flag (rollback instantane)
 enabled = false
-
-# Evite d'appeler le pruner sur des tool results courts
 min_chars_to_prune = 2000
-
-# Timeout global de l'appel MCP (ms)
 call_timeout_ms = 1500
 
 [context_pruning.options]
@@ -62,166 +57,55 @@ annotate_lines = true
 include_markers = true
 
 # ============================================
-# MCP TOOL PRUNING — Elagage des reponses MCP Tools/Call
+# MCP TOOL PRUNING — Réponses MCP tools/call
 # ============================================
 
 [mcp_tool_pruning]
-# Desactive par defaut pour un middleware minimaliste
 enabled = false
 
 # ============================================
-# MCP PRUNER — Backend selection (env > toml)
+# MCP PRUNER — Sélection du backend (env > toml)
 # ============================================
 
 [mcp_pruner]
-# Backend(s) par defaut si KIMI_PRUNING_BACKEND n'est pas defini.
-# Fonctionnement en Pipeline (Cascade Squeeze Engine).
-# Modes disponibles :
-# - "heuristic" : Nettoyage Base64 et trim de lignes (Layer 1)
-# - "local_rag" : Semantic RAG via sentence-transformers (Layer 2)
-# - "deepinfra" : Semantic Rerank via DeepInfra cloud (Layer 2 cloud)
-# Exemple de chainage: "heuristic,local_rag"
+# Pipeline en cascade : "heuristic", "local_rag", "deepinfra".
+# Exemple : "heuristic,local_rag"
 backend = "heuristic,local_rag"
 
-# Parametres DeepInfra (sans secrets). Les secrets restent en env:
+# Paramètres DeepInfra (sans secrets) :
 # - DEEPINFRA_API_KEY (obligatoire pour activer DeepInfra)
 # - DEEPINFRA_ENDPOINT_URL (optionnel)
 # - DEEPINFRA_TIMEOUT_MS (optionnel)
 deepinfra_timeout_ms = 20000
 deepinfra_max_docs = 64
 
-# Cache TTL in-memory cote serveur MCP Pruner (fallback TOML)
 cache_ttl_s = 30
 cache_max_entries = 256
 
 # ============================================
-# COMPACTION — Phase 2 Fonctionnalites Utilisateur
+# MCP GATEWAY — Circuit breaker
 # ============================================
-
-[compaction]
-# Active la compaction automatique du contexte
-enabled = true
-
-# Seuil de pourcentage pour declencher l'alerte compaction
-threshold_percentage = 80
-
-# Seuil critique pour le bouton d'urgence (Phase 3)
-critical_threshold = 95
-
-# Nombre maximum d'echanges recents a preserver (2 = 4 messages: 2 user + 2 assistant)
-max_preserved_messages = 2
-
-# Nombre minimum de tokens pour declencher une compaction
-min_tokens_to_compact = 500
-
-# Nombre minimum de messages pour declencher une compaction
-min_messages_to_compact = 6
-
-# Objectif de reduction de tokens (60%)
-target_reduction_ratio = 0.60
-
-# Tokens a reserver pour la compaction (espace tampon)
-reserved_tokens = 5000
-
-[compaction.auto]
-# Active la compaction automatique quand le seuil est atteint
-auto_compact = true
-
-# Seuil de declenchement de l'auto-compaction (0.0 - 1.0)
-auto_compact_threshold = 0.85
-
-# Delai entre deux compactions automatiques (en minutes)
-auto_compact_cooldown = 5
-
-# Nombre maximum de compactions automatiques consecutives
-max_consecutive_auto_compactions = 3
-
-# ============================================
-# MCP PHASE 3 — Serveurs MCP Externes
-# ============================================
-
-[mcp]
-# Active l'integration MCP Phase 3
-enabled = true
 
 [mcp.gateway]
-# Active ou désactive le circuit breaker protégeant contre les boucles d'appels MCP
 cb_enabled = true
-
-# Nombre maximal d'appels similaires consécutifs tolérés avant ouverture (défaut: 5)
 cb_max_failures = 5
-
-# Seuil de similarité Jaccard entre les tokens des arguments (0.0 - 1.0, défaut: 0.85)
 cb_similarity_threshold = 0.85
 
-# Serveur Qdrant MCP (github.com/qdrant/mcp-server-qdrant)
+# ============================================
+# MCP PHASE 3 — Serveurs externes
+# ============================================
+
 [mcp.qdrant]
-enabled = true
 url = "https://f4852e4b-fc7f-400e-a45c-11c333a7f8df.eu-west-1-0.aws.cloud.qdrant.io"
 api_key = "${QDRANT_API_KEY}"
 collection = "kimi_proxy_memory"
+search_timeout_ms = 50
 
-# Timeouts (ms)
-search_timeout_ms = 50        # Recherche semantique <50ms
-indexing_timeout_ms = 1000    # Indexation de vecteur
-
-# Seuils
-similarity_threshold = 0.7    # Seuil de similarite (0-1)
-redundancy_threshold = 0.85   # Seuil de detection redondance
-
-# Serveur Context Compression MCP (github.com/rsakao/context-compression-mcp-server)
 [mcp.compression]
-enabled = true
 url = "http://localhost:8001"
 api_key = ""
+compression_timeout_ms = 5000
 
-# Timeouts (ms)
-compression_timeout_ms = 5000   # Timeout compression
-deccompression_timeout_ms = 1000
-
-# Parametres de compression
-default_algorithm = "context_aware"  # "zlib" | "context_aware"
-target_ratio = 0.5                   # Ratio cible (0.5 = 50% reduction)
-min_tokens_to_compress = 500         # Tokens minimum pour compresser
-
-# Retry configuration
 [mcp.retry]
 max_retries = 3
 retry_delay_ms = 100
-backoff_multiplier = 2.0
-
-# Priorites des serveurs (ordre de fallback)
-[mcp.priorities]
-semantic_search = ["qdrant", "local_fallback"]
-compression = ["context-compression-mcp", "zlib_fallback"]
-memory_storage = ["qdrant", "sqlite"]
-
-# ============================================
-# PARAMETRES DE CONTROLE
-# ============================================
-
-[loop_control]
-max_steps_per_turn = 100
-max_retries_per_step = 3
-max_ralph_iterations = 0
-reserved_context_size = 50000
-
-[mcp.client]
-tool_call_timeout_ms = 60000
-
-# ============================================
-# PROXY — Configuration timeouts et retries
-# ============================================
-
-[proxy]
-# Timeout de connexion (secondes)
-connect_timeout = 10.0
-
-# Timeout de lecture pour streaming (secondes)
-stream_timeout = 120.0
-
-# Nombre de retries sur erreur reseau
-max_retries = 2
-
-# Delai initial entre retries (backoff exponentiel)
-retry_delay = 1.0

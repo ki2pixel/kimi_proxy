@@ -2,6 +2,9 @@
 
 Date: 2026-07-15
 
+> [!WARNING]
+> Audit historique. Les routes `/chat/completions`, `/api/sessions/*`, `/api/compaction/*`, `/api/compress/*` et les WebSockets ont été supprimés le 2026-11-06. Voir [audit-code-mort-2026-11-06.md](./audit-code-mort-2026-11-06.md) pour l'état actuel.
+
 ## TL;DR
 
 Le backend est utilisable en environnement local contrôlé, mais il n’est pas prêt pour une exposition réseau. Les priorités sont claires: retirer l’usage de `eval`, fermer le mode proxy ouvert, ajouter une authentification minimale, corriger les erreurs runtime détectées par Ruff, puis durcir les limites de taille et les fuites d’informations.

@@ -1,118 +1,69 @@
-# 🏛️ Architecture Système : Les Fondations Techniques
+# Architecture du middleware
 
-**TL;DR**: C'est comme une maison à 5 étages où chaque niveau a sa fonction - API pour accueillir, Services pour gérer, Features pour les fonctionnalités spéciales, Proxy pour router, et Core pour les fondations.
+**TL;DR** : Kimi Proxy est un middleware session-less. Le client fournit la cible et sa clé provider ; le proxy applique les features MCP, puis relaie la requête en HTTP/SSE.
 
-Cette section explique comment j'ai construit cette maison, pourquoi chaque étage est important, et comment ils communiquent entre eux.
+## Les cinq couches
 
-## L'histoire de cette architecture
-
-J'ai commencé avec un fichier monolithique de 3,073 lignes. C'était comme vivre dans un studio de 10m² - tout était mélangé, impossible à trouver quoi que ce soit, et chaque modification risquait de tout casser.
-
-Après des mois de frustration, j'ai tout démantelé et reconstruit étage par étage. Le résultat? 52 fichiers organisés logiquement, chaque module ayant une seule responsabilité.
-
-## Ce que vous trouverez ici
-
-### [Architecture Modulaire v2.0](./modular-architecture-v2.md) ⭐ **Le cœur du système**
-- Pourquoi j'ai tout démantelé
-- Les 5 étages de la maison (API/Services/Features/Proxy/Core)
-- Comment les modules communiquent
-- Mes patterns préférés (Factory, Context Managers, DI)
-- La migration qui m'a pris une semaine
-
-### Cline (local) (import lecture seule)
-
-Si tu utilises Cline en local, Kimi Proxy peut importer des métriques d’usage depuis un unique ledger allowlisté, puis les exposer via l’API et le dashboard.
-
-- Doc feature : `docs/features/cline.md`
-- Emplacement dans l’architecture 5 couches : voir la section “Feature exemple : Cline (local)” dans `modular-architecture-v2.md`
-
-### [Système Proxy](./proxy-system.md)
-- Comment le routage multi-provider fonctionne
-- La gestion des clés API et sécurité
-- La protection anti-boucle et injection headers
-
-### [Schéma Base de Données](./database-schema.md)
-- Les tables principales (sessions, metrics, providers)
-- Les extensions Phase 2 (memory_metrics, compression_log)
-- Comment les migrations fonctionnent
-
-### [Endpoints API](./api-endpoints.md)
-- L'API REST complète avec exemples
-- Les WebSocket temps réel
-- Les endpoints spécialisés (sanitizer, MCP, compression)
-
-## Pourquoi cette structure?
-
-### La règle d'or : Une seule raison de changer
-Chaque module ne fait qu'une chose :
-- `core/tokens.py` ne fait QUE compter des tokens
-- `features/sanitizer.py` ne fait QUE masquer du contenu
-- `proxy/router.py` ne fait QUE router vers les providers
-
-Quand j'ai besoin de modifier quelque chose, je sais exactement où aller. Pas de chasse au trésor.
-
-### Les dépendances contrôlées
-```
-Core peut importer personne
-Config peut importer Core seulement
-Features peuvent importer Core + Config
-Proxy peut importer Core + Config
-Services peuvent importer tout sauf API
-API peut importer tout le monde
+```text
+API (FastAPI)
+  ↓
+Services (streaming SSE, callbacks)
+  ↓
+Features (MCP, mémoire, masking, pruning, log watcher)
+  ↓
+Proxy (HTTPX, passthrough, réparation tool_calls)
+  ↓
+Core (SQLite, Tiktoken, dataclasses, constantes)
 ```
 
-### Tests qui ont du sens
-- Tests unitaires par module (rapides, isolés)
-- Tests d'intégration entre modules
-- Tests E2E pour les workflows complets
+Chaque couche ne dépend que des couches inférieures. Core n'a aucune dépendance externe et ne fait aucun appel réseau.
 
-## L'analogie de la maison
+## Flux réel
 
-Pensez à cette architecture comme une maison :
+```text
+Client OpenAI-compatible
+  │  POST /v1/chat/completions
+  │  X-Target-Base-URL + Authorization
+  ▼
+API (mcp_passthrough)
+  ▼
+Features (tool fixing, observation masking, context pruning)
+  ▼
+Proxy (validation SSRF, HTTPX, SSE)
+  ▼
+Provider upstream
+```
 
-- **Rez-de-chaussée (API)** : La porte d'entrée, ce que voient les invités
-- **1er étage (Services)** : Les pièces communes (salon, cuisine) partagées par tous
-- **2ème étage (Features)** : Les chambres spécialisées, chacune avec sa fonction
-- **3ème étage (Proxy)** : Le standard téléphonique qui connecte au monde extérieur
-- **Fondations (Core)** : Ce qui supporte tout le reste, invisible mais essentiel
+La route historique `POST /chat/completions`, le pipeline sessions/métriques, la compaction, la compression et les WebSockets ont été retirés. Le seul endpoint de chat est `/v1/chat/completions`.
 
-Chaque étage peut être rénové sans effondrer la maison. Je peux changer la décoration d'une chambre sans perturber le salon.
+## Modules clés
 
-## Métriques Actuelles (2026-06-04)
+| Couche | Module | Rôle |
+| :--- | :--- | :--- |
+| API | `api/routes/mcp_passthrough.py` | Entrée OpenAI-compatible |
+| API | `api/routes/mcp_gateway.py` | Gateway JSON-RPC MCP |
+| API | `api/routes/mcp.py` | Mémoire MCP |
+| API | `api/routes/sanitizer.py` | Lecture des contenus masqués |
+| Features | `features/mcp/` | Client Qdrant/compression, mémoire SQLite |
+| Features | `features/mcp_tool_pruning/` | Élagage des réponses tools/call |
+| Features | `features/mcp_pruner/` | Serveur de pruning autonome |
+| Features | `features/observation_masking/` | Masquage des vieux tool results |
+| Features | `features/log_watcher/` | Lecture des logs Continue/Kimi |
+| Proxy | `proxy/passthrough.py` | Validation cible, headers, forward |
+| Proxy | `proxy/stream.py` | Relay SSE pur |
+| Proxy | `proxy/tool_utils.py` | Réparation des tool_calls |
+| Core | `core/database.py` | SQLite minimal |
+| Core | `core/tokens.py` | Comptage Tiktoken |
 
-### Volumétrie Code Source
-- **87 fichiers Python** de production (dans `src/` et `scripts/`)
-- **14 177 lignes de code** (hors commentaires/vides)
-- **Complexité moyenne** : A (3.95)
+## Invariants
 
-### Distribution par Couche
-| Couche | Fichiers | LOC | Complexité Moyenne |
-| ------ | --------- | --- | ---------------- |
-| Core | 7 | 1 632 | A (2.62) |
-| Features | 45 | 6 587 | A (4.11) |
-| Proxy | 9 | 1 468 | B (5.79) |
-| Services | 4 | 252 | A (2.14) |
-| API | 13 | 2 378 | A (4.24) |
+1. Core ne dépend d'aucun package externe.
+2. Aucune I/O bloquante ajoutée dans un handler async : la résolution DNS du passthrough est asynchrone.
+3. Le streaming utilise exclusivement `StreamingResponse` (SSE).
+4. Les routes `/api/*` sont protégées par `KIMI_ADMIN_KEY`.
+5. `/v1/chat/completions` lit la clé admin dans `X-Admin-Key`, jamais dans `Authorization`.
+6. Le schéma SQLite est minimal : `masked_content` et `mcp_memory_entries`.
 
-### Points Chauds Identifiés
-- **_proxy_to_provider()** (API/routes/proxy.py) : Score F (41) — routage et transformation des requêtes LLM
-- **maybe_prune_jsonrpc_response()** (Features/mcp_tool_pruning/engine.py) : Score F (44) — analyse et élagage des réponses d'outils volumineuses
-- **_tool_prune_text()** (Features/mcp_pruner/server.py) : Score E (40) — moteur algorithmique d'élagage de texte
-- **reconstruct_complex_json()** (Proxy/tool_utils.py) : Score E (38) — réparation structurelle de JSON corrompus ou tronqués
-- **fix_malformed_json_arguments()** (Proxy/tool_utils.py) : Score E (31) — normalisation d'arguments JSON mal formés
+## Fichiers historiques
 
-### Documentation Créée
-- ✅ **proxy-layer.md** : Architecture couche proxy avec patterns système
-- ✅ **log-watcher.md** : Monitoring temps réel PyCharm
-- 📋 **Mise à jour README** : Intégration métriques actuelles
-
-## Pour qui cette documentation?
-
-- **Développeurs qui veulent contribuer** : Comprendre comment tout s'articule
-- **Architectes logiciels** : Voir un exemple concret de modularisation
-- **Moi-même dans 6 mois** : Me souvenir de pourquoi j'ai fait ces choix
-- **Curieux techniques** : Comment on transforme un monolithe en architecture modulaire
-
----
-
-*Navigation : [← Retour à l'index](../README.md) | [Architecture Modulaire →](./modular-architecture-v2.md)*
+Les documents `modular-architecture-v2.md`, `docs/development/migration-v2.md` et les guides de features supprimées décrivent l'ancienne architecture. Ils sont conservés comme historique et ne doivent pas servir de référence pour le runtime actuel.

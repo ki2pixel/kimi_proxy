@@ -30,18 +30,15 @@ Comment j'ai transformé un monolithe de 3,073 lignes en une maison modulaire de
   - Les règles de dépendances
   - Pour qui cette documentation
 
-### ⚡ [Fonctionnalités](./features/) - Les Superpouvoirs
-Les 3 phases qui me sauvent la vie quand mon contexte explose.
+### ⚡ [Fonctionnalités](./features/) - Optimisation du contexte
+Les features qui réduisent le contexte avant l'envoi au provider.
 
-- **[Support Multi-Provider](./features/multi-provider-support.md)** - L'Orchestre LLM
-  - Comment j'ai connecté 8 providers et 20+ modèles
-  - Mon workflow quotidien (matin: Kimi Code, après-midi: NVIDIA, soir: Mistral)
-  - Les vrais économies que j'ai réalisées
-
-- **[Gestion Active du Contexte](./features/active-context-manager-plan.md)** - Mon Système de Survie
-  - Le crash qui m'a tout fait changer
-  - Les 3 phases : Sanitizer, MCP, Compression
-  - Les économies mesurées : 38% de réduction des coûts
+- **[Passthrough MCP](./proxy/passthrough.md)** - Route `/v1/chat/completions`
+  - `X-Target-Base-URL` + `Authorization` provider
+  - Tool fixing, observation masking, context pruning
+- **[MCP Pruner](./features/mcp-pruner.md)** - Élagage récupérable
+- **[Mémoire MCP](./features/mcp.md)** - SQLite + Qdrant
+- **[Log Watcher](./features/log-watcher.md)** - Lecture des logs Continue/Kimi
 
 ### 🛠️ [Développement](./development/) - Le Journal de Bord
 Mon histoire de développement, avec les vrais problèmes et solutions.
@@ -50,11 +47,6 @@ Mon histoire de développement, avec les vrais problèmes et solutions.
   - Pourquoi je documente tout
   - Mon approche "Build, Measure, Learn"
   - Les leçons apprises
-
-- **[Session 2026-02-15](./development/sessions/2026-02-15-modular-restructure.md)** ⭐ **La transformation majeure**
-  - Le matin du drame : pourquoi j'ai tout démantelé
-  - Les 10 phases de migration avec heures et défis réels
-  - Comment j'ai surmonté les imports circulaires et autres pièges
 
 - **[Migration v1.0 vers v2.0](./development/migration-v2.md)**
   - Le grand déménagement : du studio 10m² à la maison organisée
@@ -82,19 +74,13 @@ Les fondations techniques du système.
 - **[Architecture Core](./core/README.md)** - Database SQLite, tokens Tiktoken, structures typées
 
 ### 🔌 [API](./api/) - Routes et Endpoints
-L'interface REST/WebSocket du système.
+L'interface REST du middleware.
 
-- **[Documentation API](./api/README.md)** - 44 routes documentées avec patterns système
+- **[Documentation API](./api/README.md)** - Surface OpenAI-compatible et gateway MCP
 
-### 📊 [Services](./services/) - Services internes
-Les services internes et alertes.
+### 🌐 [Proxy](./proxy/) - Passthrough vers APIs LLM
+Le cœur du proxy session-less.
 
-- **[Vue d'ensemble Services](./services/README.md)** - Rate limiting, alertes
-
-### 🌐 [Proxy](./proxy/) - Routage vers APIs LLM
-Le cœur du proxy multi-provider.
-
-- **[Logique Routage Proxy](./proxy/README.md)** - Routage intelligent vers 8 providers
 - **[Passthrough MCP Session-less](./proxy/passthrough.md)** - Route `/v1/chat/completions` avec features MCP
 - **[Tool Validation](./proxy/tool-validation.md)** - Validation outils proxy
 
@@ -104,7 +90,7 @@ Le cœur du proxy multi-provider.
 Commence par **Architecture Modulaire v2.0**. C'est le cœur de tout.
 
 ### Si tu veux économiser des tokens
-Va directement à **Support Multi-Provider** et **Gestion Active du Contexte**.
+Va directement à **Passthrough MCP** et **Gestion Active du Contexte**.
 
 ### Si tu veux installer et utiliser
 Le **Guide de Déploiement** te donne tout ce qu'il faut.
@@ -137,20 +123,9 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 *Navigation : [← Retour au projet](../README.md) | [Architecture →](./architecture/)*
 
 ### 🛠️ Développement
-- **[Sessions de développement](./development/sessions/)**
-  - **[Session 2026-02-20 : Auto-Session Mistral Large 2411](./development/sessions/2026-02-20-auto-session-mistral.md)** ⭐ **Nouveau**
-  - Création automatique de sessions par modèle (au lieu de par provider)
-  - Mapping dynamique des providers basé sur les préfixes de modèles
-  - Expansion automatique des variables d'environnement
-  - [2026-02-20 : WebSocket Memory Operations Infrastructure](./development/sessions/2026-02-20-websocket-memory-ops.md) ⭐ **Nouveau**
-  - [2026-02-20 : Modal Display Bug Fix](./development/sessions/2026-02-20-modal-display-fix.md) ⭐ **Nouveau**
-    - Dropdown de sélection des sessions dans l'UI mémoire
-    - Possibilité de suppression des sessions avec VACUUM automatique
-    - Gestion complète des modales (ouverture/fermeture, événements)
-  - [2026-02-15 : Restructuration architecture modulaire](./development/sessions/2026-02-15-modular-restructure.md)
-  - [2026-02-11 : Implémentation multi-provider](./development/sessions/2026-02-11-multi-provider-implementation.md)
-  - [2026-02-14 : Correction routing modèles](./development/sessions/2026-02-14-model-routing-fix.md)
-  - [2026-02-14 : Corrections multi-provider](./development/sessions/2026-02-14-multi-provider-fixes.md)
+- **[Guide agent](./development/agent-coding-guide.md)** — conventions actuelles pour les agents IA.
+- **[Journal historique](./development/migration-v2.md)** — document de migration v1 → v2, conservé comme archive.
+- **Sessions de développement** : les anciens journaux de session décrivaient l'architecture sessions/WebSocket et ont été retirés avec les fonctionnalités correspondantes.
 
 - **[Guides techniques](./development/guides/)**
   - [Gestion fenêtre contexte Continue IDE](./development/guides/continue-ide-context-management.md)
@@ -173,26 +148,28 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 
 ## 📋 État du Projet
 
-### ✅ v2.0 - Architecture Modulaire (2026-03-01)
-- **Restructuration complète** : 87 fichiers de production (dans `src/` et `scripts/`)
-- **Métriques actuelles** : 14 177 LOC Python (20 837 LOC avec tests)
-- **Nouvelle CLI** : `./bin/kimi-proxy` avec sous-commandes
-- **Tests structurés** : Unit, integration, E2E
-- **Setup script** : Installation via `pip install -e .`
+### ✅ État actuel (2026-11-06)
+- **63 fichiers Python de production**, 11 457 LOC.
+- **35 fichiers de tests**, 4 532 LOC.
+- **19 routes applicatives** : health, modèles, passthrough, gateway MCP, mémoire, sanitizer.
+- **2 tables SQLite** : `masked_content`, `mcp_memory_entries`.
+- **CLI** : `./bin/kimi-proxy` (`start`, `stop`, `restart`, `status`, `logs`, `test`, `shell`).
+- **Tests** : `./bin/kimi-proxy test` propage désormais les arguments à pytest.
+
+> Les métriques et fonctionnalités des sections historiques ci-dessous peuvent décrire l'ancienne architecture (sessions, compaction, compression, dashboard). Voir `docs/audit/audit-code-mort-2026-11-06.md`.
 
 ### ✅ Fonctionnalités
-- **Multi-provider** : 8 providers, 20+ modèles supportés
-- **Sanitizer Phase 1** : Masking automatique contenus verbeux
-- **MCP Phase 2** : Intégration mémoire standardisée
-- **Compression Phase 3** : Bouton d'urgence compression
-- **Passthrough MCP** : Route `/v1/chat/completions` session-less avec features MCP (tool fixing, masking, pruning)
-- **MCP Phase 4** : 4 serveurs MCP (Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query) - **Exécution locale dans Continue.dev**
-- **MCP Tool Pruning** : Optimisation contextuelle avec métriques observabilité (Phase 2D)
-- **MCP Pruner DeepInfra** : Optimisation contextuelle avec moteur top-K
-- **Log Watcher** : Monitoring PyCharm/Continue en temps réel
-- **Métriques enrichies** : 304 points de surveillance METRICS/LOGGING/ALERT
-- **Monitoring temps réel** : WebSockets, dashboard *(Dépréciés au profit d'un usage CLI/logs stdio)*
-- **Persistance** : SQLite avec historique technique *(Pas de stockage de conversations chat)*
+- **Passthrough session-less** : `/v1/chat/completions` avec `X-Target-Base-URL` et `Authorization`.
+- **MCP Gateway** : forwarding JSON-RPC vers `context-compression`, `sequential-thinking`, `fast-filesystem`, `json-query`, `pruner`.
+- **Mémoire MCP** : stockage SQLite `mcp_memory_entries`, recherche Qdrant, compression contextuelle.
+- **Observation masking** : réduction des vieux tool results (flag désactivé par défaut).
+- **Context pruning** : élagage via MCP Pruner (flag désactivé par défaut).
+- **MCP Tool Pruning** : élagage des réponses `tools/call` (flag désactivé par défaut).
+- **Log Watcher** : lecture des logs Continue/Kimi (désactivé par défaut).
+- **Streaming SSE** : `StreamingResponse` exclusivement, aucun WebSocket.
+- **Persistance** : SQLite minimale (`masked_content`, `mcp_memory_entries`), mémoire par défaut.
+
+> Les routes sessions, compaction, compression, providers, export et WebSocket ont été supprimées le 2026-11-06. Voir `docs/audit/audit-code-mort-2026-11-06.md`.
 
 ## 🆕 Nouveautés v2.0
 

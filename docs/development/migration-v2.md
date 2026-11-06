@@ -1,5 +1,8 @@
 # Migration v1.0 → v2.0 : Le Grand Déménagement
 
+> [!WARNING]
+> Document historique. Depuis le 2026-11-06, les scripts `scripts/start.sh`, `scripts/stop.sh`, `start.sh`, `stop.sh` et les alias `bin/kimi-proxy-*` ont été supprimés. Utilisez `./bin/kimi-proxy start|stop|restart|status|test`. Les routes sessions, providers, compaction, compression et WebSocket n'existent plus. Voir [docs/audit/audit-code-mort-2026-11-06.md](../audit/audit-code-mort-2026-11-06.md).
+
 **TL;DR**: J'ai transformé mon monolithe de 3,073 lignes en une maison modulaire de 52 pièces. Voici comment j'ai fait, et comment tu peux faire pareil.
 
 ## L'histoire de cette migration

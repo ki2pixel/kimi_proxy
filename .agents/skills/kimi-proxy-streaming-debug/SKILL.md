@@ -1,112 +1,82 @@
 ---
 name: kimi-proxy-streaming-debug
-description: Expert debugging for streaming errors in Kimi Proxy Middleware MCP. Use when encountering ReadError, TimeoutException, ConnectError, or SSE streaming issues. Provides systematic troubleshooting for proxy streaming failures and token extraction problems.
+description: Expert debugging for SSE streaming in Kimi Proxy Middleware MCP. Use when encountering ReadError, TimeoutException, ConnectError, truncated streams, or client disconnects.
 license: Complete terms in LICENSE.txt
 ---
 
 # Kimi Proxy Streaming Debug
 
-**TL;DR**: The current streaming layer is designed for best effort, not perfect resume. `proxy/stream.py` normalizes known streaming failures, and still tries to extract partial usage from buffered SSE data in `finally`.
+**TL;DR**: `proxy/stream.py` est un relay SSE pur. Il ne bufferise pas, n'extrait pas de tokens et n'avale pas les erreurs. Les erreurs réseau remontent à FastAPI ; les retries se font au niveau requête dans `proxy/client.py`.
 
 ## Source of Truth
 
-Primary files:
-
 - `src/kimi_proxy/proxy/stream.py`
 - `src/kimi_proxy/proxy/client.py`
-- `src/kimi_proxy/api/routes/proxy.py`
-- `src/kimi_proxy/core/exceptions.py`
+- `src/kimi_proxy/proxy/passthrough.py`
+- `src/kimi_proxy/api/routes/mcp_passthrough.py`
+- `tests/unit/proxy/test_stream.py`
 - `tests/e2e/test_streaming_errors.py`
 
-## Known Streaming Error Types
-
-`src/kimi_proxy/proxy/stream.py` defines the canonical streaming error map:
+## Comportement actuel
 
 ```python
-STREAMING_ERROR_TYPES = {
-    "read_error": "Connexion interrompue par le provider",
-    "connect_error": "Impossible de se connecter au provider",
-    "timeout_error": "Timeout lors de la lecture du stream",
-    "decode_error": "Erreur de décodage des données",
-    "unknown": "Erreur streaming inconnue",
-}
+async def stream_generator(response: httpx.Response):
+    try:
+        async for chunk in response.aiter_bytes():
+            yield chunk
+    finally:
+        await response.aclose()
+        client = getattr(response, "_client_ref", None)
+        if client is not None:
+            await client.aclose()
 ```
 
-These are the labels that should appear in docs and dashboards.
+- Aucun buffer de 256 Ko.
+- Aucune extraction `usage`.
+- Aucun `STREAMING_ERROR_TYPES`.
+- Aucun broadcast WebSocket.
+- Fermeture explicite de la réponse et du client HTTPX.
 
-## What the Current Stream Layer Actually Does
+## Erreurs
 
-### 1. Iterate the upstream stream
+| Erreur | Où | Effet |
+| :--- | :--- | :--- |
+| `httpx.ReadError` | `client.send` / `send_streaming` | Retry réseau si tentatives restantes |
+| `httpx.ConnectError` | `client.send` / `send_streaming` | Retry réseau |
+| `httpx.TimeoutException` | `client.send` / `send_streaming` | Retry réseau, puis 504 |
+| Erreur pendant le flux | `stream_generator` | Remonte à FastAPI ; pas de reprise |
 
-`stream_generator(...)` yields chunks as they arrive.
+Les réponses 4xx/5xx ne sont pas retryées ; `passthrough.forward` les convertit en `JSONResponse`.
 
-### 2. Capture known network failures
+## Timeouts
 
-It handles at least:
+- `PROVIDER_TIMEOUTS` dans `proxy/client.py` définit les timeouts par provider.
+- Aucun timeout par chunk dans `stream.py`.
+- Le client HTTPX est créé avec `timeout=120.0` et `max_retries=2` dans le passthrough.
 
-- `httpx.ReadError`
-- `httpx.ConnectError`
-- `httpx.TimeoutException`
-- unexpected generic exceptions
-
-### 3. Extract partial usage even after failure
-
-This is a critical current behavior.
-
-```python
-usage_data = extract_usage_from_stream(buffer, provider_type)
-```
-
-The code does this in `finally`, which means partial buffered SSE data can still update token metrics even if the stream ended badly.
-
-
-
-## Provider Timeouts
-
-The stream layer currently keeps provider-specific timeout labels for chunk reads:
-
-- `gemini`: `60.0`
-- `kimi`: `30.0`
-- `default`: `30.0`
-
-Important nuance: these values are used by the stream helper for diagnostics and timeout messaging. Effective network behavior also depends on the surrounding HTTPX client configuration in the proxy layer.
-
-## Request-Layer Retry vs Stream-Layer Recovery
-
-### ✅ Real current behavior
-
-- `proxy/client.py` retries request-level `ReadError`, `ConnectError`, and `TimeoutException`
-- `proxy/stream.py` performs best-effort extraction and error broadcast after a stream has started
-
-### ❌ Not the current behavior
-
-- full stream resume with chunk replay
-- transparent mid-stream reconnection that preserves the exact SSE session
-
-Do not document full resume support unless it is actually added.
-
-## Practical Debug Flow
-
-### Inspect recent stream errors
+## Debug
 
 ```bash
-./bin/kimi-proxy logs | grep "STREAM_ERROR" | tail -20
+./bin/kimi-proxy logs | tail -100
+PYTHONPATH=src venv/bin/python -m pytest tests/unit/proxy/test_stream.py -q
+PYTHONPATH=src venv/bin/python -m pytest tests/e2e/test_streaming_errors.py -q
 ```
 
-### Run the focused regression suite
+Vérifier :
 
-```bash
-PYTHONPATH=src python -m pytest tests/e2e/test_streaming_errors.py -q
-```
+1. Le provider répond-il en SSE (`data: ...`) et non en JSON bufferisé ?
+2. Le header `Accept` est-il correct ?
+3. Le client ASGI consomme-t-il le flux jusqu'au bout ?
+4. Le `X-Target-Base-URL` inclut-il le bon suffixe (`/v1`) ?
+5. Le client HTTPX est-il fermé (`_client_ref`) ?
 
-### Check route-level proxy handling
+## ❌ Ne pas documenter
 
-Inspect `src/kimi_proxy/api/routes/proxy.py` for the JSON responses returned on `ReadError` / `TimeoutException` and for additional broadcasted provider-context alerts.
-
-## `StreamingError` Exception
-
-`src/kimi_proxy/core/exceptions.py` defines `StreamingError`, but the dominant runtime behavior currently relies on HTTPX exception handling plus normalized broadcast helpers in `proxy/stream.py`. Document both, but prioritize the actual code path the proxy uses today.
+- Reprise de stream avec replay de chunks.
+- Extraction de tokens partiels après erreur.
+- Broadcast WebSocket d'erreur.
+- `StreamingError` : la classe a été supprimée.
 
 ## Golden Rule
 
-**For streaming docs, be explicit about best-effort behavior: partial tokens may still be recovered, and errors are normalized.** Avoid promising resume semantics the code does not implement.
+**Un relay SSE ne guérit pas un flux cassé ; il le termine proprement.** Si vous voulez de la reprise, ajoutez-la explicitement avec un protocole et des tests, pas comme comportement implicite.

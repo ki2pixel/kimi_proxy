@@ -40,14 +40,3 @@ class TokenizationError(KimiProxyError):
             code="tokenization_error",
             details=details,
         )
-
-
-class CompactionError(KimiProxyError):
-    """Erreur lors de la compaction du contexte."""
-
-    def __init__(self, message: str, session_id: Optional[int] = None):
-        super().__init__(
-            message=message,
-            code="compaction_error",
-            details={"session_id": session_id} if session_id else {},
-        )

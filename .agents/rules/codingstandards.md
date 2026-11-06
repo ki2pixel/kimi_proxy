@@ -76,7 +76,7 @@ def bad_count(text: str) -> int:
 - Maintain low cognitive complexity (strictly <= 15 per function).
 - Avoid deep nesting (max 3 levels of indentation in business logic).
 - Centralize constants and remove unused parameters.
-- This rule must be strictly enforced (e.g., maintaining the purity of `proxy.py`, `stream.py`, and `mcp_bridge.py` following Phase 1-3 refactoring).
+- This rule must be strictly enforced (e.g., maintaining the purity of `proxy/stream.py`, `proxy/tool_utils.py`, `api/routes/mcp_gateway.py`, and `mcp_bridge.py`).
 
 ### Factory Functions & Dependency Injection
 ```python
@@ -94,9 +94,9 @@ def get_mcp_db():
 def get_target_base_url(x_target_base_url: str = Header(...)) -> str:
     return x_target_base_url
 
-@router.post("/chat/completions")
-async def proxy_endpoint(target_url: str = Depends(get_target_base_url)):
-    # Passthrough logic here
+@router.post("/v1/chat/completions")
+async def proxy_endpoint(request: Request):
+    # Passthrough session-less : X-Target-Base-URL + Authorization
     pass
 ```
 
@@ -188,7 +188,7 @@ from kimi_proxy.api.routes.sessions import get_session  # CIRCULAR!
 # ✅ GOOD
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from kimi_proxy.api.routes.sessions import SessionResponse
+    from kimi_proxy.features.mcp.gateway import MCPGatewayService
 ```
 
 ### ❌ Silent Try/Catch
@@ -211,7 +211,7 @@ src/kimi_proxy/
 ├── main.py              # FastAPI factory
 ├── core/                # Business logic, no deps
 ├── config/              # TOML configuration
-├── features/            # MCP, sanitizer, compaction
+├── features/            # MCP, sanitizer, log watcher
 ├── proxy/               # HTTP routing (passthrough)
 ├── services/            # SSE/Streaming manager
 └── api/                 # FastAPI routes
@@ -238,14 +238,14 @@ config.toml              # Secrets here only
 ## File-Specific Rules
 
 ### Clean API Router Structure
-Maintain only standard API routes (`/models`, `/chat/completions`) and remove any experimental editor-specific compatibility routes. Do not add additional compatibility prefixes like `/v1/models` without thorough review. Ensure `X-Target-Base-URL` header handles dynamic provider routing.
+Maintain only standard API routes (`/models`, `/v1/chat/completions`) and remove any experimental editor-specific compatibility routes. Do not add additional compatibility prefixes like `/v1/models` without thorough review. Ensure `X-Target-Base-URL` header handles dynamic provider routing.
 
 ### Model ID Mapping Simplicity
 Keep the model name mapping simple and direct: a) check exact key matches, b) otherwise use suffix split logic. Do not implement JetBrains-specific mappings, complex prefix removals, or fuzzy matching.
 
 ### MCP Gateway & Qdrant Integration
-- Ensure all insertions to `mcp_memory_entries` and `compaction_history` are asynchronous or properly wrapped.
-- Partition context data appropriately for Auto-Memory.
+- Ensure all insertions to `mcp_memory_entries` are asynchronous or properly wrapped.
+- Partition memory entries by `session_id` and `memory_type`.
 
 ## References
 - `README.md` - User docs
@@ -290,7 +290,7 @@ Any time you create or modify documentation (README, docs/, Markdown guides), yo
 - MCP servers, memory management, semantic search, Phase 2-4 features
 
 ### Use kimi-proxy-performance-optimization Skill (@.agents/skills/kimi-proxy-performance-optimization/SKILL.md)
-- Token counting, database queries, WebSocket performance, caching
+- Token counting, database queries, SSE relay performance, caching
 
 ### Use kimi-proxy-streaming-debug Skill (@.agents/skills/kimi-proxy-streaming-debug/SKILL.md)
 - Streaming errors: ReadError, Timeout, ConnectError, SSE issues
@@ -306,38 +306,41 @@ Any time you create or modify documentation (README, docs/, Markdown guides), yo
 
 ## Database Schema Extensions (Phase 3 MCP)
 
-### New Tables Added
+### Tables retained after the 2026-11-06 cleanup
 - `mcp_memory_entries` - Standardized MCP memory storage
-- `mcp_compression_results` - Algorithmic compression results
-- `mcp_routing_decisions` - Context-aware routing decisions
-- `compaction_history` - Context compaction history
+- `masked_content` - Read-only sanitizer surface
 
-## New Features (Recent Evolutions)
+Les tables `mcp_compression_results`, `mcp_routing_decisions`, `compaction_history`, `memory_metrics`, `memory_segments`, `compression_log`, `sessions` et `metrics` ont été retirées du code de création.
 
-### Context Compaction (Phase 1)
-- Automatic context reduction infrastructure
-- Intelligent history trimming based on relevance
+## Current Features
 
-### Auto Memory (Phase 2)
-- Pattern detection and storage in conversations
-- Automatic promotion of frequent/episodic/semantic patterns
+### Passthrough session-less
+- `POST /v1/chat/completions` avec `X-Target-Base-URL` et `Authorization`.
+- Validation SSRF asynchrone et streaming SSE.
 
-### MCP Standard (Phase 3)
-- Complete MCP server integration
-- External tool orchestration (Qdrant, Compression servers)
+### MCP Gateway and memory
+- Forward JSON-RPC vers Qdrant, compression, sequential-thinking, fast-filesystem, json-query et pruner.
+- Mémoire SQLite `mcp_memory_entries` + vecteurs Qdrant.
+
+### Context reduction
+- Observation masking, context pruning et MCP tool pruning, tous désactivés par défaut.
 
 ### Log Watcher
-- Real-time PyCharm/Continue monitoring
-- CompileChat block parsing and integration
+- Lecture des logs Continue/Kimi, désactivée par défaut.
 
 ## Performance Patterns
 
-### VACUUM Optimization
+### MCP Gateway Cache
 ```python
-def vacuum_database() -> Dict[str, Any]:
-    """Cache-integrated VACUUM to avoid repeated expensive operations (30s min)"""
-    if current_time - last_vacuum < 30:
-        return {"skipped": True}  # Avoid costly operations
+_GATEWAY_CACHE_TTL = 30.0
+# Cache borné à 512 entrées, copie profonde avant retour.
+```
+
+### SSE Relay
+```python
+async for chunk in response.aiter_bytes():
+    yield chunk
+# Pas de buffer, pas d'extraction de tokens, fermeture du client en finally.
 ```
 
 For Kimi Proxy development: Use primary skill + reference this file for unified conventions.

@@ -1,5 +1,8 @@
 # Architecture Modulaire v2.0 : La Maison Étagée
 
+> [!WARNING]
+> Document historique. Depuis le 2026-11-06, les modules WebSocket, sessions, compaction, compression et multi-provider ont été supprimés. La référence runtime actuelle est [docs/architecture/README.md](./README.md) et [docs/audit/audit-code-mort-2026-11-06.md](../audit/audit-code-mort-2026-11-06.md).
+
 **TL;DR**: J'ai transformé un monolithe de 3,073 lignes en 52 modules organisés par étages, chaque étage ne dépendant que de celui en dessous.
 
 Imaginez une maison où chaque étage a sa fonction : le rez-de-chaussée accueille les visiteurs (API), l'étage gère les services (WebSocket), le suivant abrite les fonctionnalités spéciales (Sanitizer), puis vient le routage (Proxy), et les fondations (Core). Chaque étage peut être rénové sans effondrer la maison.

@@ -1,176 +1,126 @@
 ---
 name: kimi-proxy-mcp-integration
-description: Comprehensive MCP (Model Context Protocol) integration for Kimi Proxy Middleware MCP. Use when working with MCP servers, memory management, semantic search, or external tool integration. Covers Phase 2-5 MCP features including Shrimp Task Manager, Sequential Thinking, Fast Filesystem, JSON Query, and Gateway servers.
+description: Comprehensive MCP integration for Kimi Proxy Middleware MCP. Use when working on the MCP gateway, memory storage, Qdrant/compression clients, pruner servers, or the stdio bridge.
 license: Complete terms in LICENSE.txt
 ---
 
 # Kimi Proxy MCP Integration
 
-**TL;DR**: The MCP stack combines standardized memory storage, Qdrant/compression clients, gateway-based external server access, and newer context-management features such as compaction and auto-memory. Document the real façade, DB tables, and error classes first; treat server-specific tool lists as runtime contracts that must be verified against the current bridge/gateway configuration.
+**TL;DR**: le stack MCP combine une gateway JSON-RPC (`/api/mcp-gateway/{server}/rpc`), un pont stdio (`scripts/mcp_bridge.py`), un stockage mémoire SQLite (`mcp_memory_entries`), Qdrant pour les vecteurs, et deux moteurs de pruning (`mcp_pruner`, `mcp_tool_pruning`). Les tables compaction/auto-memory ont été supprimées.
 
 ## Source of Truth
 
-Primary backend files:
-
-- `src/kimi_proxy/features/mcp/client.py`
-- `src/kimi_proxy/features/mcp/base/config.py`
-- `src/kimi_proxy/features/mcp/base/rpc.py`
-- `src/kimi_proxy/features/mcp/memory.py`
-- `src/kimi_proxy/core/database.py`
-- `src/kimi_proxy/api/routes/mcp.py`
 - `src/kimi_proxy/api/routes/mcp_gateway.py`
-- `src/kimi_proxy/features/log_watcher/*`
-- `src/kimi_proxy/features/compaction/*`
+- `src/kimi_proxy/api/routes/mcp.py`
+- `src/kimi_proxy/features/mcp/`
+- `src/kimi_proxy/features/mcp_pruner/`
+- `src/kimi_proxy/features/mcp_tool_pruning/`
+- `src/kimi_proxy/features/observation_masking/`
+- `scripts/mcp_bridge.py`
+- `scripts/start-mcp-servers.sh`
 
-## Phase Alignment
+## Gateway MCP
 
-### Phase 1: Context compaction
+Endpoint :
 
-- `compaction_history` table in SQLite
-- `features/compaction/simple_compaction.py`
-- `features/compaction/auto_trigger.py`
-- `features/compaction/auto_trigger.py`
-
-### Phase 2: Context-aware memory metrics
-
-- memory metrics in `metrics`, `memory_metrics`, `memory_segments`
-- memory broadcasts such as `auto_memory_stored`
-- advanced memory stats surfaced in API
-
-### Phase 3: Standardized MCP persistence
-
-Current schema extensions include:
-
-- `mcp_memory_entries`
-- `mcp_compression_results`
-- `mcp_routing_decisions`
-- `compaction_history`
-
-### Phase 4–5: External MCP ecosystem and gateway
-
-- gateway route: `/api/mcp-gateway/{server_name}/rpc`
-- configured server families include `shrimp-task-manager`, `sequential-thinking`, `fast-filesystem`, `json-query`
-- stdio / bridge compatibility is part of the operational model
-
-## Current Backend Capabilities
-
-### Specialized façade
-
-`MCPExternalClient` currently provides first-class wrappers for:
-
-- Qdrant semantic search
-- compression server operations
-- chunking / caching helpers for large MCP responses
-
-It also exposes generic compatibility surfaces, but you should not assume every high-level helper method exists for every external server unless you verify the current code or gateway behavior.
-
-### ✅ Real low-level RPC pattern
-
-```python
-from kimi_proxy.features.mcp.base.rpc import MCPRPCClient
-
-client = MCPRPCClient()
-result = await client.make_rpc_call(
-    "http://localhost:8004",
-    "tools/list",
-    {},
-    timeout_ms=5000.0,
-)
+```text
+POST /api/mcp-gateway/{server_name}/rpc
 ```
 
-## Error Handling
+Serveurs mappés :
 
-The current canonical MCP exceptions are defined in `src/kimi_proxy/features/mcp/base/rpc.py`:
+| Nom logique | URL |
+| :--- | :--- |
+| `context-compression` | `http://127.0.0.1:8001` |
+| `sequential-thinking` | `http://127.0.0.1:8003` |
+| `fast-filesystem` | `http://127.0.0.1:8004` |
+| `json-query` | `http://127.0.0.1:8005` |
+| `pruner` | `http://127.0.0.1:8006` |
 
-- `MCPClientError`
-- `MCPConnectionError`
-- `MCPTimeoutError`
+La gateway :
 
-### ✅ Current handling pattern
+- forwarde le JSON-RPC brut ;
+- applique un cache TTL de 30 s sur les lectures ;
+- borne le cache à 512 entrées ;
+- applique un circuit breaker par serveur ;
+- tronque les réponses volumineuses via `MCPGatewayService.mask_jsonrpc_response`.
 
-```python
-from kimi_proxy.features.mcp.base.rpc import (
-    MCPRPCClient,
-    MCPClientError,
-    MCPConnectionError,
-    MCPTimeoutError,
-)
+## Mémoire MCP
 
-try:
-    result = await client.make_rpc_call(server_url, method, params)
-except MCPTimeoutError:
-    ...
-except MCPConnectionError:
-    ...
-except MCPClientError:
-    ...
-```
+- Table SQLite : `mcp_memory_entries`.
+- Types : `frequent`, `episodic`, `semantic`.
+- `MemoryManager` : `store_memory`, `get_frequent_memories`, `find_similar_memories`, `get_memory_stats`, `cleanup_old_episodic_memories`, `detect_and_promote_frequent_patterns`.
+- Qdrant reçoit les vecteurs sémantiques via `features/mcp/servers/qdrant.py`.
+- La compression contextuelle passe par `features/mcp/servers/compression.py`.
 
-## Memory Management
+Routes :
 
-`src/kimi_proxy/features/mcp/memory.py` is the real standardized memory manager.
+- `GET /api/memory/stats`
+- `GET /api/memory/servers`
+- `GET /api/memory/frequent`
+- `GET /api/memory/similar/{session_id}`
+- `POST /api/memory/similarity`
+- `POST /api/memory/compress`
+- `POST /api/memory/store?session_id=N`
+- `POST /api/memory/cluster/{session_id}`
+- `POST /api/memory/cleanup`
+- `POST /api/memory/promote-patterns/{session_id}`
 
-It supports:
+## Pruning
 
-- storing episodic / frequent / semantic memories
-- de-duplication via content hash
-- Qdrant-backed semantic storage when available
-- promotion of frequent patterns
-- cleanup of old episodic memories
-- optional compression of large memories when beneficial
+### `mcp_pruner` (serveur autonome, port 8006)
 
-### ✅ Real storage pattern
+- Backends : `heuristic`, `local_rag`, `deepinfra`.
+- Pipeline configurable via `KIMI_PRUNING_BACKEND` ou `[mcp_pruner].backend`.
+- Outils MCP : `prune_text`, `recover_text`, `health`.
+- Fail-open vers le backend heuristique.
 
-```python
-from kimi_proxy.features.mcp.memory import get_memory_manager
+### `mcp_tool_pruning`
 
-manager = get_memory_manager()
-entry = await manager.store_memory(
-    content="Important context",
-    memory_type="episodic",
-    metadata={"source": "manual"},
-)
-```
+- Élague les réponses `tools/call` volumineuses.
+- Flag `[mcp_tool_pruning].enabled` (désactivé par défaut).
+- Fallback tête/queue et métriques metadata-only.
 
-## Gateway and External Servers
+### Observation masking
 
-The project exposes gateway-backed MCP access through `/api/mcp-gateway/.../rpc` and server-status APIs under `/api/memory/*`.
+- `features/observation_masking/schema1.py`.
+- Flag `[observation_masking.schema1].enabled` (désactivé par défaut).
+- Remplace les vieux tool results par un placeholder court.
 
-Documented external server families should stay limited to the ones already recognized by the codebase:
+## Bridge stdio
 
+`scripts/mcp_bridge.py` relaie les serveurs stdio vers les IDE :
+
+- `filesystem-agent`
+- `ripgrep-agent`
 - `shrimp-task-manager`
-- `sequential-thinking`
-- `fast-filesystem`
-- `json-query`
 
-### Important caution
+Il filtre stdout pour ne laisser passer que le JSON-RPC, supprime les notifications sans `id`, et shim `roots/list` pour Shrimp.
 
-Do not hardcode tool-specific examples such as `initialize_project`, `expand_task`, `batch_file_operations`, or `json_query_query_json` as guaranteed Python façade methods unless you have revalidated them against the current gateway/bridge/server contract. Prefer gateway- or RPC-level examples when writing durable docs.
+## Erreurs
 
-## Log Watcher Integration
+- `MCPGatewayUpstreamError` : `unknown_server`, `timeout`, `connect_error`, `invalid_json`, `http_error`.
+- `MCPClientError`, `MCPConnectionError`, `MCPTimeoutError` dans `features/mcp/base/rpc.py`.
 
-MCP-related context features now coexist with a richer analytics pipeline.
+## Vérification
 
-`src/kimi_proxy/main.py` starts `create_log_watcher(...)` and provides normalized log-derived metrics. This is relevant for MCP documentation because:
+```bash
+curl -s -X POST http://localhost:8000/api/mcp-gateway/pruner/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
 
-- health endpoints surface log watcher state and sources
+PYTHONPATH=src venv/bin/python -m pytest tests/unit/features/test_mcp_gateway.py -q
+PYTHONPATH=src venv/bin/python -m pytest tests/unit/test_mcp_bridge.py -q
+PYTHONPATH=src venv/bin/python -m pytest tests/unit/features/test_mcp_pruner_server.py -q
+```
 
-## Database Schema Notes
+## ❌ Ne pas réintroduire
 
-When touching MCP documentation, keep these schema facts synchronized:
-
-- `mcp_memory_entries`: canonical SQLite store for frequent/episodic memory payloads and metadata
-- `mcp_compression_results`: persisted compression results
-- `mcp_routing_decisions`: routing or fallback reasoning metadata
-- `compaction_history`: context compaction history, including trigger reason and savings
-
-## ❌ Outdated Documentation Patterns to Avoid
-
-- Presenting Phase 4 external tools as fully wrapped Python helper methods if only gateway/RPC access is guaranteed
-- Omitting current SQLite schema tables introduced after the original Phase 3 write-up
-- Ignoring `MCPClientError` / `MCPConnectionError` / `MCPTimeoutError`
-- Treating log watcher analytics as unrelated to the current MCP ecosystem
+- Tables `compaction_history`, `mcp_compression_results`, `mcp_routing_decisions`, `memory_metrics`, `memory_segments`.
+- `features/compaction/`, `features/compression/`, `features/mcp/auto_memory.py`, `features/mcp/storage.py`.
+- Routes `/api/sessions/*`, `/api/compaction/*`, `/api/compress/*`.
+- Broadcast WebSocket.
 
 ## Golden Rule
 
-**Document MCP features at the level the code actually guarantees today: schema, RPC, façade, gateway, and error handling.** Treat individual external-tool verbs as runtime-validated contracts, not timeless static APIs.
+**Le contrat MCP est JSON-RPC 2.0, pas une collection de routes REST inventées.** Toute nouvelle capacité MCP doit passer par la gateway ou le bridge, avec un test de handshake et un fallback explicite.

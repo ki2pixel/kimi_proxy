@@ -40,17 +40,3 @@ async def test_ssrf_protection(monkeypatch):
 
     url_prod_ok = await validate_and_normalize_target_url("https://api.openai.com/v1")
     assert url_prod_ok == "https://api.openai.com/v1"
-
-
-# Test Sanitizer encryption
-def test_sanitizer_encryption(monkeypatch):
-    from kimi_proxy.features.sanitizer.storage import encrypt_content, decrypt_content
-    
-    secret_key = "my-super-secret-key"
-    original_text = "Ceci est un secret très confidentiel."
-    
-    encrypted = encrypt_content(original_text, secret_key)
-    assert encrypted != original_text
-    
-    decrypted = decrypt_content(encrypted, secret_key)
-    assert decrypted == original_text

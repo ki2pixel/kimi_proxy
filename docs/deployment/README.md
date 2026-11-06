@@ -1,171 +1,105 @@
-# 🚀 Déploiement : Installation et Utilisation
+# Déploiement — Installation et utilisation
 
-**TL;DR**: Tu as 5 minutes pour installer Kimi Proxy Dashboard et commencer à économiser 20-40% de tokens LLM. C'est simple, rapide, et ça marche avec PyCharm, VS Code ou n'importe quel client compatible OpenAI.
+**TL;DR** : installez les dépendances, démarrez `./bin/kimi-proxy start`, puis configurez votre client pour appeler `http://localhost:8000/v1/chat/completions` avec `X-Target-Base-URL` et `Authorization`.
 
-## Pourquoi cette documentation est différente
+## Prérequis
 
-### Pas de jargon inutile
-Je ne vais pas te parler de "stack technique" ou "architecture cloud". Je vais te dire exactement quoi faire pour que ça marche, maintenant.
+- Python 3.10+
+- Un accès réseau au provider LLM choisi
+- Les serveurs MCP locaux uniquement si vous utilisez `/api/mcp-gateway`
 
-### Les vrais problèmes que j'ai résolus
-- **"Je ne sais pas comment installer"** → Instructions étape par étape
-- **"Ça ne marche pas avec PyCharm"** → Configuration Continue.dev incluse  
-- **"J'ai peur de casser mon setup existant"** → Compatibilité totale préservée
+## Installation
 
-## Installation en 5 minutes
-
-### Prérequis (vérifie maintenant)
 ```bash
-python --version  # Doit être 3.10+
-pip --version       # Doit être installé
-```
-
-Si tu n'as pas Python 3.10+, installe-le avant de continuer.
-
-### Étape 1 : Cloner et installer
-```bash
-# Clone le projet
-git clone <repository-url>
-cd kimi-proxy
-
-# Crée l'environnement virtuel
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate     # Windows
-
-# Installe les dépendances
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Étape 2 : Configure tes clés API
-Ouvre `config.toml` et ajoute tes vraies clés :
+## Configuration
+
+`config.toml` ne contient **ni provider ni modèle**. Il pilote les features MCP :
 
 ```toml
-[providers."managed:kimi-code"]
-type = "kimi"
-base_url = "https://api.kimi.com/coding/v1"
-api_key = "sk-kimi-VOTRE_CLE_ICI"
+[database]
+persist_sessions = false
 
-[providers.nvidia]
-type = "openai" 
-base_url = "https://integrate.api.nvidia.com/v1"
-api_key = "nvapi-VOTRE_CLE_ICI"
+[context_pruning]
+enabled = false
+
+[mcp_tool_pruning]
+enabled = false
+
+[mcp.gateway]
+cb_enabled = true
 ```
 
-**Important** : Utilise tes vraies clés API. Sans ça, rien ne fonctionnera.
+Les secrets restent en variables d'environnement :
 
-### Étape 3 : Démarre le serveur
+```bash
+export KIMI_ADMIN_KEY="..."      # requis en production
+export QDRANT_API_KEY="..."      # si Qdrant Cloud
+export DEEPINFRA_API_KEY="..."   # si backend DeepInfra
+```
+
+## Démarrage
+
 ```bash
 ./bin/kimi-proxy start
+./bin/kimi-proxy status
+./bin/kimi-proxy logs
+./bin/kimi-proxy stop
 ```
 
-C'est tout. Vraiment.
+Le serveur écoute par défaut sur `127.0.0.1:8000`. Utilisez `--host` et `--port` pour changer.
 
-### Étape 4 : Vérifie que ça marche
-Ouvre `http://localhost:8000` dans ton navigateur. Tu devrais voir le dashboard avec la jauge verte.
+## Vérification
 
-## Configuration Continue.dev (PyCharm/VS Code)
-
-### Pour PyCharm
-1. Dans PyCharm, va à `File → Settings → Plugins`
-2. Cherche "Continue" et installe-le
-3. Copie `config.yaml` dans `~/.continue/config.yaml`
-
-### Pour VS Code
-1. Installe l'extension Continue
-2. Copie `config.yaml` dans `~/.continue/config.yaml`
-
-### Le truc magique
-Continue.dev enverra automatiquement toutes tes requêtes à travers le proxy. Tu verras les tokens apparaître sur le dashboard en temps réel.
-
-## Utilisation au quotidien
-
-### La nouvelle CLI que j'adore
 ```bash
-./bin/kimi-proxy start      # Démarre le serveur
-./bin/kimi-proxy status     # "Running on port 8000, 3 active sessions"  
-./bin/kimi-proxy logs       # Voir les dernières requêtes
-./bin/kimi-proxy stop       # Arrêt propre
-./bin/kimi-proxy restart    # Redémarrage
-./bin/kimi-proxy test       # Lance les tests
+curl -s http://localhost:8000/health
+curl -s http://localhost:8000/models
+curl -s http://localhost:8000/api/models
+curl -s http://localhost:8000/api/memory/stats
 ```
 
-### Le dashboard en pratique
-Quand tu ouvres `http://localhost:8000`, tu vois :
+La racine `/` ne sert plus de dashboard. Elle retourne les métadonnées du service.
 
-- **Jauge de contexte** : Vert (sûr) → Jaune (attention) → Rouge (urgent)
-- **Logs temps réel** : Chaque requête avec sa source (🔵 PROXY | 🟢 LOGS | 🟣 COMPILE | 🔴 ERROR)
-- **Nouvelle session** : Choisis ton provider et modèle
-- **Export** : CSV ou JSON pour analyser tes coûts
-- **Compression** : Bouton d'urgence si > 85% contexte
+## Client OpenAI-compatible
 
-### Mon workflow typique
-1. **Matin** : Session "Debugging" avec 🌙 Kimi Code
-2. **Après-midi** : Session "Prototypage" avec 🟢 NVIDIA K2.5  
-3. **Soir** : Session "Coding" avec 🔷 Mistral Codestral
-4. **Export** : CSV pour analyser mes coûts mensuels
-
-## Les problèmes que j'ai rencontrés (et comment les résoudre)
-
-### ❌ Erreur 401 Unauthorized
-**Le problème** : Clé API incorrecte ou manquante
-**La solution** : Vérifie `config.toml`. Assure-toi que la clé est correcte et sans espaces.
-
-### ❌ Port déjà utilisé  
-**Le problème** : Un autre processus utilise le port 8000
-**La solution** : 
 ```bash
-./bin/kimi-proxy stop && ./bin/kimi-proxy start
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Target-Base-URL: https://api.openai.com/v1" \
+  -H "Authorization: Bearer $PROVIDER_API_KEY" \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"ping"}]}'
 ```
 
-### ❌ Log Watcher ne détecte rien
-**Le problème** : Continue n'écrit pas dans `~/.continue/logs/core.log`
-**La solution** : Vérifie que Continue est bien configuré. Teste `/health` pour voir si le fichier existe.
+Si `KIMI_ADMIN_KEY` est défini, ajoutez `X-Admin-Key: $KIMI_ADMIN_KEY`.
 
-### ❌ Base de données corrompue
-**Le problème** : Fichier `sessions.db` endommagé
-**La solution** :
+## Cline / Continue
+
+- Endpoint : `http://localhost:8000`
+- Pour les serveurs MCP : `http://localhost:8000/api/mcp-gateway/{server}/rpc`
+- Les serveurs stdio passent par `scripts/mcp_bridge.py`.
+
+## Dépannage
+
+| Symptôme | Cause probable | Solution |
+| :--- | :--- | :--- |
+| `503 Cible manquante` | `X-Target-Base-URL` absent | Ajouter le header |
+| `401 Unauthorized` | `KIMI_ADMIN_KEY` défini sans `X-Admin-Key` | Ajouter `X-Admin-Key` |
+| `502` gateway | Serveur MCP arrêté | `./scripts/start-mcp-servers.sh start` |
+| `400 Cible invalide` | URL refusée par la validation SSRF | Utiliser HTTPS et un hôte autorisé |
+| Base SQLite absente | Persistance désactivée | `KIMI_PERSIST_SESSIONS=true` |
+
+## Backup
+
 ```bash
-./scripts/backup.sh  # Backup d'abord!
-rm sessions.db && ./bin/kimi-proxy start
+./scripts/backup.sh
 ```
 
-## Pour qui ce guide?
+Le script sauvegarde `config.toml` et le fichier SQLite s'il existe.
 
-### Le développeur pressé
-Tu veux que ça marche maintenant, pas dans 2 heures.
+## Golden Rule
 
-### L'équipe collaborative  
-Plusieurs développeurs, un seul proxy. Tu veux que tout le monde utilise la même configuration.
-
-### Le budget-conscious
-Chaque token compte. Tu veux voir exactement ce que tu dépenses.
-
-### L'architecte système
-Tu veux comprendre comment ça fonctionne sous le capot.
-
-## La Règle d'Or : Simplicité avant tout
-
-**Le principe** : Si l'installation prend plus de 5 minutes, c'est trop compliqué.
-
-J'ai optimisé chaque étape pour qu'elle soit la plus simple possible. Pas de configuration complexe, pas de dépendances mystérieuses, pas de scripts magiques.
-
-## Les fichiers importants à connaître
-
-### `config.toml` - Tes clés API
-C'est ici que tu configures tes providers. Garde ce fichier privé!
-
-### `config.yaml` - Configuration Continue  
-Copie-le dans `~/.continue/config.yaml` pour l'intégration PyCharm/VS Code.
-
-### `sessions.db` - Ta base de données
-SQLite stocke tout : sessions, métriques, historique. Backup-le régulièrement!
-
-### `bin/kimi-proxy` - Ta nouvelle CLI
-Remplace tous les anciens scripts. Plus puissant, plus simple.
-
----
-
-**Le verdict** : En 5 minutes, tu passes d'un coût opaque à un contrôle total sur ta consommation LLM. C'est le meilleur investissement de temps que tu feras ce mois-ci.
-
-*Navigation : [← Retour à l'index](../README.md)*
+**Le proxy ne détient aucune clé provider.** Si une configuration vous demande de stocker une clé API dans `config.toml`, elle est obsolète.

@@ -16,29 +16,15 @@ Je ne vais pas te raconter que tout était parfait. Il y a eu des dead ends, des
 
 ## Ce que tu trouveras ici
 
-### [Sessions de Développement](./sessions/) - L'histoire chronologique
-Le journal de bord de mes sessions de développement, avec les vrais problèmes et solutions :
+### Journal historique
 
-- **[2026-02-15 : Restructuration Architecture Modulaire](./sessions/2026-02-15-modular-restructure.md)** ⭐ **La transformation majeure**
-  - Pourquoi j'ai démantelé un monolithe de 3,073 lignes
-  - Les 5 phases de migration vers 52 modules
-  - Les défis techniques que j'ai surmontés
-
-- **[2026-02-11 : Implémentation Multi-Provider](./sessions/2026-02-11-multi-provider-implementation.md)**
-  - Comment j'ai connecté 8 providers LLM
-  - Les problèmes de formats différents (Gemini!)
-  - La configuration qui a tout simplifié
-
-- **[2026-02-14 : Corrections Multi-Provider](./sessions/2026-02-14-multi-provider-fixes.md)**
-  - Les bugs qui sont apparus après la mise en production
-  - Comment j'ai debuggé les rate limiting par provider
-  - Les leçons apprises sur la gestion des clés API
+Les anciens journaux de session (architecture modulaire, multi-provider, WebSocket, dashboard) ont été retirés avec les fonctionnalités correspondantes. Le rapport d'audit `docs/audit/audit-code-mort-2026-11-06.md` documente l'état avant/après.
 
 ### [Migration v1.0 vers v2.0](./migration-v2.md) - Le grand saut
-Le guide complet de ma transition d'une architecture monolithique vers une architecture modulaire.
+Document historique de la transition d'une architecture monolithique vers une architecture modulaire.
 
-### [Plan de Restructuration](./plan-restructuration-scripts.md) - La stratégie
-Le plan détaillé que j'ai suivi pour démanteler et reconstruire tout le système.
+### [Guide agent](./agent-coding-guide.md)
+Conventions actuelles pour les agents IA : architecture, patterns, tests et pièges à éviter.
 
 ## Mon approche du développement
 
@@ -87,4 +73,4 @@ Je ne documente pas chaque fonction. Je documente les décisions importantes, le
 
 ---
 
-*Navigation : [← Retour à l'index](../README.md) | [Sessions →](./sessions/)*
+*Navigation : [← Retour à l'index](../README.md) | [Guide agent →](./agent-coding-guide.md)*

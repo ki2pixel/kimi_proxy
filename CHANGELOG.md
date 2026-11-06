@@ -7,6 +7,20 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+### Removed - Audit code mort 2026-11-06
+
+- **Rapport d'audit** : `docs/audit/audit-code-mort-2026-11-06.md`.
+- **Routes supprimées** : `POST /chat/completions`, `/api/compaction/*`, `/api/compress/*`, `/api/sessions/*`, `/api/admin/health`, `/api/rate-limit`, `/api/memory/stats/advanced`, `/api/memory/all-servers`, `/api/models/all`, `POST /api/sanitizer/toggle`.
+- **WebSocket supprimé** : `services/websocket_manager.py`, 11 appels `broadcast`, dépendance `websockets`.
+- **Pipeline supprimé** : sessions/métriques, auto-session, compaction, compression applicative, rate limiter, alertes.
+- **SQLite réduit** : deux tables (`masked_content`, `mcp_memory_entries`), aucune migration `ALTER TABLE`.
+- **Streaming simplifié** : relay SSE pur, fermeture du client HTTPX en fin de flux.
+- **Passthrough simplifié** : `X-Target-Base-URL` obligatoire, fallback provider legacy supprimé, DNS asynchrone.
+- **Auth corrigée** : `/v1/chat/completions` utilise `X-Admin-Key` pour l'admin et `Authorization` pour la clé provider.
+- **Dépendances** : `websockets` retiré, `pydantic` et `tomli` déclarés, `mkdocs`/`memray` retirés.
+- **CLI** : `./bin/kimi-proxy test` propage ses arguments ; alias et scripts redondants supprimés.
+- **Rupture assumée** : les clients qui appellent encore `/chat/completions` ou les routes UI supprimées reçoivent `404`.
+
 ### Removed - Nettoyage du Code Hérité MCP
 - **Suppression fonctions obsolètes** : Retrait de 3 fonctions développées pour l'intégration MCP Phase 4 mais non utilisées en production
   - `validate_and_fix_tool_calls` - Validation complexe des tool calls MCP (127 LOC)

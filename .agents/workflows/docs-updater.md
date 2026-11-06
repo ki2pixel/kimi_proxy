@@ -50,11 +50,11 @@ Générer un plan de modification avant d'appliquer :
 ```markdown
 ## 📝 Plan de Mise à Jour Documentation
 ### Audit Métrique
-- **Cible** : `src/kimi_proxy/services/websocket_manager.py`
-- **Métriques** : 320 LOC, Complexité max C (11), Pattern 2 (DI) appliqué.
+- **Cible** : `src/kimi_proxy/proxy/stream.py`
+- **Métriques** : relay SSE pur, aucune dépendance DB, Pattern 7 (relay) appliqué.
 
 ### Modifications Proposées
-#### 📄 docs/development/services/websocket-manager.md
+#### 📄 docs/proxy/README.md
 - **Type** : [API | Services | Features | Proxy | Core]
 - **Diagnostic** : [Obsolète | Incomplet | Manquant]
 - **Correction** :

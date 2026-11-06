@@ -4,26 +4,9 @@ Configuration des tests pytest.
 import pytest
 import sys
 import os
-import asyncio
 
 # Ajoute src au path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-
-# Configuration pytest-asyncio
-def pytest_configure(config):
-    """Configure pytest pour async."""
-    config.addinivalue_line(
-        "markers", "asyncio: marque un test comme asynchrone"
-    )
-
-
-@pytest.fixture
-def event_loop():
-    """Crée un event loop pour les tests async."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest.fixture

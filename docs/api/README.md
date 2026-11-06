@@ -1,126 +1,93 @@
-# API Layer — Routes et Endpoints
+# API Kimi Proxy Middleware MCP
 
-## TL;DR
-La couche API expose aujourd’hui **44 routes HTTP effectives** pour **44 couples méthode+chemin uniques**. Le point d’entrée central reste `POST /chat/completions`, avec une compatibilité OpenAI minimale via `GET /models`.
+**TL;DR** : le middleware expose une surface OpenAI-compatible minimale (`/models`, `/v1/chat/completions`) et une gateway JSON-RPC MCP (`/api/mcp-gateway/{server}/rpc`). Les routes sessions, compaction, compression et WebSocket ont été retirées.
 
-## Problème
-Le code source contient des doublons de décorateurs et des routes historiques. Sans inventaire runtime FastAPI, la documentation diverge rapidement des chemins réellement exposés.
+## Surface exposée
 
-## Architecture 5 couches
+| Méthode | Chemin | Rôle |
+| :--- | :--- | :--- |
+| `GET` | `/` | Métadonnées du service |
+| `GET` | `/health` | Health minimal public |
+| `GET` | `/models` | Liste OpenAI-compatible (`object: "list"`) |
+| `GET` | `/api/models` | Liste interne des modèles |
+| `POST` | `/v1/chat/completions` | Passthrough session-less avec `X-Target-Base-URL` |
+| `POST` | `/api/mcp-gateway/{server_name}/rpc` | Forward JSON-RPC 2.0 vers un serveur MCP local |
+
+Routes mémoire conservées :
+
+| Méthode | Chemin |
+| :--- | :--- |
+| `GET` | `/api/memory/stats` |
+| `GET` | `/api/memory/servers` |
+| `GET` | `/api/memory/frequent` |
+| `GET` | `/api/memory/similar/{session_id}` |
+| `POST` | `/api/memory/similarity` |
+| `POST` | `/api/memory/compress` |
+| `POST` | `/api/memory/store?session_id=N` |
+| `POST` | `/api/memory/cluster/{session_id}` |
+| `POST` | `/api/memory/cleanup` |
+| `POST` | `/api/memory/promote-patterns/{session_id}` |
+
+Routes sanitizer en lecture :
+
+| Méthode | Chemin |
+| :--- | :--- |
+| `GET` | `/api/mask` |
+| `GET` | `/api/mask/{content_hash}` |
+| `GET` | `/api/sanitizer/stats` |
+
+## Passthrough `/v1/chat/completions`
+
+Le client envoie la cible et sa clé provider :
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Target-Base-URL: https://api.openai.com/v1" \
+  -H "Authorization: Bearer $PROVIDER_API_KEY" \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"ping"}]}'
 ```
-API (FastAPI) ← Services (WebSocket) ← Features (MCP) ← Proxy (HTTPX) ← Core (SQLite)
+
+Le proxy applique dans l'ordre :
+
+1. Réparation des `tool_calls` et normalisation des arguments JSON.
+2. Observation masking (flag `observation_masking.schema1.enabled`).
+3. Context pruning via MCP Pruner (flag `context_pruning.enabled`).
+
+Le streaming utilise exclusivement SSE (`StreamingResponse`). Aucun endpoint WebSocket n'est exposé.
+
+## Authentification
+
+- `KIMI_ADMIN_KEY` protège les routes `/api/*`.
+- Si `KIMI_ADMIN_KEY` est défini, `/v1/chat/completions` attend la clé admin dans `X-Admin-Key`. Le header `Authorization` reste réservé à la clé provider.
+- En développement, l'absence de `KIMI_ADMIN_KEY` laisse les routes ouvertes (fail-open local).
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "X-Admin-Key: $KIMI_ADMIN_KEY" \
+  -H "Authorization: Bearer $PROVIDER_API_KEY" \
+  -H "X-Target-Base-URL: https://api.openai.com/v1" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o-mini","messages":[]}'
 ```
 
-## Inventaire vérifié (runtime)
+## Routes retirées
 
-### Sessions
-- `GET /api/sessions`
-- `POST /api/sessions`
-- `GET /api/sessions/active`
-- `GET /api/sessions/{session_id}`
-- `POST /api/sessions/{session_id}/activate`
-- `GET /api/sessions/auto-status`
-- `POST /api/sessions/toggle-auto`
-- `DELETE /api/sessions` (bulk)
-- `POST /api/sessions/vacuum`
-- `GET /api/sessions/diagnostic`
+Les routes suivantes ont été supprimées et renvoient `404` :
 
-### Providers et modèles
-- `GET /api/providers`
-- `GET /api/models`
-- `GET /api/models/all`
-- `GET /models` (format OpenAI-compatible)
+- `POST /chat/completions` (legacy, inerte sans `[providers]`).
+- `GET` et `POST /api/sessions/*`.
+- `POST /api/compaction/*`.
+- `POST /api/compress/*`.
+- `GET /api/providers`, `/api/export/*`, `/api/cline/*`.
+- `GET /api/admin/health`, `/api/rate-limit`.
+- `GET /api/memory/stats/advanced`, `/api/memory/all-servers`.
+- `WS /ws`.
 
-### Proxy, santé, monitoring
-- `POST /chat/completions`
-- `POST /v1/chat/completions` (passthrough MCP session-less)
-- `GET /health`
-- `GET /api/rate-limit`
-- `WS /ws`
+## Erreurs
 
-### Exports et sanitizer
-- `GET /api/export/csv`
-- `GET /api/export/json`
-- `GET /api/mask/{content_hash}`
-- `GET /api/mask`
-- `GET /api/sanitizer/stats`
-- `POST /api/sanitizer/toggle`
-
-### Cline
-- `GET /api/cline/status`
-- `GET /api/cline/usage`
-- `POST /api/cline/import`
-
-### Mémoire MCP
-- `GET /api/sessions/{session_id}/memory`
-- `GET /api/memory/stats`
-- `GET /api/memory/servers`
-- `GET /api/memory/all-servers`
-- `POST /api/memory/similarity`
-- `POST /api/memory/compress`
-- `POST /api/memory/store`
-- `GET /api/memory/frequent`
-- `POST /api/memory/cluster/{session_id}`
-- `GET /api/memory/similar/{session_id}`
-- `GET /api/memory/stats/advanced`
-- `POST /api/memory/cleanup`
-- `POST /api/memory/promote-patterns/{session_id}`
-
-### Compaction et compression
-- `POST /api/compaction/{session_id}`
-- `GET /api/compaction/stats`
-- `GET /api/compaction/{session_id}/stats`
-- `GET /api/compaction/{session_id}/history`
-- `GET /api/compaction/{session_id}/history-chart`
-- `GET /api/compaction/{session_id}/preview`
-- `POST /api/compaction/{session_id}/reserved`
-- `POST /api/compaction/{session_id}/simulate`
-- `POST /api/compaction/{session_id}/toggle-auto`
-- `GET /api/compaction/{session_id}/auto-status`
-- `GET /api/compaction/config/ui`
-- `POST /api/compress/{session_id}`
-- `GET /api/compress/stats`
-- `GET /api/compress/{session_id}/stats`
-
-### MCP Gateway
-- `POST /api/mcp-gateway/{server_name}/rpc`
-- Serveurs supportés côté proxy: `context-compression`, `sequential-thinking`, `fast-filesystem`, `json-query`, `pruner`
-
-## Corrections de parité appliquées
-
-### ❌ Avant
-- `POST /api/compaction/{session_id}/reserved-tokens`
-- `POST /api/compaction/{session_id}/auto-toggle`
-- `GET /api/compaction/ui-config`
-- `DELETE /api/sessions/{id}`
-
-### ✅ Maintenant
-- `POST /api/compaction/{session_id}/reserved`
-- `POST /api/compaction/{session_id}/toggle-auto`
-- `GET /api/compaction/config/ui`
-- `DELETE /api/sessions`
-
-## Notes de traçabilité
-- `sessions.py` contient deux doublons de décorateurs (`/auto-status`, `/toggle-auto`).
-- `memory.py` existe dans `api/routes`, mais son router n’est pas monté dans `api/router.py`.
-- Les métriques de cette page proviennent de l’application FastAPI montée, pas uniquement des décorateurs source.
-
-## Trade-offs
-| Approche | Avantage | Limite |
-|---|---|---|
-| Compter les décorateurs | Rapide | Sur-estime la surface réelle |
-| Compter les routes montées | Fidèle runtime | Demande un contrôle applicatif |
-| Choix actuel | Documentation exacte à l’exécution | Doit être relancée après refactor routeur |
-
-## Golden Rule
-**Documenter à partir des routes montées, puis signaler explicitement les doublons et routes non montées.**
-
-## Métriques API
-- 43 décorateurs HTTP détectés dans les fichiers de routes
-- 44 routes HTTP effectives (43 dans les routeurs + 1 route racine `@app.get("/")` dans `main.py`)
-- 44 couples méthode+chemin uniques
-- 10 fichiers de routes avec décorateurs actifs (dans `api/routes/` : `compaction.py`, `compression.py`, `health.py`, `mcp.py`, `mcp_gateway.py`, `mcp_passthrough.py`, `memory.py`, `models.py`, `proxy.py`, `sanitizer.py` — en notant que `memory.py` est importé mais non monté dans `router.py`)
-
----
-*Dernière mise à jour: 2026-06-04*  
-*Conforme documentation/SKILL.md: TL;DR, problem-first, blocs ❌/✅, trade-offs, Golden Rule.*
+- `400` : JSON invalide ou cible refusée par la validation SSRF.
+- `401` : clé admin absente ou invalide (`KIMI_ADMIN_KEY` défini).
+- `404` : route retirée ou serveur MCP inconnu dans la gateway.
+- `502` : erreur de connexion ou timeout vers le provider ou le serveur MCP.
+- `503` : `X-Target-Base-URL` absent.

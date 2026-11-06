@@ -8,7 +8,7 @@ Lot C1 (harmonisation): ce document précise la forme **canonique** des annotati
 ---
 
 ## 1) Problème (problem‑first)
-Vous avez une requête `/chat/completions` dont le contexte grossit vite (fichiers, logs, sorties d’outils). Vous voulez réduire les tokens **sans résumer** et sans perdre la possibilité de vérifier ce qui a été supprimé.
+Vous avez une requête `/v1/chat/completions` dont le contexte grossit vite (fichiers, logs, sorties d’outils). Vous voulez réduire les tokens **sans résumer** et sans perdre la possibilité de vérifier ce qui a été supprimé.
 
 Le pruner doit donc:
 
@@ -720,7 +720,7 @@ Causes fréquentes:
 - `DEEPINFRA_API_KEY` absente ou invalide.
 
 Actions:
-- Vérifier que la variable d’environnement est chargée (ex: `.env` → `./scripts/start.sh`).
+- Vérifier que la variable d’environnement est chargée (ex: `.env` → `./bin/kimi-proxy start`).
 - Regénérer la clé côté DeepInfra si nécessaire.
 
 ### 3) 429 Rate limited

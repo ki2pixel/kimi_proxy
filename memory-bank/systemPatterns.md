@@ -1,344 +1,173 @@
 # Patterns Système Récurrents
 
-## Architecture Patterns
+## Architecture
 
 ### Pattern 1 : Architecture 5 Couches
-```python
-# Structure obligatoire - dépendances unidirectionnelles
-API Layer (FastAPI) ← Services (WebSocket) ← Features (MCP) ← Proxy (HTTPX) ← Core (SQLite)
-# Chaque couche ne dépend que de celles en dessous
+
+```text
+API (FastAPI) ← Services (SSE/callbacks) ← Features (MCP/contexte) ← Proxy (HTTPX) ← Core (SQLite/Tiktoken)
 ```
 
-### Pattern 2 : Factory Functions & Dependency Injection
+Chaque couche ne dépend que des couches inférieures. Core n'a aucune dépendance externe.
+
+### Pattern 2 : Factory Functions & Injection
+
 ```python
-# Core - Factory pattern
 @contextmanager
 def get_db():
-    conn = sqlite3.connect("sessions.db")
+    conn = get_db_connection()
     try:
         yield conn
-        conn.commit()
     finally:
         conn.close()
 
-# Services - DI pattern
-def get_connection_manager() -> ConnectionManager:
-    return manager
-
-@router.websocket("/ws")
-async def endpoint(manager: ConnectionManager = Depends(get_connection_manager)):
-    await manager.connect(websocket)
+def get_memory_manager() -> MemoryManager:
+    global _memory_manager
+    if _memory_manager is None:
+        _memory_manager = MemoryManager()
+    return _memory_manager
 ```
 
-## Code Patterns
+## Code
 
 ### Pattern 3 : Async/Await Obligatoire
+
 ```python
-# ✅ BON - HTTPX async
-import httpx
+# ✅ BON
 async def fetch_data(url: str) -> dict:
     async with httpx.AsyncClient() as client:
         response = await client.get(url)
         return response.json()
 
-# ❌ MAUVAIS - Requests synchrone (INTERDIT)
-import requests  # FORBIDDEN
+# ❌ INTERDIT
+import requests
 def fetch_data(url: str) -> dict:
-    response = requests.get(url)  # BLOQUE L'EVENT LOOP
-    return response.json()
+    return requests.get(url).json()
 ```
 
-### Pattern 4 : Typing Strict (No Any)
+La résolution DNS du passthrough utilise `loop.getaddrinfo`, pas `socket.getaddrinfo`.
+
+### Pattern 4 : Typage Strict
+
 ```python
-# ✅ BON - TypedDict pour structures
 from typing import TypedDict
 
 class TokenUsage(TypedDict):
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
-
-def count_tokens(text: str) -> int:
-    import tiktoken
-    return len(tiktoken.encoding_for_model("gpt-4").encode(text))
-
-# ❌ MAUVAIS - Any non typé
-def bad_function(data: Any) -> Any:  # FORBIDDEN
-    return data
 ```
 
 ### Pattern 5 : Imports Anti-Circulaires
+
 ```python
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from kimi_proxy.api.routes.sessions import SessionResponse
-    # Uniquement pour les hints, pas importé à runtime
+    from kimi_proxy.core.models import MCPMemoryEntry
 ```
 
-## Error Handling Patterns
+## Erreurs et streaming
 
-### Pattern 6 : Gestion Erreurs Robuste
+### Pattern 6 : Gestion d'Erreurs Robuste
+
 ```python
-# ✅ BON - Toujours logger et propager
 try:
     await process_data()
 except httpx.ReadError as e:
-    logger.error(f"Stream error: {e}")
-    raise StreamingError(f"Provider disconnected: {e}")
-except Exception as e:
-    logger.error(f"Unexpected error: {e}")
+    logger.error("Flux interrompu: %s", e)
     raise
-
-# ❌ MAUVAIS - Catch vide (BUGS CACHÉS)
-try:
-    await process_data()
-except Exception:
-    pass  # JAMAIS!
 ```
 
-### Pattern 7 : Streaming Error Recovery
+Pas de `except Exception: pass`.
+
+### Pattern 7 : Relay SSE Pur
+
 ```python
-async def stream_generator(response, session_id, metric_id, provider_type, models, manager):
+async def stream_generator(response: httpx.Response):
     try:
         async for chunk in response.aiter_bytes():
             yield chunk
-    except httpx.ReadError:
-        # Logger l'erreur mais continuer le flux
-        logger.warning(f"Stream interrupted for session {session_id}")
-        # Extraire les tokens déjà reçus
-        await extract_partial_tokens(response, session_id, metric_id)
+    finally:
+        await response.aclose()
+        client = getattr(response, "_client_ref", None)
+        if client is not None:
+            await client.aclose()
 ```
 
-## Configuration Patterns
+Aucun buffer, aucun broadcast, aucune extraction de tokens.
+
+## Configuration
 
 ### Pattern 8 : Configuration Centralisée
+
 ```python
-# Toujours utiliser le loader central
-from kimi_proxy.config.loader import get_config
+from kimi_proxy.config.loader import get_config, get_context_pruning_config
 
 config = get_config()
-providers = config.get("providers", {})
-models = config.get("models", {})
-
-# Expansion variables environnement automatique
-toml_content = os.path.expandvars(toml_content)  # ${VAR} → valeur
+pruning = get_context_pruning_config(config)
 ```
 
-### Pattern 9 : Secrets Management
-```python
-# config.toml - SEUL endroit pour secrets
-[providers."managed:kimi-code"]
-api_key = "${KIMI_API_KEY}"  # Variable environnement
+Le client fournit la cible et la clé provider ; `config.toml` ne contient ni provider ni modèle.
 
-# Jamais hardcoder dans le code
+### Pattern 9 : Secrets en Environnement
+
+```toml
+[mcp.qdrant]
+api_key = "${QDRANT_API_KEY}"
 ```
 
-## Testing Patterns
+Les secrets ne sont jamais hardcodés dans le code ni dans les logs.
 
-### Pattern 10 : Async Test Fixtures
+## Tests
+
+### Pattern 10 : Base en Mémoire
+
 ```python
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
-    init_database(":memory:")
-
-@pytest.fixture
-async def async_client():
-    async with AsyncClient(base_url="http://testserver") as client:
-        yield client
+    init_database()
 ```
 
 ### Pattern 11 : Mock Patching
+
 ```python
 def test_mcp_timeout(mocker):
     mock_post = mocker.patch("httpx.AsyncClient.post")
     mock_post.side_effect = httpx.TimeoutException("Timeout")
-    client = get_mcp_client()
     with pytest.raises(MCPConnectionError):
         await client.call("compress", {"text": "test"})
 ```
 
-## Frontend Patterns
+## Mémoire MCP
 
-### Pattern 12 : ES6 Modules Découplés
-```javascript
-// static/js/modules/utils.js
-export const EventBus = {
-    events: new Map(),
-    on(event, callback) {
-        this.events.get(event)?.add(callback);
-    },
-    emit(event, data) {
-        this.events.get(event)?.forEach(cb => cb(data));
-    }
-};
+### Pattern 12 : Types de Mémoire
 
-// static/js/modules/api.js
-import { EventBus } from './utils.js';
-
-export async function createSession(data) {
-    const response = await fetch('/api/sessions', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(data)
-    });
-    const session = await response.json();
-    EventBus.emit('sessionCreated', session);
-    return session;
-}
-```
-
-### Pattern 13 : Named Exports Only
-```javascript
-// ✅ BON
-export function Button() {}
-
-// ❌ MAUVAIS - Pas de default exports
-export default function Button() {}
-```
-
-## Performance Patterns
-
-### Pattern 14 : Token Counting Précis
 ```python
-# ✅ OBLIGATOIRE - Tiktoken précis
-def count_tokens_tiktoken(text: str) -> int:
-    import tiktoken
-    encoding = tiktoken.get_encoding("cl100k_base")
-    return len(encoding.encode(text))
-
-# ❌ FORBIDDEN - Estimation incorrecte
-def bad_count(text: str) -> int:
-    return len(text.split()) * 1.3  # FAUX!
+FREQUENT = "frequent"
+EPISODIC = "episodic"
+SEMANTIC = "semantic"
 ```
 
-### Pattern 15 : Database Access Patterns
-```python
-# ✅ BON - Context manager
-from kimi_proxy.core.database import get_db
+La promotion en `frequent` se fait via `access_count >= FREQUENT_ACCESS_THRESHOLD`. Les entrées sont stockées dans `mcp_memory_entries` ; Qdrant reçoit les vecteurs sémantiques.
 
+### Pattern 13 : Accès SQLite
+
+```python
 with get_db() as conn:
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM sessions")
-    rows = cursor.fetchall()
-
-# ❌ MAUVAIS - Connexion globale
-connection = sqlite3.connect("sessions.db")  # GLOBAL STATE!
+    cursor.execute(
+        "SELECT * FROM mcp_memory_entries WHERE session_id = ?",
+        (session_id,),
+    )
 ```
 
-## Security Patterns
+Jamais de connexion globale ni de concaténation SQL.
 
-### Pattern 16 : Workspace Validation MCP
-```python
-def validate_workspace_access(requested_path: str) -> bool:
-    allowed_root = Path(os.environ.get("MCP_WORKSPACE", "/workspace")).resolve()
-    requested = Path(requested_path).resolve()
-    try:
-        requested.relative_to(allowed_root)
-        return True
-    except ValueError:
-        return False  # Path traversal attempt
-```
+## Documentation
 
-## Memory Management Patterns
+### Pattern 14 : Entrées Horodatées
 
-### Pattern 17 : MCP Memory Types
-```python
-# Types standardisés pour mémoire MCP
-class MemoryType(Enum):
-    FREQUENT = "frequent"    # Patterns récurrents
-    EPISODIC = "episodic"    # Conversations
-    SEMANTIC = "semantic"     # Vecteurs Qdrant
-
-# Auto-promotion basée sur fréquence d'accès
-if access_count > FREQUENT_ACCESS_THRESHOLD:
-    memory.type = MemoryType.FREQUENT
-```
-
-## Documentation Patterns
-
-### Pattern 18 : Timestamp Format
 ```markdown
-# Format obligatoire pour toutes les entrées
-[YYYY-MM-DD HH:MM:SS] - [Summary concise]
-```
-
-## Security Patterns - Coding Standards Audit
-
-### Pattern 20 : Anti-innerHTML Security
-```javascript
-// ✅ BON - DOM APIs sécurisées
-const element = document.getElementById('container');
-element.textContent = userInput;  // Sécurisé, échappe automatiquement
-
-const link = document.createElement('a');
-link.href = url;
-link.textContent = title;
-element.appendChild(link);
-
-// ❌ MAUVAIS - innerHTML vulnérable XSS
-element.innerHTML = `<a href="${url}">${title}</a>`;  // DANGEREUX!
-```
-
-### Pattern 21 : Rate Limiting Obligatoire
-```python
-# ✅ BON - Rate limiting sur endpoints sensibles
-from flask_limiter import Limiter
-
-limiter = Limiter(app)
-
-@app.route('/api/sensitive')
-@limiter.limit("10/minute")
-def sensitive_endpoint():
-    return jsonify({'data': 'protected'})
-
-# ❌ MAUVAIS - Pas de protection
-@app.route('/api/sensitive')  # VULNÉRABLE!
-def sensitive_endpoint():
-    return jsonify({'data': 'exposed'})
-```
-
-### Pattern 22 : Database BLOB Defer Pattern
-```python
-# ✅ BON - Évite chargement BLOB inutile
-from sqlalchemy.orm import defer, selectinload
-
-query = Photo.query.options(
-    defer(Photo.data),  # Évite chargement BLOB
-    selectinload(Photo.previews).load_only(
-        PhotoPreview.id, PhotoPreview.variant
-    ),
-).filter_by(owner_username=current_user).order_by(Photo.created_at.desc())
-
-# ❌ MAUVAIS - Charge BLOBs inutilement
-photos = Photo.query.filter_by(owner_username=current_user).all()  # LENT!
-for photo in photos:
-    print(photo.data)  # CHARGE TOUS LES BLOBS!
-```
-
-### Pattern 23 : Frontend Module Cleanup
-```javascript
-// ✅ BON - Pattern init/destroy complet
-window.Photomaton.moduleName = {
-    init: function(options) {
-        // Initialisation
-        this._eventListeners = [];
-        // ...
-    },
-    
-    destroy: function() {
-        // Nettoyage mémoire
-        this._eventListeners.forEach(([el, event, handler]) => {
-            el.removeEventListener(event, handler);
-        });
-        this._eventListeners = [];
-    }
-};
-
-// ❌ MAUVAIS - Pas de destroy
-window.Photomaton.moduleName = {
-    init: function() {
-        // Pas de nettoyage = fuite mémoire
-    }
-};
+[YYYY-MM-DD HH:MM:SS] - Résumé concis
 ```

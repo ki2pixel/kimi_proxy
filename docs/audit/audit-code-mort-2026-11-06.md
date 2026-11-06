@@ -213,6 +213,20 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8010/chat/comp
 
 Attendu : `200` sur les routes conservées, `404` sur `/ws` et `/chat/completions`.
 
+## État final après nettoyage
+
+| Indicateur | Avant | Après |
+| :--- | :--- | :--- |
+| Modules Python de production | 86 | 63 |
+| Modules orphelins | 1 + imports d'agrément | 1 placeholder (`services/`) |
+| Routes applicatives montées | 41 | 19 |
+| Tables SQL créées | 11 | 2 |
+| Tests passés | 237 | 155 |
+
+Les tests supprimés couvraient uniquement les routes et features retirées (compaction, compression, sessions, WebSocket, rate limiting). Les scénarios critiques d'observation masking et de context pruning ont été portés vers `/v1/chat/completions`.
+
+Symboles restants sans référence runtime : `count_tokens_tiktoken`, `parse_token_metrics`, `COMPILE_CHAT_END`, `prune_text_with_deepinfra`, `prune_text_with_local_rag` et les dataclasses de `mcp_pruner/spec.py`. Ils sont conservés comme API publique, contrats de test ou points d'extension, pas comme code mort.
+
 ## Golden Rule
 
 Une route sans consommateur n'est pas un contrat ; c'est une dette. Une feature désactivée par défaut n'est pas morte si elle est câblée et testée ; elle est dormante. Le nettoyage doit supprimer la première et préserver la seconde.

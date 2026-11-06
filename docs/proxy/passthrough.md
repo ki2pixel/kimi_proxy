@@ -164,4 +164,4 @@ L'architecture radicale élimine la friction, mais les sessions continuent de fo
 
 ---
 
-*Navigation : [← Retour au proxy](./README.md) | [Logique Routage Proxy →](./proxy-route-logic.md)*
+*Navigation : [← Retour au proxy](./README.md) | [Validation des outils →](./tool-validation.md)*

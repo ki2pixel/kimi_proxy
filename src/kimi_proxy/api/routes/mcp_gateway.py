@@ -151,10 +151,6 @@ _MCP_TOOL_PRUNING_METRICS = MCPToolPruningMetricsCollector()
 
 _CIRCUIT_BREAKERS: dict[str, MCPCircuitBreaker] = {}
 
-def get_mcp_tool_pruning_metrics_collector() -> MCPToolPruningMetricsCollector:
-    return _MCP_TOOL_PRUNING_METRICS
-
-
 _GATEWAY_CACHE: dict[str, tuple[float, dict[str, object]]] = {}
 _GATEWAY_CACHE_TTL = 30.0
 

@@ -1,6 +1,6 @@
 # Kimi Proxy
 
-**TL;DR**: Kimi Proxy est un middleware MCP transparent qui s'insère entre votre IDE (Cline, Continue.dev) et n'importe quel provider LLM. Il applique automatiquement du tool-fixing, du pruning de contexte et de la compression intelligente pour réduire votre facture API de 20-40%, sans jamais stocker vos conversations.
+**TL;DR**: Kimi Proxy est un middleware MCP transparent qui s'insère entre votre IDE (Cline, Continue.dev) et n'importe quel provider LLM. Il applique automatiquement du tool-fixing, de l'observation masking et du pruning de contexte pour réduire votre facture API, sans jamais stocker vos conversations.
 
 J'étais fatigué de voir mes tokens disparaître dans des réponses tool verbeuses, des boucles de retry infinies et des contextes qui gonflaient sans raison. Avec Cline et Continue.dev, je passais d'un provider à l'autre (OpenRouter, Kimi, Gemini, OpenAI) sans visibilité sur ce qui était réellement envoyé. Chaque session de debugging devenait un gouffre à tokens : 500 tokens de logs système pour une réponse tool, des arguments malformés qui déclenchaient des erreurs 400, des anciens résultats d'outil qui encombraient le contexte sans plus servir.
 
@@ -181,14 +181,14 @@ Le système gère tout ça automatiquement : vous choisissez le modèle dans Cli
 
 ### Avec Cline
 
-Une fois configuré, Cline envoie tout à travers le proxy sans que j'y pense. Le proxy applique le sanitizer, fixe les tools, et forwards vers le provider cible. Je change de provider en un clic dans Cline, sans toucher à `config.toml`.
+Une fois configuré, Cline envoie tout à travers le proxy sans que j'y pense. Le proxy répare les tools, applique l'observation masking et le pruning, puis forward vers le provider cible. Je change de provider en un clic dans Cline, sans toucher à `config.toml`.
 
-### Quand je vois la compression agir
+### Quand je vois le pruning agir
 
-Quand le contexte approche ses limites, le pruning s'active automatiquement :
+Quand le contexte approche ses limites, les features de réduction peuvent s'activer via leurs flags :
 1. Les messages système sont préservés
-2. Les 5 derniers échanges sont conservés
-3. Les anciens résultats d'outil sont tronqués
+2. Les échanges récents sont conservés
+3. Les anciens résultats d'outil sont masqués ou tronqués
 4. La conversation continue sans interruption
 
 ## Trade-offs
@@ -221,22 +221,22 @@ Assurez-vous que Cline envoie bien le header `X-Target-Base-URL` (ex: `https://a
 ## Métriques Projet
 
 ### Architecture 5 Couches
-- **87 fichiers Python** de production (dans `src/` et `scripts/`)
-- **14 177 lignes de code** Python (hors commentaires et lignes vides)
-- **18 répertoires** structurés par responsabilité dans le cœur du code
-- **137 fichiers Python totaux** (incluant 50 fichiers de tests unitaires et d'intégration)
+- **63 fichiers Python** de production dans `src/kimi_proxy/`
+- **11 457 lignes** de code Python de production
+- **35 fichiers de tests** (4 532 lignes)
 
 ### API Layer
-- **44 routes HTTP** effectives pour **44 couples méthode+chemin uniques**
-- **Complexité moyenne** : A (3.95)
+- **19 routes applicatives** (health, modèles, passthrough, gateway MCP, mémoire, sanitizer)
+- Aucun endpoint WebSocket ; streaming SSE exclusivement
 
 ### Base de Données
-- **110 opérations SQL** limitées aux features MCP et sanitizer (pas de stockage de chat)
-- **14 migrations de base de données** (ALTER TABLE) appliquées automatiquement au démarrage
+- **2 tables SQLite** : `masked_content` et `mcp_memory_entries`
+- Aucune migration `ALTER TABLE` au démarrage
+- Persistance désactivée par défaut (`:memory:`)
 
 ## Pourquoi je partage ça
 
-J'ai passé des mois à optimiser ma consommation LLM. Au début, c'était juste un script perso. Puis j'ai ajouté le sanitizer, la compression, l'architecture modulaire...
+J'ai passé des mois à optimiser ma consommation LLM. Au début, c'était juste un script perso. Puis j'ai ajouté le sanitizer, le pruning de contexte, l'architecture modulaire...
 
 Aujourd'hui, c'est un middleware qui me fait économiser des centaines d'euros chaque mois. Si ça peut aider d'autres développeurs à réduire leur facture API et à comprendre ce qui est réellement envoyé aux providers, tant mieux.
 

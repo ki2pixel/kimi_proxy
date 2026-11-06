@@ -1,6 +1,9 @@
 # Couche Proxy : Routage et Streaming LLM
 
-**TL;DR**: La couche proxy intercepte les requêtes `/chat/completions`, applique les transformations provider-spécifiques, puis stream les réponses via SSE. Complexité F justifiée par gestion erreurs réseau et transformations format.
+> [!WARNING]
+> Document historique. La route `/chat/completions` et l'extraction de tokens post-stream ont été supprimées le 2026-11-06. La référence actuelle est [docs/proxy/README.md](../proxy/README.md).
+
+**TL;DR**: La couche proxy intercepte les requêtes `/v1/chat/completions`, applique les transformations minimales, puis relaie les réponses via SSE. Le relay est volontairement simple : pas de buffer, pas d'extraction de tokens.
 
 ## Le Problème du Multi-Provider
 

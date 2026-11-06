@@ -1,14 +1,13 @@
-# Kimi Proxy Dashboard - Dépendances
+# Kimi Proxy Middleware MCP - Dépendances
 
 # Core
 fastapi>=0.100.0
-uvicorn[standard]>=0.23.0
+uvicorn>=0.23.0
+watchfiles>=0.20.0
+pydantic>=2.0.0
 
 # HTTP Client
 httpx>=0.24.0
-
-# WebSocket
-websockets>=11.0
 
 # Tokenization
 tiktoken>=0.5.0
