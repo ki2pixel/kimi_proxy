@@ -4,6 +4,14 @@
 Aucune tâche active.
 
 ## Dernière session terminée
+### [2026-11-06 22:45:00] **Commit & Push vers origin/main — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+**Objectif** : Validation des tests, commit des modifications de documentation/configuration et push vers `origin/main`.
+**Actions réalisées** :
+- Exécution de la suite de tests (`./bin/kimi-proxy test -q`) : 155 passants, 0 régression.
+- Création du commit `a2066a6` (`docs: update agent configuration and system rules`).
+- Push de la branche `main` vers `origin/main` (4 commits synchronisés : `8568596`, `de68ade`, `5f65382`, `a2066a6`).
+
 ### [2026-07-15 14:20:00] **Configuration Zencoder MCP Gateway (Option A) — TERMINÉ**
 **Statut** : ✅ COMPLETÉ
 **Objectif** : Configurer l'intégration de Zencoder avec le Gateway HTTP de `kimi-proxy`.

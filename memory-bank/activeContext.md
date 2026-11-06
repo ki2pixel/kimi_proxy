@@ -2,6 +2,10 @@
 Aucune tâche active.
 
 ## Dernière Session Terminée
+- [2026-11-06 22:45:00] **Commit & Push vers origin/main — TERMINÉ** :
+  1. Validation préalable des tests unitaires (`./bin/kimi-proxy test -q`, 155 passants, 0 échec).
+  2. Commit `a2066a6` : alignement de `system.md` avec l'architecture middleware MCP session-less, renommage agent `kimi-proxy-mcp` dans `AGENT.md`, correction lien doc dans `docs/README.md`, exclusion `.commandcode/` dans `.gitignore`.
+  3. Push vers `origin/main` des 4 commits (`8568596`, `de68ade`, `5f65382`, `a2066a6`). Branche locale et distante synchronisées.
 - [2026-11-06] **Audit code mort et nettoyage 3 lots — TERMINÉ** :
   1. Rapport `docs/audit/audit-code-mort-2026-11-06.md` et outil `scripts/audit_dead_code.py` (AST, routes, tables, dépendances).
   2. Lot 1 : suppression de `api/routes/memory.py`, `proxy/mcp_gateway_rpc.py`, `features/sanitizer/masking.py`, `features/sanitizer/routing.py`, `features/mcp/analyzer.py`, `config/settings.py`, et des symboles sans référence.
