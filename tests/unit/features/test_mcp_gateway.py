@@ -66,6 +66,22 @@ async def async_client(app: FastAPI) -> AsyncGenerator[httpx.AsyncClient, None]:
 
 
 @pytest.mark.asyncio
+async def test_gateway_invalid_json_returns_parse_error(async_client: httpx.AsyncClient):
+    resp = await async_client.post(
+        "/api/mcp-gateway/unknown/rpc",
+        content=b"{not-a-json",
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["jsonrpc"] == "2.0"
+    assert body["id"] is None
+    assert body["error"]["code"] == -32700
+    assert "parsing" in body["error"]["message"].lower()
+
+
+@pytest.mark.asyncio
 async def test_gateway_unknown_server_returns_jsonrpc_error(async_client: httpx.AsyncClient):
     req = {"jsonrpc": "2.0", "method": "health", "params": {}, "id": "req-1"}
     resp = await async_client.post("/api/mcp-gateway/unknown/rpc", json=req)
@@ -96,11 +112,11 @@ async def test_gateway_upstream_timeout_returns_jsonrpc_error(monkeypatch, async
     def _fake_async_client(*args, **kwargs) -> _FakeTimeoutClient:
         return _FakeTimeoutClient()
 
-    # ⚠️ Important: patch only the Gateway module's AsyncClient symbol to avoid
+    # ⚠️ Important: patch only the transport module's AsyncClient symbol to avoid
     # impacting the httpx.AsyncClient used by the ASGI test client.
-    import kimi_proxy.api.routes.mcp_gateway as mcp_gw_mod
+    import kimi_proxy.features.mcp.rpc_transport as rpc_transport
 
-    monkeypatch.setattr(mcp_gw_mod.httpx, "AsyncClient", _fake_async_client)
+    monkeypatch.setattr(rpc_transport.httpx, "AsyncClient", _fake_async_client)
 
     req = {"jsonrpc": "2.0", "method": "health", "params": {}, "id": "req-2"}
     resp = await async_client.post("/api/mcp-gateway/fast-filesystem/rpc", json=req)

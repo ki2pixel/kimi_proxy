@@ -47,6 +47,44 @@ async def test_tools_list_returns_pruner_tools(async_client: httpx.AsyncClient) 
 
 
 @pytest.mark.asyncio
+async def test_prune_store_evicts_oldest_beyond_max_items() -> None:
+    store = pruner_server.PruneStore(ttl_s=600, max_items=2)
+
+    await store.put("a", lines=["a"])
+    await store.put("b", lines=["b"])
+    await store.put("c", lines=["c"])
+
+    assert await store.get("a") is None
+    assert await store.get("b") == ["b"]
+    assert await store.get("c") == ["c"]
+
+
+@pytest.mark.asyncio
+async def test_tools_call_prune_text_rejects_invalid_options(async_client: httpx.AsyncClient) -> None:
+    req = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "prune_text",
+            "arguments": {
+                "text": "a\nb",
+                "goal_hint": "a",
+                "source_type": "docs",
+                "options": {"max_prune_ratio": 2.0},
+            },
+        },
+        "id": "bad-options",
+    }
+
+    resp = await async_client.post("/rpc", json=req)
+    body = resp.json()
+
+    assert body["jsonrpc"] == "2.0"
+    assert body["id"] == "bad-options"
+    assert body["error"]["code"] == -32602
+
+
+@pytest.mark.asyncio
 async def test_tools_call_prune_text_and_recover_text(async_client: httpx.AsyncClient) -> None:
     text = "\n".join(
         [

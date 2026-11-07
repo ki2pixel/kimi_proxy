@@ -11,8 +11,8 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from .core.database import init_database
-from .config.loader import load_config, get_log_watcher_config
+from .core.database import configure_database, init_database
+from .config.loader import load_config, get_database_config, get_log_watcher_config
 
 from .features.log_watcher import create_log_watcher
 from .api.router import api_router
@@ -191,7 +191,7 @@ def create_app() -> FastAPI:
                 })
                 await send({
                     "type": "http.response.body",
-                    "body": json.dumps({"error": "Payload Too Large", "message": exc.detail}).encode("utf-8"),
+                    "body": json.dumps({"error": "Charge utile trop volumineuse", "message": exc.detail}).encode("utf-8"),
                     "more_body": False
                 })
 
@@ -230,7 +230,10 @@ def _startup(app: FastAPI):
     if not providers and not models:
         print("🎯 Architecture radicale : aucun provider/modele en config (geres par Cline)")
     
-    # Initialise la base de données
+    # Initialise la base de données avec la politique injectée par la config
+    configure_database(
+        persist_sessions=get_database_config(config).persist_sessions,
+    )
     init_database()
     from .core.database import _should_persist
     if _should_persist():
@@ -305,7 +308,14 @@ async def _shutdown(app: FastAPI):
     # Arrête le Log Watcher
     if hasattr(app.state, 'log_watcher'):
         await app.state.log_watcher.stop()
-    
+
+    # Ferme le client MCP global (pool HTTPX)
+    from .features.mcp.client import close_mcp_client
+    try:
+        await close_mcp_client()
+    except Exception as err:
+        print(f"⚠️ Fermeture du client MCP impossible : {err}")
+
     print("✅ Serveur arrêté proprement")
 
 

@@ -5,11 +5,22 @@ déjà lancé sur localhost:8000). On teste donc l'app ASGI directement via
 FastAPI TestClient.
 """
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
 from kimi_proxy.main import create_app
 from kimi_proxy.core.database import init_database
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _without_admin_key():
+    """Évite qu'un KIMI_ADMIN_KEY externe transforme les tests en 401."""
+    previous = os.environ.pop("KIMI_ADMIN_KEY", None)
+    yield
+    if previous is not None:
+        os.environ["KIMI_ADMIN_KEY"] = previous
 
 
 @pytest.fixture(scope="module")

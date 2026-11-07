@@ -1,24 +1,36 @@
 """Gestion de la base de données SQLite du middleware."""
+import asyncio
 import os
 import sqlite3
+import threading
 from contextlib import contextmanager
-from typing import Generator, Optional
+from typing import Callable, Generator, Optional, TypeVar
 
 from .constants import DATABASE_FILE
 
 _mem_conn: Optional[sqlite3.Connection] = None
+_mem_conn_lock = threading.Lock()
+_persist_sessions: bool = False
+
+T = TypeVar("T")
+
+
+def configure_database(*, persist_sessions: bool) -> None:
+    """Injecte la politique de persistance depuis l'appelant (couche API)."""
+    global _persist_sessions
+    _persist_sessions = bool(persist_sessions)
+
+
+async def run_db_in_thread(fn: Callable[..., T], *args: object, **kwargs: object) -> T:
+    """Exécute une opération SQLite synchrone hors de la boucle asyncio."""
+    return await asyncio.to_thread(fn, *args, **kwargs)
 
 
 def _should_persist() -> bool:
-    try:
-        from ..config.loader import get_config, get_database_config
-        cfg = get_database_config(get_config())
-        env_val = os.environ.get("KIMI_PERSIST_SESSIONS")
-        if env_val is not None:
-            return env_val.lower() == "true"
-        return cfg.persist_sessions
-    except Exception:
-        return False
+    env_val = os.environ.get("KIMI_PERSIST_SESSIONS")
+    if env_val is not None:
+        return env_val.strip().lower() == "true"
+    return _persist_sessions
 
 
 @contextmanager
@@ -39,10 +51,16 @@ def get_db_connection() -> sqlite3.Connection:
         conn.row_factory = sqlite3.Row
         return conn
 
-    if _mem_conn is None:
-        _mem_conn = sqlite3.connect("file:kimi_mem?mode=memory&cache=shared", uri=True)
-        _mem_conn.row_factory = sqlite3.Row
-        _init_database_conn(_mem_conn)
+    with _mem_conn_lock:
+        if _mem_conn is None:
+            _mem_conn = sqlite3.connect(
+                "file:kimi_mem?mode=memory&cache=shared",
+                uri=True,
+                check_same_thread=False,
+            )
+            _mem_conn.row_factory = sqlite3.Row
+            _init_database_conn(_mem_conn)
+
     conn = sqlite3.connect("file:kimi_mem?mode=memory&cache=shared", uri=True)
     conn.row_factory = sqlite3.Row
     return conn

@@ -6,7 +6,7 @@ pour élaguer du contenu textuel *sans casser* les invariants tool-calling.
 Design:
 - Transformation conservatrice: on ne modifie que `message["content"]` (str)
   de certains messages; on ne touche pas à la longueur/ordre des messages.
-- Local-first: appel uniquement à un serveur MCP local via `forward_jsonrpc`.
+- Local-first: appel uniquement à un serveur MCP local via le transport Features.
 - Fail-open: toute erreur => no-op (contenu inchangé) + un résumé metadata-only.
 
 Notes:
@@ -21,7 +21,7 @@ import json
 from typing import Literal
 
 from ..config.loader import ContextPruningConfig
-from ..api.routes.mcp_gateway import forward_jsonrpc, MCPGatewayUpstreamError
+from ..features.mcp.rpc_transport import forward_jsonrpc, MCPGatewayUpstreamError
 
 
 ChatMessage = dict[str, object]

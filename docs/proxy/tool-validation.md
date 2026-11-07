@@ -1,187 +1,123 @@
-# Validation et Correction Arguments Tool - Tool Utils
+# Validation et Correction des Arguments Tool
 
-**TL;DR**: Ces fonctions corrigent automatiquement les arguments JSON malformés des appels tool, utilisant 15+ stratégies de réparation avec métriques et circuit breaker pour éviter les boucles infinies. Elles transforment les erreurs 400 "Bad Request" en appels réussis.
+## TL;DR
+`fix_malformed_json_arguments()` applique un pipeline de stratégies pures pour réparer les arguments JSON des tool calls. Aucune évaluation dynamique de code n'est effectuée. Les échecs sont bornés dans une `deque(maxlen=100)` et le budget de réparation est limité à 100 ms par appel.
 
-> **NOTE D'ARCHITECTURE** : Ces utilitaires sont **agnostiques** et fonctionnent avec **tout outil** (MCP ou autre). Ils restent pleinement opérationnels dans l'architecture locale où les serveurs MCP Phase 4 fonctionnent via Continue.app. Le proxy ne fait plus de validation spécifique MCP, mais ces fonctions de correction JSON génériques sont essentielles pour la couche Proxy.
-
-## Le Problème des Arguments JSON Malformés
-
-Vous intégrez des APIs d'IA avec des outils (functions calling). Les modèles génèrent parfois des arguments JSON corrompus:
+## Le problème
+Les modèles génèrent parfois des arguments JSON légèrement corrompus :
 
 ```json
-// ❌ JSON malformé généré par l'IA
-{"rules": [""]cursor{"  // Virgule manquante, guillemets non fermés
+{"query":"abc" "limit":3}
 ```
 
-Au lieu de rejeter l'appel avec une erreur 400, vous voulez:
+Rejeter la requête avec un 400 casse la conversation. Exécuter la chaîne comme du code Python serait une faille critique. Il faut donc corriger la syntaxe de manière conservatrice, sans jamais évaluer le contenu.
 
-- Corriger automatiquement les erreurs communes
-- Maintenir des métriques de succès/réussite
-- Éviter les corrections infinies (circuit breaker)
-- Fournir des diagnostics pour améliorer les prompts
+## Architecture du pipeline
 
-Les fonctions `fix_malformed_json_arguments` et `reconstruct_complex_json` résolvent cette complexité avec une approche multi-stratégies.
+### ❌ Ancienne approche monolithique
+- Une fonction de plusieurs centaines de lignes.
+- Validation après certaines étapes seulement.
+- Fallback `ast.literal_eval` sur une chaîne issue du modèle.
+- Liste `failure_reasons` non bornée.
+- Compteur global d'essais qui désactivait la réparation après dix tentatives dans tout le processus.
 
-### ❌ L'Approche Simpliste
+### ✅ Approche actuelle
 ```python
-def validate_tool_call(arguments_str: str) -> dict:
-    try:
-        return json.loads(arguments_str)
-    except json.JSONDecodeError:
-        # Rejet pur et simple
-        raise ValueError(f"Arguments JSON invalides: {arguments_str}")
+for strategy in strategies:
+    if budget_depasse:
+        break
+    candidate = strategy.apply(cleaned)
+    if json_valide(candidate):
+        return candidate
+    cleaned = candidate
 ```
 
-### ✅ L'Approche Corrective Multi-Stratégies
-```python
-def fix_malformed_json_arguments(arguments_str: str) -> str:
-    """15 étapes de correction automatique avec métriques."""
-    fixed = arguments_str.strip()
+Chaque stratégie est une fonction pure `str -> str`. Le pipeline valide le résultat après chaque groupe et conserve les transformations intermédiaires.
 
-    # Étape 1: Fusion des JSON concaténés
-    fixed = detect_and_merge_concatenated_json(fixed)
+### Stratégies appliquées
 
-    # Étape 2-15: Corrections spécifiques (virgules, guillemets, etc.)
-    fixed = apply_specific_corrections(fixed)
+| Ordre | Stratégie | Rôle |
+|---|---|---|
+| 1 | Fusion JSON concaténé | Fusionne `{"a":1}{"b":2}` |
+| 2 | Corrections directes | Patterns connus, tableaux, virgules finales, virgules de propriétés |
+| 3 | Virgule numérique | Corrige `123"clé":` |
+| 4 | Virgule booléenne | Corrige `true"clé":`, `false"clé":`, `null"clé":` |
+| 5 | Corrections avancées | Tableaux vides, éléments vides, guillemets, doublons, positions |
+| 6 | Reconstruction basique | Extrait les paires `"clé": valeur` |
+| 7 | Reconstruction complexe | Regex de propriétés puis reconstruction par tokens |
 
-    # Validation finale
-    try:
-        json.loads(fixed)
-        return fixed
-    except json.JSONDecodeError:
-        # Reconstruction agressive en dernier recours
-        return reconstruct_complex_json(fixed)
-```
-
-## Architecture des Fonctions
-
-### `fix_malformed_json_arguments` (552 LOC)
-Fonction principale avec 15 étapes de correction:
-
-1. **Fusion JSON concaténés** - Détecte et fusionne plusieurs objets JSON
-2. **Correction patterns directs** - Remplace les erreurs connues
-3. **Suppression trailing commas** - Supprime les virgules finales
-4. **Ajout virgules manquantes** - Entre propriétés et valeurs
-5. **Corrections numériques** - Gestion des nombres sans virgule
-6. **Corrections booléens** - true/false/null sans virgule
-7. **Reconstruction spécifique** - Pour patterns observés
-8. **Gestion arrays vides** - Correction des `[]clé{`
-9. **Éléments vides** - Correction des `[""]` malformés
-10. **Corrections avancées** - Chaînes longues, objets imbriqués
-11. **Position-based fixes** - Pour JSON très longs (>1000 chars)
-12. **Gestion duplications** - Suppression des objets répétés
-13. **Virgules propriétés** - Correction `"valeur""clé":`
-14. **Virgules objets** - Avant `{` et `[`
-15. **Reconstruction complète** - En dernier recours
-
-### `reconstruct_complex_json` (107 LOC)
-Reconstruction agressive pour JSON très corrompus:
-
-1. **Extraction propriétés** - Regex pour trouver `"clé": valeur`
-2. **Parsing valeurs** - String, bool, null, nombres, arrays
-3. **Reconstruction tokens** - À partir des tokens JSON valides restants
-
-### Métriques et Circuit Breaker
+## Métriques
 
 ```python
 JSON_FIX_METRICS = {
     "total_attempts": 0,
     "success_by_strategy": {
         "direct_fix": 0,
-        "eval_fallback": 0,
         "reconstruct_basic": 0,
         "reconstruct_complex": 0,
-        "all_failed": 0
+        "all_failed": 0,
     },
-    "failure_reasons": []
-}
-
-CIRCUIT_BREAKER_CONFIG = {
-    "enabled": True,
-    "max_total_attempts": 1000,
-    "max_time_ms": 5000
+    "failure_reasons": deque(maxlen=100),
 }
 ```
 
-## Exemples Concrets
+`failure_reasons` ne dépasse jamais 100 entrées. Les motifs sont écrits en français.
 
-### Exemple 1: Virgule Manquante Simple
+## Budget de temps
+
+`CIRCUIT_BREAKER_CONFIG["max_time_ms"]` vaut 100 ms. Le budget s'applique à chaque appel de `run_repair_pipeline()`. Il n'existe plus de plafond global qui désactiverait la réparation pour tout le processus.
+
+## Exemples
+
+### Virgule manquante
 ```python
-# Entrée corrompue
-'{"name": "test" "age": 25}'
+# Entrée
+'{"query":"abc" "limit":3}'
 
-# Après correction étape 5
-'{"name": "test", "age": 25}'
-
-# Résultat: JSON valide
+# Sortie
+'{"query":"abc","limit":3}'
 ```
 
-### Exemple 2: Array Malformé
+### Tableau malformé
 ```python
-# Entrée corrompue
+# Entrée
 '{"rules": [""]cursor{"enabled": true}'
 
-# Étape 1: Détection concaténation
+# Sortie
 '{"rules": ["cursor"], "enabled": true}'
-
-# Résultat: JSON valide avec array corrigé
 ```
 
-### Exemple 3: JSON Complexe Très Corrompu
-```python
-# Entrée très corrompue (position 1146 problématique)
-'{"model": "gpt-4", "temperature": 0.7"max_tokens": 100}'
-
-# Reconstruction via extract_properties:
-# - model: "gpt-4"
-# - temperature: 0.7
-# - max_tokens: 100
-
-# Résultat: {"model": "gpt-4", "temperature": 0.7, "max_tokens": 100}
+### Budget dépassé
+```text
+⚠️ Réparation JSON interrompue : délai maximal dépassé
+❌ Réparation JSON impossible après toutes les stratégies
 ```
 
-### Exemple 4: Circuit Breaker Activation
-```python
-# Après 1000 tentatives ou 5 secondes
-print("⚠️ Circuit breaker activé: max attempts reached")
-return arguments_str  # Retourne l'original sans correction
-```
+La fonction retourne la chaîne originale. L'appelant décide de conserver ou de rejeter l'argument.
 
-## Trade-offs de Conception
+## Trade-offs
 
-| Aspect | Choix | Avantages | Inconvénients |
-|--------|-------|-----------|---------------|
-| **Multi-stratégies** | 15 étapes séquentielles | Couverture large d'erreurs | Complexité maintenabilité |
-| **Circuit Breaker** | Limite temps + tentatives | Évite boucles infinies | Corrections refusées légitimes |
-| **Reconstruction agressive** | Regex + parsing manuel | Corrige JSON très corrompus | Risque de perte de données |
-| **Métriques détaillées** | Compteurs par stratégie | Diagnostic améliorations | Overhead performance |
-| **Fallback eval()** | Exécution Python dangereuse | Corrige certains cas extrêmes | Sécurité (code injection potentiel) |
-
-## Patterns Système Appliqués
-
-- **Pattern 6 (Error Handling)**: Récupération automatique vs échec graceful
-- **Pattern 13 (JSON Processing)**: Validation et correction robuste
-- **Pattern 14 (Streaming)**: Métriques pour optimisation continue
-- **Pattern 1 (Clean Architecture)**: Séparation logique de correction
+| Aspect | Choix | Avantage | Limite |
+|---|---|---|---|
+| Multi-stratégies | Fonctions pures séquentielles | Complexité maîtrisée et testable | Couverture dépendante de l'ordre |
+| Budget de temps | 100 ms par appel | Protège la boucle de requête | Certains JSON volumineux ne sont pas réparés |
+| Métriques | Compteurs par stratégie | Diagnostic des erreurs fréquentes | Overhead minimal |
+| Aucune évaluation dynamique | Reconstruction syntaxique uniquement | Pas d'exécution de code | Les littéraux Python ne sont plus convertis |
 
 ## Common Misconceptions
 
-### "Ces corrections sont dangereuses"
+### « La reconstruction agressive exécute le contenu »
+Non. Le pipeline manipule uniquement des chaînes et `json.loads()`. Aucune fonction d'évaluation Python n'est appelée.
 
-**Réalité**: Les corrections sont conservatrices - elles n'altèrent que la syntaxe, pas les données. Le circuit breaker garantit qu'aucune tentative infinie n'a lieu.
+### « Toutes les erreurs JSON doivent être réparées »
+Non. Le pipeline est best-effort. Si aucune stratégie ne produit un JSON valide, la chaîne originale est retournée sans exécution.
 
-### "Mieux vaut rejeter les appels malformés"
+### « Les métriques sont illimitées »
+Non. `failure_reasons` est une `deque(maxlen=100)`.
 
-**Réalité**: Les modèles IA génèrent souvent du JSON légèrement corrompu. La correction automatique améliore significativement le taux de succès des appels tool.
-
-### "Les métriques sont inutiles"
-
-**Réalité**: Les métriques identifient les patterns d'erreur les plus fréquents, permettant d'améliorer les prompts système et réduire les corrections nécessaires.
-
-## Golden Rule: Corriger Plutôt que Rejeter
-
-**Tout argument tool JSON doit être corrigé automatiquement si possible, avec métriques pour amélioration continue.** Les fonctions `fix_malformed_json_arguments` et `reconstruct_complex_json` incarnent cette règle en transformant les erreurs de syntaxe en appels réussis.
+## Golden Rule
+**Corriger la syntaxe plutôt que rejeter, sans jamais évaluer le contenu.**
 
 ---
-
-*Cette documentation explique la logique complexe de correction JSON. Pour l'implémentation complète, voir `src/kimi_proxy/proxy/tool_utils.py:552` et `src/kimi_proxy/proxy/tool_utils.py:382`.*
+*Dernière mise à jour : 2026-11-06*
+*Implémentation : `src/kimi_proxy/proxy/tool_utils.py`.*

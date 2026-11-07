@@ -19,7 +19,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 from urllib.parse import unquote, urlparse
 
 from ...config.loader import MCPToolPruningConfig
@@ -142,135 +142,127 @@ def resolve_mcp_tool_pruning_config(toml_cfg: MCPToolPruningConfig) -> MCPToolPr
     )
 
 
-async def maybe_prune_jsonrpc_response(
-    *,
+def _config_skip_reason(
     server_name: str,
-    request_json: object,
-    response_json: object,
     cfg: MCPToolPruningResolvedConfig,
-    pruner: PrunerCallable,
-    metrics: MCPToolPruningMetricsCollector | None = None,
-) -> object:
-    """Best-effort pruning sur une paire (requête tools/call, réponse).
-
-    Fail-open: si structure inattendue ou erreur -> retourne response_json original.
-    """
-
-    started_perf = time.perf_counter()
-    if metrics is not None:
-        await metrics.record_call()
-
+) -> str | None:
     if not cfg.enabled:
-        if metrics is not None:
-            await metrics.record_skip("disabled")
-            await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
-        return response_json
-
+        return "disabled"
     if server_name == "pruner":
-        if metrics is not None:
-            await metrics.record_skip("server_pruner")
-            await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
-        return response_json
+        return "server_pruner"
+    return None
 
+
+def _validate_request(
+    request_json: object,
+) -> tuple[str | None, JsonObject | None, str | None]:
     if not isinstance(request_json, dict) or request_json.get("jsonrpc") != "2.0":
-        if metrics is not None:
-            await metrics.record_skip("invalid_request")
-            await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
-        return response_json
+        return "invalid_request", None, None
     if request_json.get("method") != "tools/call":
-        if metrics is not None:
-            await metrics.record_skip("non_tools_call")
-            await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
-        return response_json
+        return "non_tools_call", None, None
 
     tool_name = _extract_tool_call_name(request_json)
     if tool_name in {"prune_text", "recover_text", "health"}:
-        if metrics is not None:
-            await metrics.record_skip("tool_excluded")
-            await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
-        return response_json
+        return "tool_excluded", None, None
+    return None, cast(JsonObject, request_json), tool_name
 
+
+def _validate_response(
+    response_json: object,
+) -> tuple[str | None, JsonObject | None, dict[str, object] | None, list[object] | None]:
     if not isinstance(response_json, dict) or response_json.get("jsonrpc") != "2.0":
-        if metrics is not None:
-            await metrics.record_skip("invalid_response")
-            await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
-        return response_json
+        return "invalid_response", None, None, None
     if "error" in response_json:
-        if metrics is not None:
-            await metrics.record_skip("error_response")
-            await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
-        return response_json
+        return "error_response", None, None, None
+
     result_obj = response_json.get("result")
     if not isinstance(result_obj, dict):
-        if metrics is not None:
-            await metrics.record_skip("invalid_response")
-            await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
-        return response_json
+        return "invalid_response", None, None, None
 
     content_obj = result_obj.get("content")
     if not isinstance(content_obj, list) or not content_obj:
-        if metrics is not None:
-            await metrics.record_skip("no_content")
-            await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
-        return response_json
+        return "no_content", None, None, None
 
+    return (
+        None,
+        cast(JsonObject, response_json),
+        result_obj,
+        content_obj,
+    )
+
+
+def _paths_skip_reason(
+    request_obj: JsonObject,
+    content_obj: list[object],
+    cfg: MCPToolPruningResolvedConfig,
+) -> str | None:
     request_paths = _extract_candidate_paths_from_arguments(
-        _extract_tool_call_arguments(request_json),
+        _extract_tool_call_arguments(request_obj),
         max_depth=cfg.max_depth,
         max_nodes=cfg.max_nodes,
     )
     if _contains_excluded_path(request_paths, cfg.excluded_dirs):
-        if metrics is not None:
-            await metrics.record_skip("excluded_path")
-            await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
-        return response_json
-
+        return "excluded_path"
     if _response_content_contains_excluded_path(
         content_obj,
         excluded_dirs=cfg.excluded_dirs,
         max_depth=cfg.max_depth,
         max_nodes=cfg.max_nodes,
     ):
-        if metrics is not None:
-            await metrics.record_skip("excluded_path")
-            await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
-        return response_json
+        return "excluded_path"
+    return None
 
-    if metrics is not None:
-        await metrics.record_eligible()
 
-    goal_hint = cfg.goal_hint_override or _derive_goal_hint_from_tool_call(server_name, tool_name, request_json)
-    source_type = _derive_source_type(server_name=server_name, tool_name=tool_name, request_json=request_json)
+async def _finish_skip(
+    metrics: MCPToolPruningMetricsCollector | None,
+    reason: str,
+    started_perf: float,
+) -> None:
+    if metrics is None:
+        return
+    await metrics.record_skip(reason)
+    await metrics.record_elapsed_ms(int((time.perf_counter() - started_perf) * 1000))
 
-    remaining_calls = max(0, int(cfg.max_pruner_calls_per_response))
-    node_budget = _NodeBudget(max_nodes=max(1, int(cfg.max_nodes)))
-    call_seq = 0
 
+async def _prune_content_items(
+    *,
+    content_obj: list[object],
+    request_obj: JsonObject,
+    cfg: MCPToolPruningResolvedConfig,
+    pruner: PrunerCallable,
+    goal_hint: str,
+    source_type: SourceType,
+    remaining_calls: int,
+    node_budget: _NodeBudget,
+    metrics: MCPToolPruningMetricsCollector | None,
+) -> tuple[list[object], bool]:
     changed = False
     new_content: list[object] = []
+    call_seq = 0
 
     for item in content_obj:
         if not isinstance(item, dict):
             new_content.append(item)
             continue
+
         text_obj = item.get("text")
         if not isinstance(text_obj, str) or not text_obj:
             new_content.append(item)
             continue
 
+        min_chars = max(0, int(cfg.min_chars))
         if metrics is not None:
             await metrics.record_text_examined(
                 length_chars=len(text_obj),
-                over_threshold=len(text_obj) >= max(0, int(cfg.min_chars)),
+                over_threshold=len(text_obj) >= min_chars,
             )
 
-        if len(text_obj) < max(0, int(cfg.min_chars)):
+        if len(text_obj) < min_chars:
             new_content.append(item)
             continue
 
         call_seq += 1
-        pruner_request_id = _child_request_id(request_json.get("id"), salt=17 + call_seq)
-
+        pruner_request_id = _child_request_id(request_obj.get("id"), salt=17 + call_seq)
         used_fallback_mask = False
 
         try:
@@ -305,7 +297,80 @@ async def maybe_prune_jsonrpc_response(
             new_content.append(item)
 
         if metrics is not None:
-            await metrics.record_text_after(length_chars=len(new_text), pruned=new_text != text_obj)
+            await metrics.record_text_after(
+                length_chars=len(new_text),
+                pruned=new_text != text_obj,
+            )
+
+    return new_content, changed
+
+
+async def maybe_prune_jsonrpc_response(
+    *,
+    server_name: str,
+    request_json: object,
+    response_json: object,
+    cfg: MCPToolPruningResolvedConfig,
+    pruner: PrunerCallable,
+    metrics: MCPToolPruningMetricsCollector | None = None,
+) -> object:
+    """Best-effort pruning sur une paire (requête tools/call, réponse).
+
+    Fail-open: si structure inattendue ou erreur -> retourne response_json original.
+    """
+
+    started_perf = time.perf_counter()
+    if metrics is not None:
+        await metrics.record_call()
+
+    skip_reason = _config_skip_reason(server_name, cfg)
+    if skip_reason is not None:
+        await _finish_skip(metrics, skip_reason, started_perf)
+        return response_json
+
+    skip_reason, request_obj, tool_name = _validate_request(request_json)
+    if skip_reason is not None or request_obj is None:
+        await _finish_skip(metrics, skip_reason or "invalid_request", started_perf)
+        return response_json
+
+    skip_reason, response_obj, result_obj, content_obj = _validate_response(response_json)
+    if skip_reason is not None or response_obj is None or result_obj is None or content_obj is None:
+        await _finish_skip(metrics, skip_reason or "invalid_response", started_perf)
+        return response_json
+
+    skip_reason = _paths_skip_reason(request_obj, content_obj, cfg)
+    if skip_reason is not None:
+        await _finish_skip(metrics, skip_reason, started_perf)
+        return response_json
+
+    if metrics is not None:
+        await metrics.record_eligible()
+
+    goal_hint = cfg.goal_hint_override or _derive_goal_hint_from_tool_call(
+        server_name,
+        tool_name,
+        request_obj,
+    )
+    source_type = _derive_source_type(
+        server_name=server_name,
+        tool_name=tool_name,
+        request_json=request_obj,
+    )
+
+    remaining_calls = max(0, int(cfg.max_pruner_calls_per_response))
+    node_budget = _NodeBudget(max_nodes=max(1, int(cfg.max_nodes)))
+
+    new_content, changed = await _prune_content_items(
+        content_obj=content_obj,
+        request_obj=request_obj,
+        cfg=cfg,
+        pruner=pruner,
+        goal_hint=goal_hint,
+        source_type=source_type,
+        remaining_calls=remaining_calls,
+        node_budget=node_budget,
+        metrics=metrics,
+    )
 
     if not changed:
         if metrics is not None:
@@ -315,7 +380,7 @@ async def maybe_prune_jsonrpc_response(
     new_result: dict[str, object] = dict(result_obj)
     new_result["content"] = new_content
 
-    new_response: dict[str, object] = dict(response_json)
+    new_response: dict[str, object] = dict(response_obj)
     new_response["result"] = new_result
 
     if metrics is not None:

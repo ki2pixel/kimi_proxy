@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import shutil
 
 import pytest
 
@@ -273,3 +274,52 @@ async def test_kimi_session_source_ignores_invalid_json_and_falls_back_when_meta
     assert events[0].session_external_id == "session-invalid"
     assert events[1].metrics.source == "kimi_session_usage"
     assert events[1].metrics.total_tokens == 42
+
+
+@pytest.mark.asyncio
+async def test_kimi_session_source_prunes_deleted_sessions(tmp_path: Path) -> None:
+    sessions_root = tmp_path / "sessions"
+    session_dir = sessions_root / "workspace" / "session-deleted"
+    session_dir.mkdir(parents=True)
+    (session_dir / "context.jsonl").write_text(
+        '{"role": "user", "content": "Message avant suppression"}\n',
+        encoding="utf-8",
+    )
+
+    source = KimiSessionSource(
+        sessions_path=str(sessions_root),
+        max_sessions_per_poll=10,
+        discovery_batch_size=10,
+    )
+    await source.initialize()
+    assert str(session_dir) in source._sessions
+
+    shutil.rmtree(session_dir)
+    await source.poll()
+
+    assert source._sessions == {}
+
+
+@pytest.mark.asyncio
+async def test_kimi_session_source_enforces_max_tracked_sessions(tmp_path: Path) -> None:
+    sessions_root = tmp_path / "sessions"
+    root_dir = sessions_root / "workspace"
+    root_dir.mkdir(parents=True)
+
+    for index in range(3):
+        session_dir = root_dir / f"session-{index}"
+        session_dir.mkdir()
+        (session_dir / "context.jsonl").write_text(
+            '{"role": "user", "content": "Message"}\n',
+            encoding="utf-8",
+        )
+
+    source = KimiSessionSource(
+        sessions_path=str(sessions_root),
+        max_sessions_per_poll=10,
+        discovery_batch_size=10,
+        max_tracked_sessions=2,
+    )
+    await source.initialize()
+
+    assert len(source._sessions) <= 2

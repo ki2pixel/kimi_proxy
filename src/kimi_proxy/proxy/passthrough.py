@@ -28,7 +28,7 @@ from ..features.pruner_goal_hint import derive_goal_hint
 from .tool_utils import fix_tool_calls_in_request, normalize_tool_call_arguments
 from .context_pruning import prune_tool_messages_best_effort
 from .client import create_proxy_client
-from .stream import stream_generator
+from .stream import close_stream_resources, stream_generator
 from .router import get_provider_host_header
 from .transformers import build_gemini_endpoint, convert_to_gemini_format
 
@@ -75,17 +75,26 @@ async def validate_and_normalize_target_url(url_str: str) -> str:
     except Exception as dns_err:
         raise ValueError(f"Impossible de résoudre l'hôte '{host}' : {dns_err}")
 
-    # En production, on interdit les IPs de réseaux privés ou loopback
-    if env == "production":
-        for ip_str in resolved_ips:
-            try:
-                ip = ipaddress.ip_address(ip_str)
-                if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast:
-                    raise ValueError(f"Accès à une adresse IP interdite/privée ({ip_str}) détecté.")
-            except ValueError as ip_err:
-                if "Accès à une adresse IP" in str(ip_err):
-                    raise
-                raise ValueError(f"Adresse IP invalide résolue ({ip_str}) : {ip_err}")
+    # Protection SSRF systématique : le loopback n'est toléré qu'en développement.
+    for ip_str in resolved_ips:
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError as ip_err:
+            raise ValueError(f"Adresse IP invalide résolue ({ip_str}) : {ip_err}") from ip_err
+
+        if ip.is_loopback:
+            if env == "production":
+                raise ValueError(f"Accès à une adresse IP interdite/privée ({ip_str}) détecté.")
+            continue
+
+        if (
+            ip.is_private
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise ValueError(f"Accès à une adresse IP interdite/privée ({ip_str}) détecté.")
 
     # 3. Validation de l'allowlist en production
     config = get_config()
@@ -313,8 +322,11 @@ class PassthroughProcessor:
                 )
 
                 if response.status_code >= 400:
-                    error_text = await response.aread()
-                    text = error_text.decode("utf-8", errors="ignore")[:500]
+                    try:
+                        error_text = await response.aread()
+                        text = error_text.decode("utf-8", errors="ignore")[:500]
+                    finally:
+                        await close_stream_resources(response)
                     print(f"❌ [PASSTHROUGH] Erreur {response.status_code}: {text}")
                     return JSONResponse(
                         content={"error": text, "code": response.status_code},

@@ -22,9 +22,10 @@ import os
 import re
 import time
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, cast
 
 import httpx
 from fastapi import FastAPI, Request
@@ -63,6 +64,7 @@ class MCPPrunerServerConfig:
 
     cache_ttl_s: int = 30
     cache_max_items: int = 256
+    prune_store_max_items: int = 512
 
     @classmethod
     def from_env(cls) -> "MCPPrunerServerConfig":
@@ -84,6 +86,7 @@ class MCPPrunerServerConfig:
             prune_id_ttl_s=_env_int("MCP_PRUNER_PRUNE_ID_TTL_S", 600),
             cache_ttl_s=_env_int("MCP_PRUNER_CACHE_TTL_S", 30),
             cache_max_items=_env_int("MCP_PRUNER_CACHE_MAX_ITEMS", 256),
+            prune_store_max_items=_env_int("MCP_PRUNER_STORE_MAX_ITEMS", 512),
         )
 
 
@@ -185,8 +188,9 @@ class PruneStore:
     - Lock async pour rester cohérent en environnement ASGI.
     """
 
-    def __init__(self, *, ttl_s: int) -> None:
+    def __init__(self, *, ttl_s: int, max_items: int = 512) -> None:
         self._ttl_s = max(1, int(ttl_s))
+        self._max_items = max(1, int(max_items))
         self._lock = asyncio.Lock()
         self._items: dict[str, _StoredPrune] = {}
 
@@ -195,6 +199,10 @@ class PruneStore:
         async with self._lock:
             self._items[prune_id] = _StoredPrune(created_at_s=now, lines=lines)
             self._gc_locked(now)
+            if len(self._items) > self._max_items:
+                oldest = sorted(self._items.items(), key=lambda kv: kv[1].created_at_s)
+                for key, _ in oldest[: len(self._items) - self._max_items]:
+                    del self._items[key]
 
     async def get(self, prune_id: str) -> list[str] | None:
         now = time.time()
@@ -449,7 +457,10 @@ async def _health_payload(*, metrics: PrunerMetrics) -> JsonDict:
 
 def create_app(*, config: MCPPrunerServerConfig | None = None) -> FastAPI:
     cfg = config or MCPPrunerServerConfig.from_env()
-    store = PruneStore(ttl_s=cfg.prune_id_ttl_s)
+    store = PruneStore(
+        ttl_s=cfg.prune_id_ttl_s,
+        max_items=cfg.prune_store_max_items,
+    )
     metrics = PrunerMetrics()
 
     # Fallback TOML pour la sélection backend et certains paramètres.
@@ -472,20 +483,19 @@ def create_app(*, config: MCPPrunerServerConfig | None = None) -> FastAPI:
 
     deepinfra_http_client: httpx.AsyncClient | None = None
 
-    app = FastAPI()
-
-    @app.on_event("startup")
-    async def _startup() -> None:
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
         nonlocal deepinfra_http_client
         # Client partagé (keep-alive) pour DeepInfra.
         deepinfra_http_client = httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0))
+        try:
+            yield
+        finally:
+            if deepinfra_http_client is not None:
+                await deepinfra_http_client.aclose()
+                deepinfra_http_client = None
 
-    @app.on_event("shutdown")
-    async def _shutdown() -> None:
-        nonlocal deepinfra_http_client
-        if deepinfra_http_client is not None:
-            await deepinfra_http_client.aclose()
-            deepinfra_http_client = None
+    app = FastAPI(lifespan=lifespan)
 
     tools_list: list[JsonDict] = [
         {
@@ -561,11 +571,11 @@ def create_app(*, config: MCPPrunerServerConfig | None = None) -> FastAPI:
         try:
             req_obj: object = await request.json()
         except Exception:
-            return JSONResponse(content=_jsonrpc_error(code=-32700, message="Parse error", req_id=None))
+            return JSONResponse(content=_jsonrpc_error(code=-32700, message="Erreur de parsing JSON-RPC", req_id=None))
 
         req_id = _extract_request_id(req_obj)
         if not isinstance(req_obj, dict) or req_obj.get("jsonrpc") != "2.0" or not isinstance(req_obj.get("method"), str):
-            return JSONResponse(content=_jsonrpc_error(code=-32600, message="Invalid Request", req_id=req_id))
+            return JSONResponse(content=_jsonrpc_error(code=-32600, message="Requête JSON-RPC invalide", req_id=req_id))
 
         method = str(req_obj.get("method"))
         params = req_obj.get("params")
@@ -598,7 +608,7 @@ def create_app(*, config: MCPPrunerServerConfig | None = None) -> FastAPI:
             tool_args = _safe_get_dict(params_dict, "arguments") or {}
             if tool_name is None:
                 return JSONResponse(
-                    content=_jsonrpc_error(code=-32602, message="Invalid params: missing tool name", req_id=req_id)
+                    content=_jsonrpc_error(code=-32602, message="Paramètres invalides : nom d'outil manquant", req_id=req_id)
                 )
 
             if tool_name == "prune_text":
@@ -622,7 +632,7 @@ def create_app(*, config: MCPPrunerServerConfig | None = None) -> FastAPI:
                 )
 
             return JSONResponse(
-                content=_jsonrpc_error(code=-32602, message=f"Invalid params: unknown tool '{tool_name}'", req_id=req_id)
+                content=_jsonrpc_error(code=-32602, message=f"Paramètres invalides : outil inconnu '{tool_name}'", req_id=req_id)
             )
 
         # Optional discovery APIs
@@ -639,7 +649,7 @@ def create_app(*, config: MCPPrunerServerConfig | None = None) -> FastAPI:
             return JSONResponse(content=_jsonrpc_result(req_id=req_id, result=await _health_payload(metrics=metrics)))
         if method == "prune_text":
             if not isinstance(params, dict):
-                return JSONResponse(content=_jsonrpc_error(code=-32602, message="Invalid params", req_id=req_id))
+                return JSONResponse(content=_jsonrpc_error(code=-32602, message="Paramètres invalides", req_id=req_id))
             return JSONResponse(
                 content=await _tool_prune_text(
                     cfg=cfg,
@@ -654,78 +664,74 @@ def create_app(*, config: MCPPrunerServerConfig | None = None) -> FastAPI:
             )
         if method in {"recover_text", "recover_range"}:
             if not isinstance(params, dict):
-                return JSONResponse(content=_jsonrpc_error(code=-32602, message="Invalid params", req_id=req_id))
+                return JSONResponse(content=_jsonrpc_error(code=-32602, message="Paramètres invalides", req_id=req_id))
             return JSONResponse(content=await _tool_recover_text(store=store, req_id=req_id, args=params))
 
-        return JSONResponse(content=_jsonrpc_error(code=-32601, message=f"Method not found: {method}", req_id=req_id))
+        return JSONResponse(content=_jsonrpc_error(code=-32601, message=f"Méthode introuvable : {method}", req_id=req_id))
 
     return app
 
 
-async def _tool_prune_text(
-    *,
-    cfg: MCPPrunerServerConfig,
-    store: PruneStore,
-    cache: PruneCache,
-    metrics: PrunerMetrics,
-    deepinfra_http_client: httpx.AsyncClient | None,
-    toml_backend_cfg: MCPPrunerBackendConfig,
-    req_id: object | None,
+@dataclass(frozen=True)
+class _PruneBaseRequest:
+    text: str
+    goal_hint: str
+    source_type: SourceType
+    options: dict[str, object]
+
+
+@dataclass(frozen=True)
+class _PruneOptions:
+    max_prune_ratio: float
+    min_keep_lines: int
+    timeout_ms: int
+    annotate_lines: bool
+    include_markers: bool
+
+
+@dataclass(frozen=True)
+class _DeepInfraDiagnostics:
+    latency_ms: int | None = None
+    docs_scored: int | None = None
+    docs_total: int | None = None
+    http_status: int | None = None
+
+
+def _parse_prune_base(
     args: dict[str, object],
-) -> JsonDict:
+    req_id: object | None,
+) -> tuple[_PruneBaseRequest | None, JsonDict | None]:
     text = _safe_get_str(args, "text")
     goal_hint = _safe_get_str(args, "goal_hint")
     source_type_raw = _safe_get_str(args, "source_type")
     options = _safe_get_dict(args, "options")
 
     if text is None or goal_hint is None or source_type_raw is None or options is None:
-        return _jsonrpc_error(
+        return None, _jsonrpc_error(
             code=-32602,
-            message="Invalid params: expected {text, goal_hint, source_type, options}",
+            message="Paramètres invalides : attendu {text, goal_hint, source_type, options}",
             req_id=req_id,
         )
 
     if source_type_raw not in {"code", "logs", "docs"}:
-        return _jsonrpc_error(
+        return None, _jsonrpc_error(
             code=-32602,
-            message="Invalid params: source_type must be one of code|logs|docs",
+            message="Paramètres invalides : source_type doit valoir code, logs ou docs",
             req_id=req_id,
         )
 
-    prune_id = f"prn_{uuid.uuid4().hex}"
-    backends = _get_pruning_backends_from_env(toml_backend_cfg)
-    backends_str = ",".join(backends)
-    _ = time.time()  # wall clock placeholder (utile si on ajoute des timestamps plus tard)
-    started_perf = time.perf_counter()
+    return _PruneBaseRequest(
+        text=text,
+        goal_hint=goal_hint,
+        source_type=cast(SourceType, source_type_raw),
+        options=options,
+    ), None
 
-    if len(text) > cfg.max_input_chars:
-        # Fail-open: no-op + warning
-        await store.put(prune_id, lines=text.splitlines())
-        payload = {
-            "prune_id": prune_id,
-            "pruned_text": text,
-            "annotations": [],
-            "stats": {
-                "backend": backends_str,
-                "original_lines": len(text.splitlines()),
-                "kept_lines": len(text.splitlines()),
-                "pruned_lines": 0,
-                "pruned_ratio": 0.0,
-                "tokens_est_before": count_tokens_text(text),
-                "tokens_est_after": count_tokens_text(text),
-                "elapsed_ms": 0,
-                "used_fallback": True,
-            },
-            "warnings": ["input_too_large"],
-        }
-        tokens_saved_est, cost_estimated_usd = _compute_savings(payload["stats"])  # type: ignore[arg-type]
-        stats_obj = payload.get("stats")
-        if isinstance(stats_obj, dict):
-            stats_obj["tokens_saved_est"] = tokens_saved_est
-            stats_obj["cost_estimated_usd"] = cost_estimated_usd
-            await metrics.record_call(backend=str(stats_obj.get("backend")), used_fallback=True, cost_estimated_usd=cost_estimated_usd)
-        return _jsonrpc_tool_result(req_id=req_id, tool_payload=payload)
 
+def _parse_prune_options(
+    options: dict[str, object],
+    req_id: object | None,
+) -> tuple[_PruneOptions | None, JsonDict | None]:
     max_prune_ratio = _safe_get_float(options, "max_prune_ratio")
     min_keep_lines = _safe_get_int(options, "min_keep_lines")
     timeout_ms = _safe_get_int(options, "timeout_ms")
@@ -739,180 +745,397 @@ async def _tool_prune_text(
         or annotate_lines is None
         or include_markers is None
     ):
-        return _jsonrpc_error(
+        return None, _jsonrpc_error(
             code=-32602,
-            message="Invalid params: options must contain max_prune_ratio, min_keep_lines, timeout_ms, annotate_lines, include_markers",
+            message=(
+                "Paramètres invalides : options doit contenir max_prune_ratio, "
+                "min_keep_lines, timeout_ms, annotate_lines, include_markers"
+            ),
             req_id=req_id,
         )
 
     if max_prune_ratio < 0.0 or max_prune_ratio > 1.0:
-        return _jsonrpc_error(
+        return None, _jsonrpc_error(
             code=-32602,
-            message="Invalid params: options.max_prune_ratio must be between 0 and 1",
+            message="Paramètres invalides : max_prune_ratio doit être compris entre 0 et 1",
             req_id=req_id,
         )
 
     if min_keep_lines < 0:
-        return _jsonrpc_error(
+        return None, _jsonrpc_error(
             code=-32602,
-            message="Invalid params: options.min_keep_lines must be >= 0",
+            message="Paramètres invalides : min_keep_lines doit être supérieur ou égal à 0",
             req_id=req_id,
         )
 
     if timeout_ms < 1:
-        return _jsonrpc_error(
+        return None, _jsonrpc_error(
             code=-32602,
-            message="Invalid params: options.timeout_ms must be >= 1",
+            message="Paramètres invalides : timeout_ms doit être supérieur ou égal à 1",
             req_id=req_id,
         )
 
-    # Timeout soft: baseline heuristique; on conserve le champ pour compat.
-    _ = timeout_ms
+    return _PruneOptions(
+        max_prune_ratio=max_prune_ratio,
+        min_keep_lines=min_keep_lines,
+        timeout_ms=timeout_ms,
+        annotate_lines=annotate_lines,
+        include_markers=include_markers,
+    ), None
 
-    pruned_text: str
-    annotations: list[JsonDict]
-    stats: JsonDict
-    warnings: list[str]
 
-    deepinfra_latency_ms: int | None = None
-    deepinfra_docs_scored: int | None = None
-    deepinfra_docs_total: int | None = None
-    deepinfra_http_status: int | None = None
-
-    cache_key = _cache_key_for_prune(
+async def _build_input_too_large_payload(
+    *,
+    text: str,
+    prune_id: str,
+    backends_str: str,
+    store: PruneStore,
+    metrics: PrunerMetrics,
+    req_id: object | None,
+) -> JsonDict:
+    line_count = len(text.splitlines())
+    stats: JsonDict = {
+        "backend": backends_str,
+        "original_lines": line_count,
+        "kept_lines": line_count,
+        "pruned_lines": 0,
+        "pruned_ratio": 0.0,
+        "tokens_est_before": count_tokens_text(text),
+        "tokens_est_after": count_tokens_text(text),
+        "elapsed_ms": 0,
+        "used_fallback": True,
+    }
+    payload: JsonDict = {
+        "prune_id": prune_id,
+        "pruned_text": text,
+        "annotations": [],
+        "stats": stats,
+        "warnings": ["input_too_large"],
+    }
+    tokens_saved_est, cost_estimated_usd = _compute_savings(stats)
+    stats["tokens_saved_est"] = tokens_saved_est
+    stats["cost_estimated_usd"] = cost_estimated_usd
+    await store.put(prune_id, lines=text.splitlines())
+    await metrics.record_call(
         backend=backends_str,
-        text=text,
-        goal_hint=goal_hint,
-        source_type=source_type_raw,
+        used_fallback=True,
+        cost_estimated_usd=cost_estimated_usd,
+    )
+    return _jsonrpc_tool_result(req_id=req_id, tool_payload=payload)
+
+
+def _build_cache_key(
+    *,
+    backends_str: str,
+    request: _PruneBaseRequest,
+    options: _PruneOptions,
+) -> str:
+    return _cache_key_for_prune(
+        backend=backends_str,
+        text=request.text,
+        goal_hint=request.goal_hint,
+        source_type=request.source_type,
         options={
-            "max_prune_ratio": max_prune_ratio,
-            "min_keep_lines": min_keep_lines,
-            "timeout_ms": timeout_ms,
-            "annotate_lines": annotate_lines,
-            "include_markers": include_markers,
+            "max_prune_ratio": options.max_prune_ratio,
+            "min_keep_lines": options.min_keep_lines,
+            "timeout_ms": options.timeout_ms,
+            "annotate_lines": options.annotate_lines,
+            "include_markers": options.include_markers,
         },
     )
 
-    cached = await cache.get(cache_key)
-    if cached is not None:
-        pruned_text = str(cached.pruned_text)
-        annotations = _clone_annotations(cached.annotations)
-        stats = dict(cached.stats)
-        warnings = list(cached.warnings) + ["cache_hit"]
-        stats["cached"] = True
-        if "deepinfra" in backends_str:
-            stats["deepinfra_cached"] = True
-            stats["deepinfra_latency_ms"] = 0
-    else:
-        lines = text.splitlines()
-        n = len(lines)
-        keep_set = set(range(n))
-        warnings = []
-        
-        owned_client: httpx.AsyncClient | None = None
-        http_client_to_use = deepinfra_http_client
-        
-        try:
-            if "heuristic" in backends:
-                from .layer1_heuristic import clean_base64_and_hashes_inline
-                clean_base64_and_hashes_inline(lines)
-                
-            max_prune_ratio_n = max(0.0, min(1.0, float(max_prune_ratio)))
-            min_keep_lines_n = max(0, int(min_keep_lines))
-            from .deepinfra_engine import _compute_keep_target
-            keep_target = _compute_keep_target(n_lines=n, max_prune_ratio=max_prune_ratio_n, min_keep_lines=min_keep_lines_n)
-            
-            for b in backends:
-                if b == "heuristic":
-                    from .layer1_heuristic import compute_heuristic_keep_set
-                    keep_set = compute_heuristic_keep_set(lines=lines, current_keep_set=keep_set, keep_target=keep_target)
-                elif b == "local_rag":
-                    from .local_rag import compute_local_rag_keep_set
-                    try:
-                        keep_set = await compute_local_rag_keep_set(lines=lines, current_keep_set=keep_set, goal_hint=goal_hint, keep_target=keep_target)
-                    except Exception as e:
-                        warnings.append(f"local_rag_error:{str(e)}")
-                elif b == "deepinfra":
-                    from .deepinfra_engine import compute_deepinfra_keep_set, _select_doc_indices
-                    if owned_client is None and http_client_to_use is None:
-                        owned_client = httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0))
-                        http_client_to_use = owned_client
-                    deepinfra_docs_total = n
-                    deepinfra_cfg = _get_deepinfra_client_config(toml_backend_cfg)
-                    sampled_indices = _select_doc_indices(n_lines=len(keep_set), max_docs=deepinfra_cfg.max_docs)
-                    deepinfra_docs_scored = len(sampled_indices)
-                    try:
-                        deepinfra_started = time.perf_counter()
-                        deepinfra_client = DeepInfraClient(deepinfra_cfg, http_client=http_client_to_use)
-                        keep_set = await compute_deepinfra_keep_set(
-                            lines=lines, current_keep_set=keep_set, goal_hint=goal_hint,
-                            keep_target=keep_target, max_docs=deepinfra_cfg.max_docs,
-                            deepinfra_client=deepinfra_client
-                        )
-                        deepinfra_latency_ms = getattr(deepinfra_client, "last_latency_ms", int((time.perf_counter() - deepinfra_started) * 1000))
-                        deepinfra_http_status = 200
-                    except Exception as e:
-                        warnings.append("deepinfra_error")
-                        code = getattr(e, "code", None)
-                        if code is not None:
-                            warnings.append(str(code))
-                        warnings.append(f"deepinfra_error:[{code}] {str(e)}")
-                        if hasattr(e, "details") and isinstance(e.details, dict):
-                            sc = e.details.get("status_code")
-                            if sc is not None:
-                                deepinfra_http_status = int(sc)
-        finally:
-            if owned_client is not None:
-                await owned_client.aclose()
-                
-        # Reconstruction
-        from .deepinfra_engine import _reconstruct_pruned_text
-        pruned_text, annotations = _reconstruct_pruned_text(
-            prune_id="<pending>",
-            lines=lines,
-            keep_set=keep_set,
-            goal_hint=goal_hint,
-            annotate_lines=annotate_lines,
-            include_markers=include_markers,
-        )
-        
-        kept_lines = len(keep_set)
-        pruned_lines = n - kept_lines
-        pruned_ratio = pruned_lines / n if n > 0 else 0.0
-        
-        stats = {
-            "backend": backends_str,
-            "original_lines": n,
-            "kept_lines": kept_lines,
-            "pruned_lines": pruned_lines,
-            "pruned_ratio": round(pruned_ratio, 6),
-            "tokens_est_before": count_tokens_text(text),
-            "tokens_est_after": count_tokens_text(pruned_text),
-            "elapsed_ms": 0,
-            "used_fallback": len(warnings) > 0,
-        }
-        if "deepinfra" in backends:
-            if deepinfra_latency_ms is not None:
-                stats["deepinfra_latency_ms"] = deepinfra_latency_ms
-            if deepinfra_docs_scored is not None:
-                stats["deepinfra_docs_scored"] = deepinfra_docs_scored
-            if deepinfra_docs_total is not None:
-                stats["deepinfra_docs_total"] = deepinfra_docs_total
-            if deepinfra_http_status is not None:
-                stats["deepinfra_http_status"] = deepinfra_http_status
-        
-        await cache.put(
-            cache_key,
-            _CachedPrune(
-                created_at_s=time.time(),
-                pruned_text=pruned_text,
-                annotations=_clone_annotations(annotations),
-                stats=dict(stats),
-                warnings=list(warnings),
-            ),
-        )
 
-    # Remplacer le placeholder prune_id dans markers/annotations
+async def _load_cached_prune(
+    cache: PruneCache,
+    cache_key: str,
+    backends_str: str,
+) -> tuple[str, list[JsonDict], JsonDict, list[str]] | None:
+    cached = await cache.get(cache_key)
+    if cached is None:
+        return None
+
+    stats = dict(cached.stats)
+    stats["cached"] = True
+    if "deepinfra" in backends_str:
+        stats["deepinfra_cached"] = True
+        stats["deepinfra_latency_ms"] = 0
+    return (
+        str(cached.pruned_text),
+        _clone_annotations(cached.annotations),
+        stats,
+        list(cached.warnings) + ["cache_hit"],
+    )
+
+
+def _apply_heuristic_backend(
+    *,
+    lines: list[str],
+    keep_set: set[int],
+    keep_target: int,
+) -> set[int]:
+    from .layer1_heuristic import compute_heuristic_keep_set
+
+    return compute_heuristic_keep_set(
+        lines=lines,
+        current_keep_set=keep_set,
+        keep_target=keep_target,
+    )
+
+
+async def _apply_local_rag_backend(
+    *,
+    lines: list[str],
+    keep_set: set[int],
+    goal_hint: str,
+    keep_target: int,
+) -> tuple[set[int], list[str]]:
+    from .local_rag import compute_local_rag_keep_set
+
+    try:
+        pruned = await compute_local_rag_keep_set(
+            lines=lines,
+            current_keep_set=keep_set,
+            goal_hint=goal_hint,
+            keep_target=keep_target,
+        )
+        return pruned, []
+    except Exception as exc:
+        return keep_set, [f"local_rag_error:{str(exc)}"]
+
+
+async def _apply_deepinfra_backend(
+    *,
+    lines: list[str],
+    keep_set: set[int],
+    goal_hint: str,
+    keep_target: int,
+    toml_backend_cfg: MCPPrunerBackendConfig,
+    http_client: httpx.AsyncClient,
+) -> tuple[set[int], _DeepInfraDiagnostics, list[str]]:
+    from .deepinfra_engine import _select_doc_indices, compute_deepinfra_keep_set
+
+    deepinfra_cfg = _get_deepinfra_client_config(toml_backend_cfg)
+    sampled_indices = _select_doc_indices(
+        n_lines=len(keep_set),
+        max_docs=deepinfra_cfg.max_docs,
+    )
+    try:
+        started = time.perf_counter()
+        client = DeepInfraClient(deepinfra_cfg, http_client=http_client)
+        pruned = await compute_deepinfra_keep_set(
+            lines=lines,
+            current_keep_set=keep_set,
+            goal_hint=goal_hint,
+            keep_target=keep_target,
+            max_docs=deepinfra_cfg.max_docs,
+            deepinfra_client=client,
+        )
+        latency_ms = getattr(
+            client,
+            "last_latency_ms",
+            int((time.perf_counter() - started) * 1000),
+        )
+        return pruned, _DeepInfraDiagnostics(
+            latency_ms=latency_ms,
+            docs_scored=len(sampled_indices),
+            docs_total=len(lines),
+            http_status=200,
+        ), []
+    except Exception as exc:
+        warnings = ["deepinfra_error"]
+        code = getattr(exc, "code", None)
+        if code is not None:
+            warnings.append(str(code))
+        warnings.append(f"deepinfra_error:[{code}] {str(exc)}")
+
+        http_status: int | None = None
+        details = getattr(exc, "details", None)
+        if isinstance(details, dict):
+            status_code = details.get("status_code")
+            if status_code is not None:
+                http_status = int(status_code)
+        return keep_set, _DeepInfraDiagnostics(
+            docs_scored=len(sampled_indices),
+            docs_total=len(lines),
+            http_status=http_status,
+        ), warnings
+
+
+async def _apply_backends(
+    *,
+    backends: list[str],
+    lines: list[str],
+    keep_set: set[int],
+    goal_hint: str,
+    keep_target: int,
+    toml_backend_cfg: MCPPrunerBackendConfig,
+    shared_http_client: httpx.AsyncClient | None,
+) -> tuple[set[int], list[str], _DeepInfraDiagnostics]:
+    warnings: list[str] = []
+    diagnostics = _DeepInfraDiagnostics()
+    owned_client: httpx.AsyncClient | None = None
+    http_client = shared_http_client
+
+    try:
+        if "heuristic" in backends:
+            from .layer1_heuristic import clean_base64_and_hashes_inline
+            clean_base64_and_hashes_inline(lines)
+
+        for backend in backends:
+            if backend == "heuristic":
+                keep_set = _apply_heuristic_backend(
+                    lines=lines,
+                    keep_set=keep_set,
+                    keep_target=keep_target,
+                )
+            elif backend == "local_rag":
+                keep_set, rag_warnings = await _apply_local_rag_backend(
+                    lines=lines,
+                    keep_set=keep_set,
+                    goal_hint=goal_hint,
+                    keep_target=keep_target,
+                )
+                warnings.extend(rag_warnings)
+            elif backend == "deepinfra":
+                if http_client is None:
+                    owned_client = httpx.AsyncClient(
+                        timeout=httpx.Timeout(30.0, connect=5.0)
+                    )
+                    http_client = owned_client
+                keep_set, diagnostics, deepinfra_warnings = await _apply_deepinfra_backend(
+                    lines=lines,
+                    keep_set=keep_set,
+                    goal_hint=goal_hint,
+                    keep_target=keep_target,
+                    toml_backend_cfg=toml_backend_cfg,
+                    http_client=http_client,
+                )
+                warnings.extend(deepinfra_warnings)
+    finally:
+        if owned_client is not None:
+            await owned_client.aclose()
+
+    return keep_set, warnings, diagnostics
+
+
+def _build_prune_stats(
+    *,
+    backends_str: str,
+    backends: list[str],
+    n: int,
+    keep_set: set[int],
+    pruned_text: str,
+    text: str,
+    warnings: list[str],
+    diagnostics: _DeepInfraDiagnostics,
+) -> JsonDict:
+    kept_lines = len(keep_set)
+    pruned_lines = n - kept_lines
+    pruned_ratio = pruned_lines / n if n > 0 else 0.0
+    stats: JsonDict = {
+        "backend": backends_str,
+        "original_lines": n,
+        "kept_lines": kept_lines,
+        "pruned_lines": pruned_lines,
+        "pruned_ratio": round(pruned_ratio, 6),
+        "tokens_est_before": count_tokens_text(text),
+        "tokens_est_after": count_tokens_text(pruned_text),
+        "elapsed_ms": 0,
+        "used_fallback": len(warnings) > 0,
+    }
+    if "deepinfra" in backends:
+        if diagnostics.latency_ms is not None:
+            stats["deepinfra_latency_ms"] = diagnostics.latency_ms
+        if diagnostics.docs_scored is not None:
+            stats["deepinfra_docs_scored"] = diagnostics.docs_scored
+        if diagnostics.docs_total is not None:
+            stats["deepinfra_docs_total"] = diagnostics.docs_total
+        if diagnostics.http_status is not None:
+            stats["deepinfra_http_status"] = diagnostics.http_status
+    return stats
+
+
+async def _compute_uncached_prune(
+    *,
+    request: _PruneBaseRequest,
+    options: _PruneOptions,
+    backends: list[str],
+    backends_str: str,
+    cache: PruneCache,
+    cache_key: str,
+    toml_backend_cfg: MCPPrunerBackendConfig,
+    deepinfra_http_client: httpx.AsyncClient | None,
+) -> tuple[str, list[JsonDict], JsonDict, list[str]]:
+    lines = request.text.splitlines()
+    n = len(lines)
+    keep_set = set(range(n))
+
+    max_prune_ratio_n = max(0.0, min(1.0, float(options.max_prune_ratio)))
+    min_keep_lines_n = max(0, int(options.min_keep_lines))
+    from .deepinfra_engine import _compute_keep_target
+    keep_target = _compute_keep_target(
+        n_lines=n,
+        max_prune_ratio=max_prune_ratio_n,
+        min_keep_lines=min_keep_lines_n,
+    )
+
+    keep_set, warnings, diagnostics = await _apply_backends(
+        backends=backends,
+        lines=lines,
+        keep_set=keep_set,
+        goal_hint=request.goal_hint,
+        keep_target=keep_target,
+        toml_backend_cfg=toml_backend_cfg,
+        shared_http_client=deepinfra_http_client,
+    )
+
+    from .deepinfra_engine import _reconstruct_pruned_text
+    pruned_text, annotations = _reconstruct_pruned_text(
+        prune_id="<pending>",
+        lines=lines,
+        keep_set=keep_set,
+        goal_hint=request.goal_hint,
+        annotate_lines=options.annotate_lines,
+        include_markers=options.include_markers,
+    )
+
+    stats = _build_prune_stats(
+        backends_str=backends_str,
+        backends=backends,
+        n=n,
+        keep_set=keep_set,
+        pruned_text=pruned_text,
+        text=request.text,
+        warnings=warnings,
+        diagnostics=diagnostics,
+    )
+
+    await cache.put(
+        cache_key,
+        _CachedPrune(
+            created_at_s=time.time(),
+            pruned_text=pruned_text,
+            annotations=_clone_annotations(annotations),
+            stats=dict(stats),
+            warnings=list(warnings),
+        ),
+    )
+    return pruned_text, annotations, stats, warnings
+
+
+async def _finalize_prune_payload(
+    *,
+    prune_id: str,
+    text: str,
+    pruned_text: str,
+    annotations: list[JsonDict],
+    stats: JsonDict,
+    warnings: list[str],
+    store: PruneStore,
+    metrics: PrunerMetrics,
+    started_perf: float,
+    req_id: object | None,
+) -> JsonDict:
     _replace_prune_id(annotations=annotations, prune_id=prune_id)
     pruned_text = pruned_text.replace("prune_id=<pending>", f"prune_id={prune_id}")
 
@@ -924,17 +1147,105 @@ async def _tool_prune_text(
     stats["cost_estimated_usd"] = cost_estimated_usd
 
     await store.put(prune_id, lines=text.splitlines())
-    payload = {
+    payload: JsonDict = {
         "prune_id": prune_id,
         "pruned_text": pruned_text,
-        "annotations": annotations,  # type: ignore
+        "annotations": annotations,
         "stats": stats,
         "warnings": warnings,
     }
 
-    used_fallback = bool(stats.get("used_fallback")) if isinstance(stats.get("used_fallback"), bool) else False
-    await metrics.record_call(backend=str(stats.get("backend")), used_fallback=used_fallback, cost_estimated_usd=cost_estimated_usd)
+    used_fallback = (
+        bool(stats.get("used_fallback"))
+        if isinstance(stats.get("used_fallback"), bool)
+        else False
+    )
+    await metrics.record_call(
+        backend=str(stats.get("backend")),
+        used_fallback=used_fallback,
+        cost_estimated_usd=cost_estimated_usd,
+    )
     return _jsonrpc_tool_result(req_id=req_id, tool_payload=payload)
+
+
+async def _tool_prune_text(
+    *,
+    cfg: MCPPrunerServerConfig,
+    store: PruneStore,
+    cache: PruneCache,
+    metrics: PrunerMetrics,
+    deepinfra_http_client: httpx.AsyncClient | None,
+    toml_backend_cfg: MCPPrunerBackendConfig,
+    req_id: object | None,
+    args: dict[str, object],
+) -> JsonDict:
+    request, error = _parse_prune_base(args, req_id)
+    if error is not None:
+        return error
+    if request is None:
+        return _jsonrpc_error(
+            code=-32602,
+            message="Paramètres invalides.",
+            req_id=req_id,
+        )
+
+    prune_id = f"prn_{uuid.uuid4().hex}"
+    backends = _get_pruning_backends_from_env(toml_backend_cfg)
+    backends_str = ",".join(backends)
+    started_perf = time.perf_counter()
+
+    if len(request.text) > cfg.max_input_chars:
+        return await _build_input_too_large_payload(
+            text=request.text,
+            prune_id=prune_id,
+            backends_str=backends_str,
+            store=store,
+            metrics=metrics,
+            req_id=req_id,
+        )
+
+    options, error = _parse_prune_options(request.options, req_id)
+    if error is not None:
+        return error
+    if options is None:
+        return _jsonrpc_error(
+            code=-32602,
+            message="Paramètres invalides.",
+            req_id=req_id,
+        )
+
+    cache_key = _build_cache_key(
+        backends_str=backends_str,
+        request=request,
+        options=options,
+    )
+    cached = await _load_cached_prune(cache, cache_key, backends_str)
+    if cached is not None:
+        pruned_text, annotations, stats, warnings = cached
+    else:
+        pruned_text, annotations, stats, warnings = await _compute_uncached_prune(
+            request=request,
+            options=options,
+            backends=backends,
+            backends_str=backends_str,
+            cache=cache,
+            cache_key=cache_key,
+            toml_backend_cfg=toml_backend_cfg,
+            deepinfra_http_client=deepinfra_http_client,
+        )
+
+    return await _finalize_prune_payload(
+        prune_id=prune_id,
+        text=request.text,
+        pruned_text=pruned_text,
+        annotations=annotations,
+        stats=stats,
+        warnings=warnings,
+        store=store,
+        metrics=metrics,
+        started_perf=started_perf,
+        req_id=req_id,
+    )
 
 
 def _get_pruning_backends_from_env(toml_cfg: MCPPrunerBackendConfig) -> list[str]:
@@ -1064,7 +1375,7 @@ async def _tool_recover_text(
     if prune_id is None or not isinstance(ranges, list) or include_line_numbers is None:
         return _jsonrpc_error(
             code=-32602,
-            message="Invalid params: expected {prune_id, ranges, include_line_numbers}",
+            message="Paramètres invalides : attendu {prune_id, ranges, include_line_numbers}",
             req_id=req_id,
         )
 
@@ -1072,7 +1383,7 @@ async def _tool_recover_text(
     if stored_lines is None:
         return _jsonrpc_error(
             code=-32004,
-            message="prune_id_not_found",
+            message="Identifiant de pruning introuvable",
             req_id=req_id,
             data={"code": "prune_id_not_found", "prune_id": prune_id},
         )
@@ -1080,13 +1391,13 @@ async def _tool_recover_text(
     chunks: list[str] = []
     for r in ranges:
         if not isinstance(r, dict):
-            return _jsonrpc_error(code=-32602, message="Invalid params: range item must be object", req_id=req_id)
+            return _jsonrpc_error(code=-32602, message="Paramètres invalides : chaque plage doit être un objet", req_id=req_id)
         start_line = _safe_get_int(r, "start_line")
         end_line = _safe_get_int(r, "end_line")
         if start_line is None or end_line is None or start_line < 1 or end_line < 1 or start_line > end_line:
             return _jsonrpc_error(
                 code=-32005,
-                message="invalid_range",
+                message="Plage invalide",
                 req_id=req_id,
                 data={"code": "invalid_range", "range": r},
             )
@@ -1094,7 +1405,7 @@ async def _tool_recover_text(
         if start_line > len(stored_lines):
             return _jsonrpc_error(
                 code=-32005,
-                message="invalid_range",
+                message="Plage invalide",
                 req_id=req_id,
                 data={"code": "invalid_range", "range": r, "max_line": len(stored_lines)},
             )

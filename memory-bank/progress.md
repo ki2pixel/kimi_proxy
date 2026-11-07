@@ -4,6 +4,92 @@
 Aucune tâche active.
 
 ## Dernière session terminée
+### [2026-11-07 11:05:00] **Rétablissement du démarrage automatique systemd — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Garantir le démarrage automatique du proxy et des serveurs MCP HTTP après un redémarrage système.
+
+**Cause racine** :
+- `kimi-proxy.service` était `enabled` et `Linger=yes`, mais son `ExecStart` appelait `scripts/start-systemd.sh`, absent du dépôt. Le service redémarrait en boucle avec `status=127`.
+- `~/.local/bin/kimi-proxy` était un ancien entry point du paquet `kimi-proxy-dashboard`, sans lien avec le CLI du dépôt.
+- Les lanceurs desktop pointaient vers `scripts/start.sh`, également absent.
+
+**Actions réalisées** :
+- Recréation de `scripts/start-systemd.sh` : chargement robuste de `.env`, activation du venv, démarrage idempotent des serveurs MCP, puis `exec python -m kimi_proxy --host 127.0.0.1 --port 8000` au premier plan.
+- `~/.local/bin/kimi-proxy` remplacé par un symlink vers `/home/kidpixel/kimi-proxy/bin/kimi-proxy`.
+- `~/.local/share/applications/kimi-proxy.desktop` et `~/.config/autostart/start.sh.desktop` corrigés pour appeler `/usr/bin/systemctl --user start kimi-proxy`.
+- `bin/kimi-proxy` rendu systemd-aware : `status`, `stop`, `restart` et `start` détectent le service actif au lieu de dépendre uniquement de `.server.pid`.
+
+**Validation** :
+- `systemctl --user is-enabled kimi-proxy` → `enabled` ; `is-active` → `active` ; `Linger=yes`.
+- `systemctl --user restart kimi-proxy` et `kimi-proxy restart` : proxy prêt en 12 s, ports 8000 à 8006 en écoute.
+- `kimi-proxy status` affiche le service systemd actif ; `kimi-proxy start` refuse un doublon.
+- `tools/list` OK via la gateway (`fast-filesystem`, `json-query`, `sequential-thinking`) et en direct sur `mcp-pruner`.
+- `bash -n bin/kimi-proxy scripts/start-systemd.sh` : OK.
+- `./bin/kimi-proxy test -q` : **172 passed**.
+
+### [2026-11-07 03:00:00] **Correctif reloader et rétablissement des MCP HTTP — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Rétablir les serveurs MCP HTTP (gateway et pruner) après les erreurs « fetch failed » constatées dans Command Code, OpenCode et Antigravity.
+
+**Cause racine** :
+- Le reloader `watchfiles` d'uvicorn surveillait tout le dépôt et traversait `workspace/mcp_allowed_root_test/etc_link -> /etc`. Le répertoire `/etc/redis` est inaccessible à l'utilisateur, ce qui provoquait une `PermissionError` et faisait tomber le reloader. Les ports 8000 à 8006 n'étaient plus en écoute.
+
+**Actions réalisées** :
+- `bin/kimi-proxy` utilise désormais `--reload-dir "$PROJECT_DIR/src"` : le reload ne surveille plus `workspace/`, `tests/` ni les liens symboliques hors `src/`.
+- Suppression du lien de test obsolète `workspace/mcp_allowed_root_test/etc_link`.
+- Redémarrage complet via `./bin/kimi-proxy start --reload`.
+
+**Validation** :
+- Ports 8000, 8001, 8003, 8004, 8005 et 8006 en écoute.
+- `/health` répond `200` sur les six ports.
+- `tools/list` OK via la gateway pour `fast-filesystem`, `json-query`, `sequential-thinking`, et en direct pour `mcp-pruner`.
+- `./bin/kimi-proxy test -q` : **172 passed**.
+- `bash -n bin/kimi-proxy` : OK.
+
+### [2026-11-06 23:55:00] **Durcissement des configs MCP IDE — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Aligner les configurations MCP externes (Command Code, Antigravity, OpenCode) sur la politique de sécurité et de cohérence du dépôt.
+
+**Actions réalisées** :
+- `MCP_FILESYSTEM_ALLOWED_ROOT` corrigé de `/` vers `/home/kidpixel` dans `~/.commandcode/mcp.json` et `~/.config/opencode/opencode.json`.
+- Logs de monitoring corrigés dans Antigravity et OpenCode : `mcp-bridge-ripgrep.jsonl` et `mcp-bridge-shrimp.jsonl` au lieu du fichier filesystem partagé.
+- Secrets Antigravity (Redis, Neon, Supabase) déplacés vers `~/.config/kimi-proxy/mcp-secrets/` avec répertoire `700` et fichiers `600`.
+- Ajout du wrapper `scripts/mcp_secret_exec.py` et du test `tests/unit/test_mcp_secret_exec.py`. Le wrapper charge un `.env`, étend les variables `${VAR}` dans les arguments puis exécute la commande MCP via `execvpe`.
+- Aucun secret ne subsiste dans `~/.gemini/antigravity-ide/mcp_config.json`.
+
+**Validation** :
+- Les trois fichiers de configuration restent des JSON valides.
+- Chargement des trois fichiers de secrets vérifié sans afficher les valeurs.
+- `./bin/kimi-proxy test -q` : **172 passed**.
+- `venv/bin/python -m ruff check scripts/mcp_secret_exec.py tests/unit/test_mcp_secret_exec.py` : **All checks passed**.
+
+### [2026-11-06 23:30:00] **Remédiation Audit Backend MCP (ANOM-01 à ANOM-08) — TERMINÉ**
+**Statut** : ✅ COMPLETÉ
+
+**Objectif** : Appliquer les 8 anomalies de l'audit `docs/audit/Audit-Backend-et-Plan-de-Remediation-MCP.md` sans casser l'architecture middleware session-less.
+
+**Actions réalisées** :
+- **ANOM-01 (sockets/SSRF)** : fermeture déterministe de `response` et `_client_ref` sur erreur streaming `>= 400` via `close_stream_resources()` ; blocage systématique des IP privées, réservées, link-local, multicast et non spécifiées, avec loopback autorisé uniquement en développement.
+- **ANOM-02 (JSON-RPC)** : interception de `JSONDecodeError`/`UnicodeDecodeError` dans `api_mcp_gateway_rpc` et retour `-32700` HTTP 400 en français.
+- **ANOM-03 (5 couches)** : extraction de `forward_jsonrpc` et `MCPGatewayUpstreamError` dans `features/mcp/rpc_transport.py` ; suppression de l'import `config.loader` dans `core/database.py` via `configure_database()` injecté par `main.py`.
+- **ANOM-04 (async I/O)** : ajout de `run_db_in_thread()` ; déport SQLite de `MemoryManager` et `sanitizer/storage.py` ; déport de l'encodage `SentenceTransformer` via `asyncio.to_thread` avec verrou de chargement.
+- **ANOM-05 (fuites mémoire)** : suppression de `_local_cache` et `_tool_cache` ; `PruneStore` borné à 512 entrées ; purge et plafond de `KimiSessionSource._sessions` ; `failure_reasons` en `deque(maxlen=100)`.
+- **ANOM-06 (auth)** : `secrets.compare_digest` et relecture dynamique de `KIMI_ENV`/`KIMI_ADMIN_KEY` via `_get_admin_key()` ; messages 401 et `ConfigurationError` francisés.
+- **ANOM-07 (complexité/code mort)** : découpage de `_tool_prune_text` et `maybe_prune_jsonrpc_response` en sous-fonctions ; pipeline pur `run_repair_pipeline` sans `ast.literal_eval` ; suppression de `features/mcp/client.py.backup` ; migration du pruner vers `lifespan`.
+- **ANOM-08 (CLI/tests/docs)** : parsing `.env` en Bash pur sans `xargs` ; aide `--host 127.0.0.1` ; import de test corrigé ; test `eval` factice remplacé ; nouveaux tests streaming, `-32700`, `PruneStore`, sessions, auth et CLI ; docs `mcp.md`, `passthrough.md` et `tool-validation.md` synchronisées.
+
+**Fichiers modifiés** : `bin/kimi-proxy`, `src/kimi_proxy/{main.py,api/dependencies.py,api/routes/mcp_gateway.py,api/routes/sanitizer.py,core/database.py,proxy/{passthrough.py,stream.py,context_pruning.py,tool_utils.py},features/mcp/{client.py,memory.py,__init__.py},features/mcp_pruner/{server.py,local_rag.py},features/mcp_tool_pruning/engine.py,features/log_watcher/watcher.py,features/sanitizer/storage.py}`, `docs/features/mcp.md`, `docs/proxy/{passthrough.md,tool-validation.md}`, tests unitaires/e2e associés.
+
+**Validation** :
+- `./bin/kimi-proxy test -q` : **170 passed**, 0 échec.
+- `venv/bin/python -m ruff check src ...` : **All checks passed**.
+- `bash -n bin/kimi-proxy` : OK.
+- Contrôle AST : aucune utilisation de `get_db()` dans une fonction `async def` de `memory.py` ou `storage.py`.
+- `grep` : aucune dépendance `Proxy -> API`, `Core -> Config`, ni résidu `_local_cache`/`_tool_cache`/`literal_eval`.
+
 ### [2026-11-06 22:45:00] **Commit & Push vers origin/main — TERMINÉ**
 **Statut** : ✅ COMPLETÉ
 **Objectif** : Validation des tests, commit des modifications de documentation/configuration et push vers `origin/main`.

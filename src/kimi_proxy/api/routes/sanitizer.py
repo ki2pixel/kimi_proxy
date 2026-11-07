@@ -17,7 +17,7 @@ router = APIRouter()
 @router.get("/mask/{content_hash}")
 async def get_masked_content_endpoint(content_hash: str):
     """Récupère le contenu masqué par son hash."""
-    content = get_masked_content(content_hash)
+    content = await get_masked_content(content_hash)
     if not content:
         return JSONResponse(
             status_code=404,
@@ -38,7 +38,7 @@ async def get_masked_content_endpoint(content_hash: str):
 @router.get("/mask")
 async def list_masked_content(limit: int = 50):
     """Liste les contenus masqués récents."""
-    items = list_masked_contents(limit)
+    items = await list_masked_contents(limit)
 
     return {
         "items": items,
@@ -50,7 +50,7 @@ async def list_masked_content(limit: int = 50):
 async def get_sanitizer_stats_endpoint():
     """Retourne les statistiques du sanitizer."""
     config = get_sanitizer_config(get_config())
-    stats = get_sanitizer_stats()
+    stats = await get_sanitizer_stats()
 
     return {
         "enabled": config.get("enabled", True),

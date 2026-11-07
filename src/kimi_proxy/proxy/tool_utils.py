@@ -1,35 +1,59 @@
 """
 Utilitaires pour les tool calls dans le proxy.
-Pourquoi: Générer et valider les IDs de tool calls selon les spécifications des providers.
+
+Génère et valide les IDs de tool calls, et répare les arguments JSON malformés
+via un pipeline de stratégies pures. Aucune évaluation dynamique de code n'est
+effectuée sur les chaînes issues du modèle.
 """
-import re
-import string
-import secrets
 import json
+import re
+import secrets
+import string
 import time
-import ast
-from typing import Dict, Any, Optional
+from collections import deque
+from dataclasses import dataclass
+from typing import Any, Callable, Deque, Dict, Optional, Sequence, TypedDict
 
 
-# Configuration du circuit breaker pour la correction JSON
+# Budget de réparation par appel (millisecondes).
 CIRCUIT_BREAKER_CONFIG = {
-    "max_total_attempts": 10,
     "max_time_ms": 100,
-    "enabled": True
+    "enabled": True,
 }
 
-# Métriques de correction JSON (pour analyse et monitoring)
-JSON_FIX_METRICS = {
+
+class StrategyMetrics(TypedDict):
+    direct_fix: int
+    reconstruct_basic: int
+    reconstruct_complex: int
+    all_failed: int
+
+
+class JsonFixMetrics(TypedDict):
+    total_attempts: int
+    success_by_strategy: StrategyMetrics
+    failure_reasons: Deque[str]
+
+
+JSON_FIX_METRICS: JsonFixMetrics = {
     "total_attempts": 0,
     "success_by_strategy": {
         "direct_fix": 0,
         "reconstruct_basic": 0,
         "reconstruct_complex": 0,
-        "eval_fallback": 0,
-        "all_failed": 0
+        "all_failed": 0,
     },
-    "failure_reasons": []
+    "failure_reasons": deque(maxlen=100),
 }
+
+
+@dataclass(frozen=True)
+class RepairStrategy:
+    """Stratégie pure de réparation JSON."""
+
+    name: str
+    metric_key: str
+    apply: Callable[[str], str]
 
 
 def _try_validate_json_candidate(candidate: str) -> bool:
@@ -40,145 +64,85 @@ def _try_validate_json_candidate(candidate: str) -> bool:
     except json.JSONDecodeError:
         return False
 
+
 def detect_and_merge_concatenated_json(json_str: str) -> str:
-    """
-    Détecte et fusionne les structures JSON concaténées/dupliquées.
-    
-    Exemple: '{"a": 1}{"b": 2}' -> '{"a": 1, "b": 2}'
-    
-    Args:
-        json_str: Chaîne potentiellement contenant plusieurs JSON concaténés
-        
-    Returns:
-        Chaîne JSON fusionnée ou originale si pas de concaténation détectée
-    """
+    """Détecte et fusionne les structures JSON concaténées ou dupliquées."""
     if not json_str or len(json_str) < 4:
         return json_str
-    
-    # Cherche les patterns de concaténation: }{ ou }{
-    # Un JSON valide se termine par } et le suivant commence par {
-    concatenation_pattern = r'}\s*{'
-    
-    if not re.search(concatenation_pattern, json_str):
+
+    if not re.search(r'}\s*{', json_str):
         return json_str
-    
+
     try:
-        # Extraction des objets JSON individuels
-        # Pattern: trouve tous les objets JSON complets entre { et }
         objects = []
         depth = 0
         start_idx = None
-        
-        for i, char in enumerate(json_str):
+
+        for index, char in enumerate(json_str):
             if char == '{':
                 if depth == 0:
-                    start_idx = i
+                    start_idx = index
                 depth += 1
             elif char == '}':
                 depth -= 1
                 if depth == 0 and start_idx is not None:
-                    obj_str = json_str[start_idx:i+1]
+                    obj_str = json_str[start_idx:index + 1]
                     try:
-                        obj = json.loads(obj_str)
-                        objects.append(obj)
+                        objects.append(json.loads(obj_str))
                     except json.JSONDecodeError:
-                        # Ignore les fragments invalides
                         pass
                     start_idx = None
-        
+
         if len(objects) > 1:
-            # Fusionne tous les objets en un seul
-            merged = {}
+            merged: Dict[str, Any] = {}
             for obj in objects:
                 if isinstance(obj, dict):
                     merged.update(obj)
-            
             if merged:
                 return json.dumps(merged, ensure_ascii=False)
-        
-        return json_str
-        
-    except Exception as e:
-        print(f"   Erreur détection concaténation: {e}")
-        return json_str
+
+    except Exception as exc:
+        print(f"   Erreur de détection de concaténation JSON : {exc}")
+
+    return json_str
 
 
 def generate_tool_call_id(length: int = 9) -> str:
-    """
-    Génère un ID de tool call alphanumérique valide.
-    
-    Args:
-        length: Longueur de l'ID (défaut: 9 pour NVIDIA)
-        
-    Returns:
-        ID alphanumérique de la longueur spécifiée
-        
-    Raises:
-        ValueError: Si length < 1
-    """
+    """Génère un ID de tool call alphanumérique valide."""
     if length < 1:
-        raise ValueError("Length must be at least 1")
-    
-    # Caractères autorisés: a-z, A-Z, 0-9
+        raise ValueError("La longueur doit être au moins 1")
+
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
 def fix_tool_calls_in_request(body: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Corrige les tool calls dans une requête en générant les IDs manquants.
-    
-    Args:
-        body: Corps de la requête JSON
-        
-    Returns:
-        Corps modifié avec les IDs de tool calls valides
-    """
+    """Corrige les tool calls dans une requête en générant les IDs manquants."""
     if not isinstance(body, dict):
         return body
-    
-    # Traite les tool calls dans les messages
+
     messages = body.get('messages', [])
     for message in messages:
         if not isinstance(message, dict):
             continue
-            
-        # Vérifie les tool calls dans le message
+
         tool_calls = message.get('tool_calls', [])
         if isinstance(tool_calls, list):
             for tool_call in tool_calls:
                 if not isinstance(tool_call, dict):
                     continue
-                    
+
                 tool_call_id = tool_call.get('id')
                 if not tool_call_id:
-                    # Génère un nouvel ID valide
                     new_id = generate_tool_call_id()
                     tool_call['id'] = new_id
-                    print(f"   [TOOL CALL] ID généré: {new_id}")
-    
+                    print(f"   [TOOL CALL] ID généré : {new_id}")
+
     return body
 
 
 def normalize_tool_call_arguments(body: Dict[str, Any]) -> tuple[Dict[str, Any], int]:
-    """
-    Normalise les `function.arguments` des `assistant.tool_calls` avant envoi provider.
-
-    Pourquoi:
-    - certains clients IDE conservent dans l'historique des `arguments` JSON tronqués
-      ou malformés après une session/tool-call longue ;
-    - NVIDIA rejette alors toute la requête avec un 400 de parsing JSON
-      (`Unterminated string ...`).
-
-    Stratégie:
-    - ne touche qu'aux `assistant.tool_calls[*].function.arguments`
-    - si la chaîne est déjà un JSON valide, no-op
-    - sinon, applique la réparation existante `fix_malformed_json_arguments`
-      et n'adopte le résultat que s'il redevient un JSON valide.
-
-    Returns:
-        Tuple (body muté, nombre d'arguments corrigés)
-    """
+    """Normalise les `function.arguments` des `assistant.tool_calls` avant envoi."""
     if not isinstance(body, dict):
         return body, 0
 
@@ -235,13 +199,7 @@ def normalize_tool_call_arguments(body: Dict[str, Any]) -> tuple[Dict[str, Any],
 
 
 def reconstruct_from_corrupted_arguments(corrupted_str: str) -> Optional[str]:
-    """
-    Reconstruction conservatrice d'un objet JSON d'arguments corrompu.
-
-    Objectif:
-    - éviter les NameError dans le pipeline de réparation,
-    - fournir un fallback simple avant la reconstruction agressive.
-    """
+    """Reconstruction conservatrice d'un objet JSON d'arguments corrompu."""
     if not corrupted_str or not corrupted_str.strip():
         return None
 
@@ -271,345 +229,281 @@ def reconstruct_from_corrupted_arguments(corrupted_str: str) -> Optional[str]:
     return json.dumps(reconstructed, ensure_ascii=False)
 
 
-def reconstruct_complex_json(corrupted_str: str) -> str:
-    """
-    Reconstruction agressive pour JSON complexes très corrompus avec 15+ stratégies de correction.
-    """
+def _parse_simple_value(value_str: str) -> object:
+    if value_str.startswith('"') and value_str.endswith('"'):
+        return value_str[1:-1]
+    if value_str == 'true':
+        return True
+    if value_str == 'false':
+        return False
+    if value_str == 'null':
+        return None
+    if value_str.replace('.', '').replace('-', '').isdigit():
+        return float(value_str) if '.' in value_str else int(value_str)
+    return value_str
+
+
+def _parse_simple_array(value_str: str) -> list[object]:
+    if not (value_str.startswith('[') and value_str.endswith(']')):
+        return []
+    items: list[object] = []
+    for item in value_str[1:-1].split(','):
+        stripped = item.strip()
+        if stripped:
+            items.append(_parse_simple_value(stripped))
+    return items
+
+
+def _extract_properties_regex(corrupted_str: str) -> Dict[str, Any]:
+    property_pattern = r'"([^"]+)"\s*:\s*([^,}\]]*?)(?=,|"[^"]*"\s*:|})'
+    properties: Dict[str, Any] = {}
+
+    for match in re.finditer(property_pattern, corrupted_str):
+        key = match.group(1)
+        value_str = match.group(2).strip()
+        if value_str.startswith('[') and value_str.endswith(']'):
+            properties[key] = _parse_simple_array(value_str)
+        else:
+            properties[key] = _parse_simple_value(value_str)
+
+    return properties
+
+
+def _reconstruct_from_tokens(corrupted_str: str) -> Optional[str]:
+    tokens = re.findall(r'"[^"]*"|true|false|null|\d+\.?\d*|\{|\}|\[|\]|,', corrupted_str)
+    clean_tokens = [token.strip() for token in tokens if token.strip()]
+
+    if len(clean_tokens) < 3 or clean_tokens[0] != '{' or clean_tokens[-1] != '}':
+        return None
+
+    content_tokens = clean_tokens[1:-1]
+    reconstructed: Dict[str, Any] = {}
+    index = 0
+
+    while index < len(content_tokens) - 1:
+        token = content_tokens[index]
+        if not (token.startswith('"') and content_tokens[index + 1] == ':'):
+            index += 1
+            continue
+
+        key = token[1:-1] if token.startswith('"') else token
+        value_token = content_tokens[index + 2] if index + 2 < len(content_tokens) else 'null'
+        reconstructed[key] = _parse_simple_value(value_token)
+        index += 3
+        if index < len(content_tokens) and content_tokens[index] == ',':
+            index += 1
+
+    if not reconstructed:
+        return None
+
+    return json.dumps(reconstructed, ensure_ascii=False)
+
+
+def reconstruct_complex_json(corrupted_str: str) -> Optional[str]:
+    """Reconstruction agressive pour les JSON très corrompus."""
     try:
-        # Méthode 1: Cherche les patterns de propriétés JSON valides
-        # Extrait tous les patterns "clé": valeur
-        import re
-
-        # Pattern pour extraire les propriétés JSON
-        property_pattern = r'"([^"]+)"\s*:\s*([^,}\]]*?)(?=,|"[^"]*"\s*:|})'
-
-        properties = {}
-        for match in re.finditer(property_pattern, corrupted_str):
-            key = match.group(1)
-            value_str = match.group(2).strip()
-
-            # Essaie de parser la valeur
-            try:
-                # Pour les chaînes
-                if value_str.startswith('"') and value_str.endswith('"'):
-                    properties[key] = value_str[1:-1]
-                # Pour les booléens
-                elif value_str in ['true', 'false']:
-                    properties[key] = value_str == 'true'
-                # Pour les null
-                elif value_str == 'null':
-                    properties[key] = None
-                # Pour les nombres
-                elif value_str.replace('.', '').replace('-', '').isdigit():
-                    properties[key] = float(value_str) if '.' in value_str else int(value_str)
-                # Pour les arrays simples
-                elif value_str.startswith('[') and value_str.endswith(']'):
-                    # Essaie de parser comme array
-                    try:
-                        array_items = []
-                        items = value_str[1:-1].split(',')
-                        for item in items:
-                            item = item.strip()
-                            if item.startswith('"') and item.endswith('"'):
-                                array_items.append(item[1:-1])
-                            elif item in ['true', 'false']:
-                                array_items.append(item == 'true')
-                            elif item.replace('.', '').replace('-', '').isdigit():
-                                array_items.append(float(item) if '.' in item else int(item))
-                        properties[key] = array_items
-                    except Exception:
-                        properties[key] = value_str  # Garde comme string
-                else:
-                    properties[key] = value_str
-            except Exception:
-                properties[key] = value_str  # Garde comme string en cas d'erreur
-
+        properties = _extract_properties_regex(corrupted_str)
         if properties:
             return json.dumps(properties, ensure_ascii=False)
-
-        # Méthode 2: Reconstruction basée sur les tokens JSON
-        # Cherche tous les tokens valides et les réassemble
-        tokens = re.findall(r'"[^"]*"|true|false|null|\d+\.?\d*|\{|\}|\[|\]|,', corrupted_str)
-
-        # Filtre et nettoie les tokens
-        clean_tokens = []
-        for token in tokens:
-            token = token.strip()
-            if token:
-                clean_tokens.append(token)
-
-        # Essaie de reconstruire une structure simple
-        if len(clean_tokens) >= 3 and clean_tokens[0] == '{' and clean_tokens[-1] == '}':
-            # C'est probablement un objet
-            content_tokens = clean_tokens[1:-1]
-            reconstructed = {}
-
-            i = 0
-            while i < len(content_tokens) - 1:
-                if content_tokens[i].startswith('"') and content_tokens[i+1] == ':':
-                    key = content_tokens[i][1:-1] if content_tokens[i].startswith('"') else content_tokens[i]
-                    value_token = content_tokens[i+2] if i+2 < len(content_tokens) else 'null'
-
-                    # Parse la valeur
-                    if value_token.startswith('"'):
-                        reconstructed[key] = value_token[1:-1]
-                    elif value_token in ['true', 'false']:  # nosec B105
-                        reconstructed[key] = value_token == 'true'  # nosec B105
-                    elif value_token == 'null':  # nosec B105
-                        reconstructed[key] = None
-                    elif value_token.replace('.', '').replace('-', '').isdigit():
-                        reconstructed[key] = float(value_token) if '.' in value_token else int(value_token)
-                    else:
-                        reconstructed[key] = value_token
-
-                    i += 3  # Saute la clé, le :, et la valeur
-                    if i < len(content_tokens) and content_tokens[i] == ',':
-                        i += 1  # Saute la virgule
-                else:
-                    i += 1
-
-            if reconstructed:
-                return json.dumps(reconstructed, ensure_ascii=False)
-
-        return None  # type: ignore
-
-    except Exception as e:
-        print(f"   Complex reconstruction error: {e}")
-        return None  # type: ignore
+        return _reconstruct_from_tokens(corrupted_str)
+    except Exception as exc:
+        print(f"   Reconstruction complexe impossible : {exc}")
+        return None
 
 
-def fix_malformed_json_arguments(arguments_str: str, enable_circuit_breaker: bool = True) -> str:
-    """
-    Essaie de corriger des arguments JSON malformés avec circuit breaker et métriques.
+def _fix_direct_pattern_looped(value: str) -> str:
+    for _ in range(5):
+        previous = value
+        value = value.replace('"rules": [""]cursor{"', '"rules": ["cursor"], "')
+        if value == previous:
+            break
+    return value
 
-    Args:
-        arguments_str: String JSON potentiellement malformé
-        enable_circuit_breaker: Active le circuit breaker pour limiter les tentatives
 
-    Returns:
-        String JSON corrigé ou original si correction impossible
-    """
+def _fix_general_array(value: str) -> str:
+    return re.sub(r'\[""\](\w+)\{', r'["\1"], {', value)
+
+
+def _fix_trailing_commas(value: str) -> str:
+    return value.replace(',}', '}').replace(',]', ']')
+
+
+def _fix_property_comma(value: str) -> str:
+    return re.sub(r'(\w+)"\s*"(\w+)":', r'\1","\2":', value)
+
+
+def _fix_numeric_comma(value: str) -> str:
+    return re.sub(r'(\d+)\s*"(\w+)":', r'\1, "\2":', value)
+
+
+def _fix_boolean_comma(value: str) -> str:
+    return re.sub(r'(true|false|null)\s*"(\w+)":', r'\1, "\2":', value)
+
+
+def _fix_specific_reconstruction(value: str) -> str:
+    return re.sub(r'\[""\]([a-zA-Z_]\w*)\{([a-zA-Z_]\w*)', r'["\1"], "\2": {', value)
+
+
+def _fix_empty_array(value: str) -> str:
+    return re.sub(r'\[\](\w+)\{', r'[], "\1": {', value)
+
+
+def _fix_empty_element(value: str) -> str:
+    return re.sub(r'\[""\]([^,])', r'["\1"]', value)
+
+
+def _fix_advanced_quotes(value: str) -> str:
+    value = re.sub(r'("(?:[^"\\]|\\.)*")', lambda match: match.group(1).replace("'", "\\'"), value)
+    value = re.sub(r'("\w+")\s*(")', r'\1,\2', value)
+    value = re.sub(r'(\w+|\]|\})\s*\{', r'\1, {', value)
+    value = re.sub(r'(\w+|\]|\})\s*\[', r'\1, [', value)
+    value = re.sub(r'(true|false|null|\d+|\w+)\s*(")', r'\1,\2', value)
+    return value
+
+
+def _fix_duplicate_object(value: str) -> str:
+    if len(value) <= 50:
+        return value
+
+    duplicate_pattern = r'(\{"[^"]+"\s*:\s*"[^"]*"[^}]*\})\s*\{'
+    match = re.search(duplicate_pattern, value)
+    if not match:
+        return value
+
+    potential_duplicate = match.group(1)
+    rest = value[match.end() - 1:]
+    if potential_duplicate[:30] in rest[:60]:
+        return potential_duplicate
+    return value
+
+
+def _fix_comma_before_property(value: str) -> str:
+    return re.sub(r'("[^"]*")\s*"(\w+)":', r'\1, "\2":', value)
+
+
+def _fix_comma_before_brace(value: str) -> str:
+    return re.sub(r'("[^"]*"|\d+|true|false|null)\s*\{', r'\1, {', value)
+
+
+def _fix_position_based(value: str) -> str:
+    if len(value) <= 1000:
+        return value
+
+    potential_error_positions = [1146, len(value) // 2, len(value) - 100]
+    for error_position in potential_error_positions:
+        if len(value) <= error_position:
+            continue
+
+        start_position = max(0, error_position - 50)
+        end_position = min(len(value), error_position + 50)
+        context = value[start_position:end_position]
+        context_fixed = re.sub(r'"\s+"(\w+)":', r'", "\1":', context)
+
+        if context_fixed != context:
+            return value[:start_position] + context_fixed + value[end_position:]
+
+    return value
+
+
+def _strategy_merge_concatenated(value: str) -> str:
+    return detect_and_merge_concatenated_json(value)
+
+
+def _strategy_direct_fixes(value: str) -> str:
+    value = _fix_direct_pattern_looped(value)
+    value = _fix_general_array(value)
+    value = _fix_trailing_commas(value)
+    value = _fix_property_comma(value)
+    return value
+
+
+def _strategy_advanced_fixes(value: str) -> str:
+    value = _fix_specific_reconstruction(value)
+    value = _fix_empty_array(value)
+    value = _fix_empty_element(value)
+    value = _fix_advanced_quotes(value)
+    value = _fix_duplicate_object(value)
+    value = _fix_comma_before_property(value)
+    value = _fix_comma_before_brace(value)
+    value = _fix_position_based(value)
+    return value
+
+
+def _strategy_reconstruct_basic(value: str) -> str:
+    return reconstruct_from_corrupted_arguments(value) or value
+
+
+def _strategy_reconstruct_complex(value: str) -> str:
+    return reconstruct_complex_json(value) or value
+
+
+REPAIR_STRATEGIES: tuple[RepairStrategy, ...] = (
+    RepairStrategy("fusion_json_concatene", "direct_fix", _strategy_merge_concatenated),
+    RepairStrategy("corrections_directes", "direct_fix", _strategy_direct_fixes),
+    RepairStrategy("virgule_numerique", "direct_fix", _fix_numeric_comma),
+    RepairStrategy("virgule_booleenne", "direct_fix", _fix_boolean_comma),
+    RepairStrategy("corrections_avancees", "direct_fix", _strategy_advanced_fixes),
+    RepairStrategy("reconstruction_basique", "reconstruct_basic", _strategy_reconstruct_basic),
+    RepairStrategy("reconstruction_complexe", "reconstruct_complex", _strategy_reconstruct_complex),
+)
+
+
+def run_repair_pipeline(
+    arguments_str: str,
+    strategies: Sequence[RepairStrategy] = REPAIR_STRATEGIES,
+    *,
+    max_time_ms: int | None = None,
+) -> str:
+    """Exécute les stratégies de réparation JSON sans évaluation dynamique."""
+    cleaned = arguments_str.strip()
+    if _try_validate_json_candidate(cleaned):
+        return cleaned
+
+    JSON_FIX_METRICS["total_attempts"] += 1
+    started_at = time.monotonic()
+
+    for strategy in strategies:
+        if max_time_ms is not None:
+            elapsed_ms = (time.monotonic() - started_at) * 1000
+            if elapsed_ms > max_time_ms:
+                print("   ⚠️ Réparation JSON interrompue : délai maximal dépassé")
+                JSON_FIX_METRICS["failure_reasons"].append(
+                    "Disjoncteur activé : délai maximal de réparation JSON dépassé"
+                )
+                break
+
+        candidate = strategy.apply(cleaned)
+        if _try_validate_json_candidate(candidate):
+            metric_key = strategy.metric_key
+            if metric_key in JSON_FIX_METRICS["success_by_strategy"]:
+                JSON_FIX_METRICS["success_by_strategy"][metric_key] += 1  # type: ignore[literal-required]
+            print(f"   ✅ Réparation JSON réussie via {strategy.name}")
+            return candidate
+
+        cleaned = candidate
+
+    JSON_FIX_METRICS["success_by_strategy"]["all_failed"] += 1
+    JSON_FIX_METRICS["failure_reasons"].append(
+        "Échec de toutes les stratégies de réparation JSON"
+    )
+    print("   ❌ Réparation JSON impossible après toutes les stratégies")
+    return arguments_str
+
+
+def fix_malformed_json_arguments(
+    arguments_str: str,
+    enable_circuit_breaker: bool = True,
+) -> str:
+    """Répare des arguments JSON malformés avec un budget de temps borné."""
     if not arguments_str or not arguments_str.strip():
         return arguments_str
 
-    # Circuit breaker: vérifie le nombre total de tentatives
+    max_time_ms: int | None = None
     if enable_circuit_breaker and CIRCUIT_BREAKER_CONFIG["enabled"]:
-        if JSON_FIX_METRICS["total_attempts"] >= CIRCUIT_BREAKER_CONFIG["max_total_attempts"]:  # type: ignore
-            print(f"   ⚠️ Circuit breaker activé: max attempts reached ({CIRCUIT_BREAKER_CONFIG['max_total_attempts']})")
-            JSON_FIX_METRICS["failure_reasons"].append("circuit_breaker_max_attempts")  # type: ignore
-            return arguments_str
-    
-    start_time = time.time()
-    JSON_FIX_METRICS["total_attempts"] += 1  # type: ignore
-    attempt_count = 0
+        max_time_ms = CIRCUIT_BREAKER_CONFIG["max_time_ms"]
 
-    # Essaie de corriger les problèmes courants
-    fixed = arguments_str.strip()
-    original = fixed
-    print(f"   Original: {fixed[:150]}...")
-
-    # ÉTAPE 1: Détection et fusion des JSON concaténés
-    fixed = detect_and_merge_concatenated_json(fixed)
-    if fixed != original:
-        print(f"   After concatenation merge: {fixed[:150]}...")
-        try:
-            json.loads(fixed)
-            print("   ✅ JSON valide après fusion concaténation")
-            return fixed
-        except json.JSONDecodeError:
-            pass  # Continue avec autres corrections
-
-    # ÉTAPE 2: Correction directe pour le pattern corrompu observé
-    attempt_count += 1
-    for _ in range(5):  # Limite à 5 itérations pour éviter les boucles infinies
-        old_fixed = fixed
-        fixed = fixed.replace('"rules": [""]cursor{"', '"rules": ["cursor"], "')
-        if fixed == old_fixed:
-            break
-    print(f"   After direct pattern fix (looped): {fixed[:150]}...")
-
-    # ÉTAPE 3: Correction générale pour les patterns similaires
-    attempt_count += 1
-    fixed = re.sub(r'\[""\](\w+)\{', r'["\1"], {', fixed)
-    print(f"   After general array fix: {fixed[:150]}...")
-
-    # ÉTAPE 4: Supprime les trailing commas
-    attempt_count += 1
-    fixed = fixed.replace(',}', '}').replace(',]', ']')
-    print(f"   After trailing comma fix: {fixed[:150]}...")
-
-    # ÉTAPE 5: Corrige les virgules manquantes entre propriétés
-    attempt_count += 1
-    fixed = re.sub(r'(\w+)"\s*"(\w+)":', r'\1","\2":', fixed)
-    print(f"   After property comma fix: {fixed[:150]}...")
-    if _try_validate_json_candidate(fixed):
-        print("   ✅ JSON valide après correction virgule propriété")
-        JSON_FIX_METRICS["success_by_strategy"]["direct_fix"] += 1  # type: ignore
-        return fixed
-
-    # ÉTAPE 6: Pattern pour valeurs numériques sans virgule
-    attempt_count += 1
-    fixed = re.sub(r'(\d+)\s*"(\w+)":', r'\1, "\2":', fixed)
-    print(f"   After numeric comma fix: {fixed[:150]}...")
-    if _try_validate_json_candidate(fixed):
-        print("   ✅ JSON valide après correction virgule numérique")
-        JSON_FIX_METRICS["success_by_strategy"]["direct_fix"] += 1  # type: ignore
-        return fixed
-
-    # ÉTAPE 7: Pattern pour true/false/null sans virgule
-    attempt_count += 1
-    fixed = re.sub(r'(true|false|null)\s*"(\w+)":', r'\1, "\2":', fixed)
-    print(f"   After boolean comma fix: {fixed[:150]}...")
-    if _try_validate_json_candidate(fixed):
-        print("   ✅ JSON valide après correction virgule booléenne")
-        JSON_FIX_METRICS["success_by_strategy"]["direct_fix"] += 1  # type: ignore
-        return fixed
-
-    # ÉTAPE 8: Reconstruction spécifique pour le pattern observé
-    attempt_count += 1
-    fixed = re.sub(r'\[""\]([a-zA-Z_]\w*)\{([a-zA-Z_]\w*)', r'["\1"], "\2": {', fixed)
-    print(f"   After specific reconstruction: {fixed[:150]}...")
-
-    # ÉTAPE 9: Pattern pour les arrays vides suivis de propriétés fusionnées
-    attempt_count += 1
-    fixed = re.sub(r'\[\](\w+)\{', r'[], "\1": {', fixed)
-    print(f"   After empty array fix: {fixed[:150]}...")
-
-    # ÉTAPE 10: Pattern pour corriger les arrays avec éléments vides
-    attempt_count += 1
-    fixed = re.sub(r'\[""\]([^,])', r'["\1"]', fixed)
-    print(f"   After empty element fix: {fixed[:150]}...")
-
-    # ÉTAPE 11: Corrections avancées pour JSON complexes
-    attempt_count += 1
-    
-    # Pattern pour gérer les longues chaînes avec guillemets non échappés
-    fixed = re.sub(r'("(?:[^"\\]|\\.)*")', lambda m: m.group(1).replace("'", "\\'"), fixed)
-    
-    # Pattern pour corriger les virgules manquantes dans les objets imbriqués
-    fixed = re.sub(r'("\w+")\s*(")', r'\1,\2', fixed)
-    
-    # Correction pour les virgules manquantes avant les propriétés d'objet
-    fixed = re.sub(r'(\w+|\]|\})\s*\{', r'\1, {', fixed)
-    fixed = re.sub(r'(\w+|\]|\})\s*\[', r'\1, [', fixed)
-    
-    # Correction pour les virgules manquantes après les valeurs
-    fixed = re.sub(r'(true|false|null|\d+|\w+)\s*(")', r'\1,\2', fixed)
-
-    # ÉTAPE 13: Correction spécifique pour concaténation avec duplication
-    # Pattern: {"a": "val" "b": 1{"a": "val", "b": 1} -> {"a": "val", "b": 1}
-    # Détecte la répétition d'un objet JSON dans la chaîne
-    if len(fixed) > 50:
-        try:
-            # Cherche des patterns de duplication: mot-clé répété avec accolade
-            dup_pattern = r'(\{"[^"]+"\s*:\s*"[^"]*"[^}]*\})\s*\{'
-            match = re.search(dup_pattern, fixed)
-            if match:
-                potential_dup = match.group(1)
-                # Vérifie si le reste contient une version similaire
-                rest = fixed[match.end()-1:]
-                if potential_dup[:30] in rest[:60]:
-                    # Garde seulement la première occurrence
-                    fixed = potential_dup
-                    print("   Applied duplicate object fix")
-        except Exception:
-            pass  # nosec B110
-
-    # ÉTAPE 14: Correction pour virgule manquante avant propriété
-    # Pattern: "value" "next": -> "value", "next":
-    # Détecte quand une valeur string est suivie directement d'une clé
-    fixed = re.sub(r'("[^"]*")\s*"(\w+)":', r'\1, "\2":', fixed)
-    print(f"   After comma before property fix: {fixed[:150]}...")
-
-    # ÉTAPE 15: Correction pour virgule manquante après valeur dans objet
-    # Pattern: ..."key": "value"{...} -> ..."key": "value", {...}
-    fixed = re.sub(r'("[^"]*"|\d+|true|false|null)\s*\{', r'\1, {', fixed)
-    print(f"   After comma before brace fix: {fixed[:150]}...")
-
-    print(f"   After advanced corrections: {fixed[:150]}...")
-
-    # ÉTAPE 12: Correction position-based pour longs JSON
-    if len(fixed) > 1000:
-        attempt_count += 1
-        print(f"   Long JSON detected ({len(fixed)} chars), applying length-based fixes...")
-        
-        # Généralisation: cherche les positions problématiques potentielles
-        # au lieu de hardcoder 1146
-        potential_error_positions = [1146, len(fixed) // 2, len(fixed) - 100]
-        
-        for error_pos in potential_error_positions:
-            if len(fixed) > error_pos:
-                start_pos = max(0, error_pos - 50)
-                end_pos = min(len(fixed), error_pos + 50)
-                context = fixed[start_pos:end_pos]
-                
-                # Cherche des patterns de virgule manquante dans ce contexte
-                context_fixed = re.sub(r'"\s+"(\w+)":', r'", "\1":', context)
-                if context_fixed != context:
-                    before_context = fixed[:start_pos]
-                    after_context = fixed[end_pos:]
-                    fixed = before_context + context_fixed + after_context
-                    print(f"   Applied context-specific comma fix at position {error_pos}")
-                    break  # Applique une seule correction
-
-    print(f"   After position-based fixes: {fixed[:150]}...")
-
-    # Vérifie le temps écoulé pour le circuit breaker
-    elapsed_ms = (time.time() - start_time) * 1000
-    if enable_circuit_breaker and elapsed_ms > CIRCUIT_BREAKER_CONFIG["max_time_ms"]:
-        print(f"   ⚠️ Circuit breaker: timeout ({elapsed_ms:.1f}ms > {CIRCUIT_BREAKER_CONFIG['max_time_ms']}ms)")
-        JSON_FIX_METRICS["failure_reasons"].append("circuit_breaker_timeout")  # type: ignore
-        return arguments_str
-
-    # Essaie de parser pour valider
-    try:
-        json.loads(fixed)
-        print("   ✅ JSON valide après correction directe")
-        JSON_FIX_METRICS["success_by_strategy"]["direct_fix"] += 1  # type: ignore
-        return fixed
-    except json.JSONDecodeError as e:
-        print(f"   Tentative correction directe échouée: {e}")
-
-    # Si toujours invalide, essaie une approche plus agressive avec ast.literal_eval
-    try:
-        # Sécurisation: literal_eval évite l'injection de code de eval arbitraire
-        fixed_dict = ast.literal_eval(fixed.replace('true', 'True').replace('false', 'False').replace('null', 'None'))
-        if isinstance(fixed_dict, dict):
-            result = json.dumps(fixed_dict)
-            print("   ✅ JSON valide après ast.literal_eval fallback")
-            JSON_FIX_METRICS["success_by_strategy"]["eval_fallback"] += 1  # type: ignore
-            return result
-    except Exception as eval_error:
-        print(f"   ast.literal_eval approach failed: {eval_error}")
-
-    # Dernière tentative: reconstruction complète depuis les paramètres détectés
-    try:
-        print("   Tentative reconstruction complète...")
-        reconstructed = reconstruct_from_corrupted_arguments(fixed)
-        if reconstructed and reconstructed != fixed:
-            json.loads(reconstructed)  # Valide
-            print("   ✅ Reconstruction basique réussie")
-            JSON_FIX_METRICS["success_by_strategy"]["reconstruct_basic"] += 1  # type: ignore
-            return reconstructed
-        else:
-            print("   Reconstruction basique échouée")
-    except Exception as reconstruct_error:
-        print(f"   Reconstruction basique failed: {reconstruct_error}")
-
-    # DERNIÈRE TENTATIVE: Reconstruction agressive pour JSON complexes
-    try:
-        print("   Tentative reconstruction agressive...")
-        aggressive_result = reconstruct_complex_json(fixed)
-        if aggressive_result:
-            json.loads(aggressive_result)  # Valide
-            print("   ✅ Reconstruction complexe réussie")
-            JSON_FIX_METRICS["success_by_strategy"]["reconstruct_complex"] += 1  # type: ignore
-            return aggressive_result
-    except Exception as aggressive_error:
-        print(f"   Reconstruction complexe failed: {aggressive_error}")
-
-    # Si toujours invalide, retourne l'original
-    print(f"   ❌ Toutes les corrections ont échoué après {attempt_count} tentatives ({elapsed_ms:.1f}ms)")
-    JSON_FIX_METRICS["success_by_strategy"]["all_failed"] += 1  # type: ignore
-    JSON_FIX_METRICS["failure_reasons"].append(f"all_strategies_failed_after_{attempt_count}_attempts")  # type: ignore
-    return arguments_str
+    return run_repair_pipeline(
+        arguments_str,
+        REPAIR_STRATEGIES,
+        max_time_ms=max_time_ms,
+    )

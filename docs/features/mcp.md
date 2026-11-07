@@ -1,54 +1,45 @@
-# MCP Module — Serveurs, UI et Gateway
+# MCP Module — Statuts, Gateway et Mémoire
 
 ## TL;DR
-Le module frontend `static/js/modules/mcp.js` pilote l’affichage MCP en deux groupes visuels (Phase 3 et Phase 4). Côté backend actuel, `GET /api/memory/all-servers` repose encore sur **2 statuts réels** (`qdrant`, `context-compression`), tandis que le gateway HTTP route **5 serveurs nommés**.
+Kimi Proxy est un middleware headless. Il n'y a plus de frontend `static/js/modules/mcp.js` ni de routes `/api/memory/all-servers` ou `/api/memory/stats/advanced`. La gateway route cinq serveurs MCP locaux, et les routes mémoire exposent uniquement les opérations réellement implémentées.
 
-## Problème
-La documentation mélange facilement trois plans différents: statut backend réel, classification frontend et routage gateway. Résultat: des chiffres globaux (serveurs, outils) peuvent sembler cohérents, mais ne correspondent pas strictement à ce qui est calculé en runtime.
+## Le problème
+La documentation mélangeait trois plans différents : l'ancien dashboard, les statuts MCP réellement collectés et le routage de la gateway. Résultat : des routes et des modules supprimés continuaient d'apparaître comme disponibles.
 
-## Vue d’ensemble technique
+## Ce qui existe réellement
 
-### 1) Frontend MCP (UI)
-Le module `static/js/modules/mcp.js`:
-- charge `GET /api/memory/all-servers`, fallback `GET /api/memory/servers`;
-- maintient `mcpState.phase3Servers` et `mcpState.phase4Servers`;
-- rend un panneau status + stats + mémoires fréquentes;
-- applique un refresh périodique toutes les 30 secondes.
+### API headless
+Les routes MCP sont servies par FastAPI, sans dashboard ni WebSocket. Toutes les routes `/api/*` sont protégées par `KIMI_ADMIN_KEY` lorsque la variable est définie. Le client peut fournir la clé via `X-Admin-Key` ou `Authorization: Bearer`.
 
-### 2) Backend statut MCP
-Dans `src/kimi_proxy/features/mcp/client.py`, `get_all_server_statuses()` retourne actuellement:
-- `qdrant.check_status()`
-- `compression.check_status()`
+### Statuts MCP
+`MCPExternalClient.get_all_server_statuses()` interroge deux clients spécialisés :
+- Qdrant MCP
+- Context Compression MCP
 
-La segmentation Phase 3/Phase 4 de la réponse API existe, mais la source de statuts reste aujourd’hui centrée sur ces deux clients spécialisés.
+La gateway peut néanmoins router cinq serveurs nommés, dont trois ne sont pas couverts par cette collecte de statuts.
 
-### 3) Gateway MCP HTTP
-`POST /api/mcp-gateway/{server_name}/rpc` forwarde du JSON-RPC brut vers:
-- `context-compression`
-- `sequential-thinking`
-- `fast-filesystem`
-- `json-query`
-- `pruner`
+### Gateway MCP
+`POST /api/mcp-gateway/{server_name}/rpc` forwarde une requête JSON-RPC 2.0 vers :
 
-## Ce qui est vrai en runtime
+| Serveur logique | URL locale |
+|---|---|
+| `context-compression` | `http://127.0.0.1:8001` |
+| `sequential-thinking` | `http://127.0.0.1:8003` |
+| `fast-filesystem` | `http://127.0.0.1:8004` |
+| `json-query` | `http://127.0.0.1:8005` |
+| `pruner` | `http://127.0.0.1:8006` |
 
-### ❌ Interprétation naïve
-- Le dashboard affiche Phase 3 + Phase 4, donc tous les statuts proviennent forcément de 6 serveurs backend monitorés de la même façon.
+Un corps JSON invalide retourne une erreur JSON-RPC `-32700` avec le statut HTTP 400. Un serveur inconnu retourne `-32001` avec le statut 404.
 
-### ✅ État actuel
-- Le frontend est structuré pour Phase 3 + Phase 4.
-- Le backend statut (`get_all_server_statuses`) remonte aujourd’hui 2 serveurs principaux.
-- Le gateway peut forwarder 5 serveurs nommés, dont `pruner`.
+### Mémoire
+La mémoire SQLite est réduite aux tables `mcp_memory_entries` et `masked_content`. Les accès SQLite de `MemoryManager` sont exécutés hors de la boucle asyncio via `run_db_in_thread`.
 
-## Endpoints MCP utilisés
+## Endpoints réellement exposés
 
-### Statut et métriques
+### Mémoire
+- `GET /api/memory/stats`
 - `GET /api/memory/servers`
-- `GET /api/memory/all-servers`
-- `GET /api/memory/stats/advanced`
 - `GET /api/memory/frequent`
-
-### Opérations mémoire
 - `POST /api/memory/similarity`
 - `POST /api/memory/compress`
 - `POST /api/memory/store`
@@ -57,19 +48,36 @@ La segmentation Phase 3/Phase 4 de la réponse API existe, mais la source de sta
 - `POST /api/memory/cleanup`
 - `POST /api/memory/promote-patterns/{session_id}`
 
+### Sanitizer
+- `GET /api/mask/{content_hash}`
+- `GET /api/mask`
+- `GET /api/sanitizer/stats`
+
 ### Gateway
 - `POST /api/mcp-gateway/{server_name}/rpc`
 
+## ❌ Ancienne interprétation
+- Le module `static/js/modules/mcp.js` pilote l'affichage MCP.
+- `GET /api/memory/all-servers` et `GET /api/memory/stats/advanced` sont disponibles.
+- Tous les serveurs routés par la gateway remontent aussi un statut.
+
+## ✅ État actuel
+- Aucun frontend MCP n'est embarqué ; le middleware est consommé par les IDE et les clients HTTP.
+- Les routes mémoire sont limitées à la liste ci-dessus.
+- La gateway route cinq serveurs, tandis que la collecte de statuts reste centrée sur Qdrant et Context Compression.
+
 ## Trade-offs
+
 | Choix | Avantage | Limite |
 |---|---|---|
-| UI prête pour Phase 3+4 complète | Évolutive côté dashboard | Peut suggérer une parité backend immédiate |
-| Statut backend focalisé sur clients spécialisés | Simplicité opérationnelle | Couverture partielle des serveurs IDE/outils |
-| Gateway par mapping explicite | Contrôle fin des serveurs routables | Nécessite maintien du mapping au fil des ajouts |
+| Middleware headless | Surface d'attaque réduite et déploiement simple | Pas de visualisation intégrée |
+| Statuts focalisés sur deux clients | Code de monitoring simple | Couverture partielle des serveurs routés |
+| Mapping gateway explicite | Contrôle fin des cibles locales | Nécessite une mise à jour à chaque nouveau serveur |
+| Erreurs JSON-RPC normalisées | Contrat stable pour les clients | Les messages changent, pas les codes |
 
 ## Golden Rule
-**Séparer explicitement dans la doc: visualisation frontend, collecte de statuts backend et capacité de routage gateway.**
+**La gateway peut router plus de serveurs que le monitoring n'en expose. Documenter ces deux périmètres séparément.**
 
 ---
-*Dernière mise à jour: 2026-02-26*  
-*Conforme documentation/SKILL.md: TL;DR, problem-first, bloc ❌/✅, trade-offs, Golden Rule.*
+*Dernière mise à jour : 2026-11-06*
+*Conforme à `.agents/skills/documentation/SKILL.md` : TL;DR, problem-first, blocs ❌/✅, trade-offs, Golden Rule.*

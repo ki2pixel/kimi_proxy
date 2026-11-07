@@ -2,6 +2,7 @@
 
 from .client import (
     MCPExternalClient,
+    close_mcp_client,
     get_mcp_client,
 )
 from .base.config import MCPClientConfig
@@ -19,6 +20,7 @@ from .memory import (
 
 __all__ = [
     "MCPExternalClient",
+    "close_mcp_client",
     "MCPClientConfig",
     "MCPClientError",
     "MCPConnectionError",

@@ -18,13 +18,9 @@ Serveurs supportés (7 serveurs, 43 outils):
 - Sequential Thinking MCP (Phase 4, 1 outil): Raisonnement séquentiel
 - Fast Filesystem MCP (Phase 4, 25 outils): Opérations fichiers
 - JSON Query MCP (Phase 4, 3 outils): Requêtes JSON
-
-BACKUP: Fichier original sauvegardé dans client.py.backup (1,230 lignes)
 """
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-import json
-import time
 
 from kimi_proxy.core.models import (
     QdrantSearchResult,
@@ -73,164 +69,13 @@ class MCPExternalClient:
         self.qdrant = QdrantMCPClient(self.config, self._rpc_client)
         self.compression = CompressionMCPClient(self.config, self._rpc_client)
         
-        # Cache statut global
+        # Cache statut global (borné implicitement par le nombre de clients)
         self._status_cache: Dict[str, MCPExternalServerStatus] = {}
-        self._tool_cache: Dict[str, Dict[str, Any]] = {}  # Cache pour les résultats d'outils
 
     async def close(self):
         """Ferme toutes les connexions HTTP."""
         await self._rpc_client.close()
 
-    def _get_tool_cache_key(self, server_type: str, tool_name: str, params: Dict[str, Any]) -> str:
-        """
-        Génère une clé de cache pour les résultats d'outils MCP.
-        
-        Args:
-            server_type: Type de serveur
-            tool_name: Nom de l'outil
-            params: Paramètres
-            
-        Returns:
-            Clé de cache unique
-        """
-        import hashlib
-        key_data = f"{server_type}:{tool_name}:{json.dumps(params, sort_keys=True)}"
-        return hashlib.md5(key_data.encode(), usedforsecurity=False).hexdigest()[:16]
-    
-    def _should_cache_tool_result(self, tool_name: str, result: Dict[str, Any]) -> bool:
-        """
-        Détermine si un résultat d'outil doit être mis en cache.
-        
-        Args:
-            tool_name: Nom de l'outil
-            result: Résultat de l'outil
-            
-        Returns:
-            True si le résultat doit être mis en cache
-        """
-        # Liste des outils dont les résultats peuvent être mis en cache
-        cacheable_tools = {
-            "fast_read_file",
-            "fast_list_directory", 
-            "fast_get_file_info",
-            "fast_search_code",
-            "fast_search_files",
-            "json_query_jsonpath",
-            "json_query_search_keys"
-        }
-        
-        if tool_name not in cacheable_tools:
-            return False
-        
-        # Vérifie si le résultat contient du contenu volumineux
-        content = ""
-        if isinstance(result, dict) and "content" in result:
-            content = str(result.get("content", ""))
-        else:
-            content = str(result)
-        
-        # Met en cache si le contenu fait plus de 1K caractères
-        return len(content) > 1000
-    
-    async def _compress_large_response(self, content: str) -> str:
-        """
-        Compresse une réponse volumineuse si nécessaire.
-        
-        Args:
-            content: Contenu à compresser
-            
-        Returns:
-            Contenu compressé ou original
-        """
-        if len(content) < 5000:  # Ne compresse que les contenus > 5K
-            return content
-        
-        try:
-            # Essaie d'utiliser le service de compression MCP
-            if self.is_compression_available():
-                compressed_result = await self.compress_content(
-                    content, 
-                    algorithm="context_aware", 
-                    target_ratio=0.7  # Compression à 70%
-                )
-                
-                if compressed_result.success and compressed_result.compressed_content:  # type: ignore
-                    print(f"🗜️ [COMPRESSION] Contenu compressé: {len(content)} → {len(compressed_result.compressed_content)} chars")
-                    return f"[COMPRESSED CONTENT - {compressed_result.compression_ratio:.1%} saved]\n{compressed_result.compressed_content}"
-            
-        except Exception as e:
-            print(f"⚠️ [COMPRESSION] Erreur lors de la compression: {e}")
-        
-        # Fallback: compression simple par troncature intelligente
-        if len(content) > 10000:
-            truncated = content[:8000] + f"\n\n[... CONTENU TRONQUÉ - {len(content) - 8000} caractères supprimés ...]"
-            print(f"✂️ [TRUNCATION] Contenu tronqué: {len(content)} → {len(truncated)} chars")
-            return truncated
-        
-        return content
-    
-    async def _get_cached_tool_result(self, server_type: str, tool_name: str, params: Dict[str, Any]) -> Optional[MCPToolCall]:
-        """
-        Récupère un résultat d'outil depuis le cache.
-        
-        Args:
-            server_type: Type de serveur
-            tool_name: Nom de l'outil
-            params: Paramètres
-            
-        Returns:
-            Résultat mis en cache ou None
-        """
-        cache_key = self._get_tool_cache_key(server_type, tool_name, params)
-        
-        if cache_key in self._tool_cache:
-            cached_entry = self._tool_cache[cache_key]
-            
-            # Vérifie si le cache n'est pas expiré (TTL de 5 minutes)
-            import time
-            if time.time() - cached_entry["cached_at"] < 300:  # 5 minutes
-                print(f"💾 [TOOL CACHE] Hit pour {tool_name}: {cache_key}")
-                return MCPToolCall(
-                    server_type=server_type,
-                    tool_name=tool_name,
-                    params=params,
-                    status="success",
-                    result=cached_entry["result"],
-                    execution_time_ms=cached_entry["execution_time_ms"]
-                )
-            else:
-                # Cache expiré, supprime
-                del self._tool_cache[cache_key]
-        
-        return None
-    
-    def _cache_tool_result(self, server_type: str, tool_name: str, params: Dict[str, Any], result: Dict[str, Any], execution_time_ms: float):
-        """
-        Met en cache un résultat d'outil.
-        
-        Args:
-            server_type: Type de serveur
-            tool_name: Nom de l'outil
-            params: Paramètres
-            result: Résultat à mettre en cache
-            execution_time_ms: Temps d'exécution
-        """
-        if not self._should_cache_tool_result(tool_name, result):
-            return
-        
-        cache_key = self._get_tool_cache_key(server_type, tool_name, params)
-        
-        self._tool_cache[cache_key] = {
-            "server_type": server_type,
-            "tool_name": tool_name,
-            "params": params,
-            "result": result,
-            "execution_time_ms": execution_time_ms,
-            "cached_at": time.time()
-        }
-        
-        print(f"💾 [TOOL CACHE] Stored {tool_name}: {cache_key} ({len(str(result))} chars)")
-    
     # ========================================================================
     # Qdrant - Recherche sémantique
     # ========================================================================
@@ -318,11 +163,6 @@ class MCPExternalClient:
         start_time = datetime.now()
         
         try:
-            # Vérifie le cache d'abord
-            cached_result = await self._get_cached_tool_result(server_type, tool_name, params)
-            if cached_result:
-                return cached_result
-            
             # Type de serveur inconnu
             execution_time_ms = (datetime.now() - start_time).total_seconds() * 1000
             return MCPToolCall(
@@ -376,5 +216,13 @@ def get_mcp_client(config: Optional[MCPClientConfig] = None) -> MCPExternalClien
         
         _mcp_client = MCPExternalClient(config)
     return _mcp_client
+
+
+async def close_mcp_client() -> None:
+    """Ferme le client MCP global s'il a été instancié."""
+    global _mcp_client
+    if _mcp_client is not None:
+        await _mcp_client.close()
+        _mcp_client = None
 
 

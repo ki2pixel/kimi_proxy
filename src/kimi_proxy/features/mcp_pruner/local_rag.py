@@ -6,6 +6,8 @@ Chargement paresseux (lazy) des dépendances pour préserver l'aspect lightweigh
 
 from __future__ import annotations
 
+import asyncio
+import threading
 import time
 from dataclasses import dataclass
 from typing import Literal, Any
@@ -16,21 +18,27 @@ from kimi_proxy.core.tokens import count_tokens_text
 class EmbeddingModel:
     """Chargeur lazy du modèle d'embeddings sentence-transformers."""
     _instances: dict[str, "EmbeddingModel"] = {}
+    _instance_lock = threading.Lock()
+    _load_lock = threading.Lock()
 
     def __new__(cls, model_name: str = "all-MiniLM-L6-v2"):
-        if model_name in cls._instances:
-            return cls._instances[model_name]
-        instance = super().__new__(cls)
-        instance._model_name = model_name  # type: ignore
-        instance._model = None  # type: ignore
-        cls._instances[model_name] = instance
-        return instance
+        with cls._instance_lock:
+            if model_name in cls._instances:
+                return cls._instances[model_name]
+            instance = super().__new__(cls)
+            instance._model_name = model_name  # type: ignore
+            instance._model = None  # type: ignore
+            cls._instances[model_name] = instance
+            return instance
 
     def _load(self) -> None:
-        if self._model is None:  # type: ignore
-            # Import paresseux pour ne pas ralentir le démarrage si inutilisé
-            from sentence_transformers import SentenceTransformer  # type: ignore
-            self._model = SentenceTransformer(self._model_name)  # type: ignore
+        if self._model is not None:  # type: ignore
+            return
+        with self._load_lock:
+            if self._model is None:  # type: ignore
+                # Import paresseux pour ne pas ralentir le démarrage si inutilisé
+                from sentence_transformers import SentenceTransformer  # type: ignore
+                self._model = SentenceTransformer(self._model_name)  # type: ignore
 
     def embed(self, texts: list[str]) -> Any: # Returns np.ndarray
         self._load()
@@ -115,20 +123,21 @@ async def compute_local_rag_keep_set(
     active_indices = sorted(list(current_keep_set))
     if len(active_indices) <= keep_target:
         return current_keep_set.copy()
-        
-    active_lines = [lines[i] for i in active_indices]
-    
-    embedder = EmbeddingModel(model_name)
-    line_embeddings = embedder.embed(active_lines)
-    query_embedding = embedder.embed_single(goal_hint)
-    
-    store = VectorStore()
-    store.add(line_embeddings, active_lines)
-    
-    results = store.query(query_embedding, top_k=keep_target)
-    
-    new_keep_set = {active_indices[r.index] for r in results}
-    return new_keep_set
+
+    def _compute_sync() -> set[int]:
+        active_lines = [lines[i] for i in active_indices]
+
+        embedder = EmbeddingModel(model_name)
+        line_embeddings = embedder.embed(active_lines)
+        query_embedding = embedder.embed_single(goal_hint)
+
+        store = VectorStore()
+        store.add(line_embeddings, active_lines)
+
+        results = store.query(query_embedding, top_k=keep_target)
+        return {active_indices[r.index] for r in results}
+
+    return await asyncio.to_thread(_compute_sync)
 
 
 async def prune_text_with_local_rag(

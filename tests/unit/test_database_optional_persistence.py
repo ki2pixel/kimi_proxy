@@ -19,8 +19,10 @@ def _reset_memory_db() -> None:
 @pytest.fixture(autouse=True)
 def clean_memory_state():
     _reset_memory_db()
+    db_mod.configure_database(persist_sessions=False)
     yield
     _reset_memory_db()
+    db_mod.configure_database(persist_sessions=False)
 
 
 class TestShouldPersist:
@@ -43,6 +45,13 @@ class TestShouldPersist:
         env.pop("KIMI_PERSIST_SESSIONS", None)
         with patch.dict(os.environ, env, clear=True):
             assert isinstance(db_mod._should_persist(), bool)
+
+    def test_configured_value_used_without_env(self):
+        env = os.environ.copy()
+        env.pop("KIMI_PERSIST_SESSIONS", None)
+        with patch.dict(os.environ, env, clear=True):
+            db_mod.configure_database(persist_sessions=True)
+            assert db_mod._should_persist() is True
 
 
 class TestSchema:

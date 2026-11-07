@@ -39,7 +39,7 @@ Commandes:
     help        Affiche cette aide
 
 Options pour start:
-    --host      Host à écouter (défaut: 0.0.0.0)
+    --host      Host à écouter (défaut: 127.0.0.1)
     --port      Port à écouter (défaut: 8000)
     --reload    Active le reload automatique
 
@@ -67,6 +67,11 @@ log_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
+systemd_service_active() {
+    command -v systemctl >/dev/null 2>&1 \
+        && systemctl --user is-active --quiet kimi-proxy 2>/dev/null
+}
+
 # =============================================================================
 # Commandes
 # =============================================================================
@@ -74,7 +79,7 @@ log_error() {
 cmd_start() {
     local host="127.0.0.1"
     local port="8000"
-    local reload=""
+    local -a reload_args=()
     
     # Parse les arguments
     while [[ $# -gt 0 ]]; do
@@ -88,7 +93,9 @@ cmd_start() {
                 shift 2
                 ;;
             --reload)
-                reload="--reload"
+                # Surveille uniquement src/ : évite que watchfiles traverse
+                # des artefacts de test ou des liens symboliques hors workspace.
+                reload_args+=(--reload --reload-dir "$PROJECT_DIR/src")
                 shift
                 ;;
             *)
@@ -97,6 +104,13 @@ cmd_start() {
         esac
     done
     
+    # Vérifie si le service systemd gère déjà le serveur
+    if systemd_service_active; then
+        log_warning "Le service systemd kimi-proxy est déjà actif"
+        log_info "Utilisez 'systemctl --user restart kimi-proxy' ou 'kimi-proxy restart'"
+        exit 1
+    fi
+
     # Vérifie si déjà en cours d'exécution
     if [ -f "$PID_FILE" ]; then
         local pid=$(cat "$PID_FILE")
@@ -119,16 +133,29 @@ cmd_start() {
         source "$VENV_DIR/bin/activate"
     fi
     
-    # Chargement des variables d'environnement depuis .env
+    # Chargement des variables d'environnement depuis .env (Bash pur, sans xargs)
     if [ -f ".env" ]; then
         log_info "Chargement des variables d'environnement depuis .env..."
-        # Exporte les variables sans les guillemets
-        while IFS='=' read -r key value; do
-            # Ignore les lignes vides et les commentaires
+        while IFS='=' read -r key value || [ -n "$key" ]; do
+            # Supprime les espaces autour de la clé
+            key="${key#"${key%%[![:space:]]*}"}"
+            key="${key%"${key##*[![:space:]]}"}"
             [[ -z "$key" || "$key" =~ ^# ]] && continue
-            # Supprime les espaces et guillemets
-            key=$(echo "$key" | xargs)
-            value=$(echo "$value" | sed 's/^["'\''"]//;s/["'\''"]$//' | xargs)
+
+            # Accepte la syntaxe "export KEY=value"
+            key="${key#export }"
+            key="${key#"${key%%[![:space:]]*}"}"
+            [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+
+            # Supprime le CR éventuel puis les espaces autour de la valeur
+            value="${value%$'\r'}"
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+
+            # Retire uniquement les guillemets englobants
+            value="${value#\"}"; value="${value%\"}"
+            value="${value#\'}"; value="${value%\'}"
+
             export "$key=$value"
         done < .env
     else
@@ -143,7 +170,7 @@ cmd_start() {
         uvicorn kimi_proxy.main:app \
         --host "$host" \
         --port "$port" \
-        $reload \
+        "${reload_args[@]}" \
         > "$PROJECT_DIR/server.log" 2>&1 &
     
     local server_pid=$!
@@ -175,6 +202,14 @@ cmd_start() {
 }
 
 cmd_stop() {
+    if systemd_service_active; then
+        log_info "Arrêt du service systemd kimi-proxy..."
+        systemctl --user stop kimi-proxy
+        rm -f "$PID_FILE" "$PROJECT_DIR/.server.port"
+        log_success "Service systemd arrêté"
+        return
+    fi
+
     if [ ! -f "$PID_FILE" ]; then
         log_warning "Aucun serveur en cours d'exécution"
         exit 0
@@ -207,6 +242,13 @@ cmd_stop() {
 }
 
 cmd_restart() {
+    if systemd_service_active; then
+        log_info "Redémarrage du service systemd kimi-proxy..."
+        systemctl --user restart kimi-proxy
+        log_success "Service systemd redémarré"
+        return
+    fi
+
     log_info "Redémarrage du serveur..."
     cmd_stop
     sleep 1
@@ -214,6 +256,17 @@ cmd_restart() {
 }
 
 cmd_status() {
+    if systemd_service_active; then
+        local port="${KIMI_PORT:-8000}"
+        log_success "Service systemd kimi-proxy actif"
+        if curl -s "http://localhost:$port/health" > /dev/null 2>&1; then
+            log_success "API accessible sur http://localhost:$port"
+        else
+            log_warning "API ne répond pas encore sur le port $port"
+        fi
+        return
+    fi
+
     if [ -f "$PID_FILE" ]; then
         local pid=$(cat "$PID_FILE")
         local port="${KIMI_PORT:-8000}"

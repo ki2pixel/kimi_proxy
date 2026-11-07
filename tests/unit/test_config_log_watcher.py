@@ -1,4 +1,4 @@
-from src.kimi_proxy.config.loader import get_log_watcher_config, LogWatcherConfig
+from kimi_proxy.config.loader import get_log_watcher_config, LogWatcherConfig
 
 def test_get_log_watcher_config_defaults_when_absent():
     config = {}

@@ -4,6 +4,7 @@ Log Watcher - Surveillance multi-source des signaux analytics.
 import os
 import asyncio
 import json
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Callable, List, Sequence, Dict
@@ -31,6 +32,7 @@ class KimiSessionState:
     context_mtime: float = 0.0
     metadata_mtime: float = 0.0
     metadata: Dict[str, object] = field(default_factory=dict)
+    last_seen_at: float = 0.0
 
 
 class AnalyticsSource:
@@ -224,6 +226,7 @@ class KimiSessionSource(AnalyticsSource):
         max_sessions_per_poll: int = 32,
         discovery_batch_size: int = 4,
         initial_tail_bytes: int = 8192,
+        max_tracked_sessions: int = 1024,
     ):
         super().__init__(
             source_id="kimi_sessions",
@@ -234,6 +237,7 @@ class KimiSessionSource(AnalyticsSource):
         self.max_sessions_per_poll = max(1, max_sessions_per_poll)
         self.discovery_batch_size = max(1, discovery_batch_size)
         self.initial_tail_bytes = max(0, initial_tail_bytes)
+        self.max_tracked_sessions = max(1, max_tracked_sessions)
         self._roots: List[str] = []
         self._root_cursor = 0
         self._session_cursor = 0
@@ -246,6 +250,7 @@ class KimiSessionSource(AnalyticsSource):
 
         self._refresh_roots()
         self._discover_all_existing_sessions()
+        self._enforce_session_cap()
 
     async def poll(self) -> List[AnalyticsEvent]:
         if not self._initialized:
@@ -296,6 +301,8 @@ class KimiSessionSource(AnalyticsSource):
         else:
             self._root_cursor = 0
 
+        self._prune_orphan_sessions()
+
     def _discover_all_existing_sessions(self) -> None:
         for root_path in self._roots:
             for session_path in self._list_session_directories(root_path):
@@ -313,9 +320,49 @@ class KimiSessionSource(AnalyticsSource):
         ]
         self._root_cursor = (start_index + batch_size) % len(self._roots)
 
+        existing_paths: set[str] = set()
         for root_path in selected_roots:
             for session_path in self._list_session_directories(root_path):
+                existing_paths.add(session_path)
                 self._register_session(session_path)
+
+        for session_path in list(self._sessions):
+            if (
+                self._is_under_roots(session_path, selected_roots)
+                and session_path not in existing_paths
+            ):
+                del self._sessions[session_path]
+
+        self._enforce_session_cap()
+
+    @staticmethod
+    def _is_under_roots(session_path: str, roots: List[str]) -> bool:
+        return any(
+            session_path == root or session_path.startswith(root + os.sep)
+            for root in roots
+        )
+
+    def _prune_orphan_sessions(self) -> None:
+        if not self._sessions:
+            return
+        orphans = [
+            session_path
+            for session_path in self._sessions
+            if not self._is_under_roots(session_path, self._roots)
+        ]
+        for session_path in orphans:
+            del self._sessions[session_path]
+
+    def _enforce_session_cap(self) -> None:
+        if len(self._sessions) <= self.max_tracked_sessions:
+            return
+        ordered = sorted(
+            self._sessions.items(),
+            key=lambda item: item[1].last_seen_at,
+        )
+        excess = len(self._sessions) - self.max_tracked_sessions
+        for session_path, _ in ordered[:excess]:
+            del self._sessions[session_path]
 
     def _list_session_directories(self, root_path: str) -> List[str]:
         try:
@@ -349,12 +396,14 @@ class KimiSessionSource(AnalyticsSource):
             context_path=context_path,
             metadata_path=metadata_path,
             context_position=initial_position,
+            last_seen_at=time.monotonic(),
         )
 
     async def _poll_session(self, state: KimiSessionState) -> List[AnalyticsEvent]:
         if not os.path.exists(state.context_path):
             return []
 
+        state.last_seen_at = time.monotonic()
         await self._refresh_metadata(state)
 
         current_size = os.path.getsize(state.context_path)
