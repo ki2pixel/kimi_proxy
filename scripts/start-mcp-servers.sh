@@ -18,6 +18,9 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
 # Couleurs
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -195,15 +198,21 @@ start_servers() {
     if check_port $FAST_FILESYSTEM_PORT; then
         log_success "Fast Filesystem MCP déjà disponible via bridge"
     else
-        # Créer le serveur HTTP de fast filesystem s'il n'existe pas
-        create_fast_filesystem_server
-        
-        # Démarrer le serveur
         log_info "Lancement du serveur de fast filesystem sur le port $FAST_FILESYSTEM_PORT..."
-        
-        # Démarrer en arrière-plan avec nohup + disown
-        # Autorise tous les chemins sous /home/kidpixel par défaut (configurable)
-        MCP_ALLOWED_ROOT="/" nohup python3 /tmp/mcp_fast_filesystem_server.py > /tmp/mcp_fast_filesystem.log 2>&1 &
+
+        # La racine '/' est interdite : elle désactiverait la validation anti-traversal.
+        FAST_FILESYSTEM_ALLOWED_ROOT="${MCP_ALLOWED_ROOT:-/home/kidpixel}"
+        if [[ "$FAST_FILESYSTEM_ALLOWED_ROOT" != /* || "$FAST_FILESYSTEM_ALLOWED_ROOT" == "/" ]]; then
+            log_error "MCP_ALLOWED_ROOT invalide: '$FAST_FILESYSTEM_ALLOWED_ROOT'."
+            log_error "Définissez une racine explicite (ex: /home/kidpixel). La racine '/' est interdite."
+            exit 1
+        fi
+
+        # Démarrer en arrière-plan avec nohup + disown, sur loopback par défaut.
+        MCP_ALLOWED_ROOT="$FAST_FILESYSTEM_ALLOWED_ROOT" \
+        MCP_HOST="${MCP_HOST:-127.0.0.1}" \
+        nohup python3 "$PROJECT_DIR/scripts/mcp_servers/fast_filesystem_server.py" \
+            > /tmp/mcp_fast_filesystem.log 2>&1 &
         FAST_FILESYSTEM_PID=$!
         disown $FAST_FILESYSTEM_PID 2>/dev/null || true
         
@@ -211,11 +220,12 @@ start_servers() {
         sleep 2
         
         if check_port $FAST_FILESYSTEM_PORT; then
-            log_success "Fast Filesystem MCP démarré et disponible via bridge (PID: $FAST_FILESYSTEM_PID)"
+            log_success "Fast Filesystem MCP démarré (PID: $FAST_FILESYSTEM_PID, hôte: ${MCP_HOST:-127.0.0.1})"
             echo $FAST_FILESYSTEM_PID > /tmp/mcp_fast_filesystem.pid
         else
             log_error "Échec du démarrage du serveur de fast filesystem"
             echo "   Logs: /tmp/mcp_fast_filesystem.log"
+            tail -n 20 /tmp/mcp_fast_filesystem.log 2>/dev/null || true
             exit 1
         fi
     fi
@@ -410,7 +420,7 @@ import threading
 import os
 
 # Configuration
-HOST = "0.0.0.0"
+HOST = os.getenv("MCP_HOST", "127.0.0.1")
 PORT = 8001
 
 # Configuration workspace (reçu depuis l'environnement)
@@ -430,14 +440,12 @@ class CompressionHandler(BaseHTTPRequestHandler):
         """Envoie une réponse JSON"""
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
     
     def do_OPTIONS(self):
         """Gère les requêtes CORS preflight"""
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
@@ -701,6 +709,7 @@ Gère le raisonnement séquentiel structuré
 """
 
 import json
+import os
 import asyncio
 from datetime import datetime
 from typing import Dict, Any, List
@@ -708,7 +717,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
 # Configuration
-HOST = "0.0.0.0"
+HOST = os.getenv("MCP_HOST", "127.0.0.1")
 PORT = 8003
 
 # MCP minimal handshake support
@@ -725,14 +734,12 @@ class SequentialThinkingHandler(BaseHTTPRequestHandler):
         """Envoie une réponse JSON"""
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
     
     def do_OPTIONS(self):
         """Gère les requêtes CORS preflight"""
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
@@ -927,489 +934,6 @@ EOF
 }
 
 # =============================================================================
-# Création du serveur de fast filesystem MCP (HTTP)
-# =============================================================================
-
-create_fast_filesystem_server() {
-    cat > /tmp/mcp_fast_filesystem_server.py << 'EOF'
-#!/usr/bin/env python3
-"""
-Serveur MCP Fast Filesystem HTTP
-Gère les opérations fichiers haute performance
-"""
-
-import json
-import os
-import shutil
-from pathlib import Path
-from datetime import datetime
-from typing import Dict, Any, List
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
-
-# Configuration
-HOST = "0.0.0.0"
-PORT = 8004
-
-# MCP minimal handshake support
-DEFAULT_MCP_PROTOCOL_VERSION = "2025-11-25"
-
-# Configuration racine autorisée (reçu depuis l'environnement)
-# - MCP_ALLOWED_ROOT est la nouvelle variable recommandée (root global)
-# - WORKSPACE_PATH est conservée en fallback pour compatibilité
-ALLOWED_ROOT = os.getenv("MCP_ALLOWED_ROOT") or os.getenv("WORKSPACE_PATH") or "/home/kidpixel"
-
-class FastFilesystemHandler(BaseHTTPRequestHandler):
-    """Handler pour les requêtes JSON-RPC 2.0"""
-    
-    def log_message(self, format, *args):
-        """Supprime les logs par défaut"""
-        pass
-    
-    def _send_json_response(self, data: Dict[str, Any], status_code: int = 200):
-        """Envoie une réponse JSON"""
-        self.send_response(status_code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
-    
-    def _is_path_allowed(self, path: str) -> bool:
-        """Vérifie si le chemin est sous la racine autorisée.
-
-        Sécurité:
-        - normalisation via Path.resolve(strict=False)
-        - appartenance via relative_to() (anti path traversal + symlinks)
-        """
-        if not path or not isinstance(path, str):
-            return False
-
-        try:
-            allowed_root = Path(ALLOWED_ROOT).expanduser().resolve(strict=False)
-            requested = Path(path).expanduser()
-            if not requested.is_absolute():
-                requested = Path.cwd() / requested
-            requested_resolved = requested.resolve(strict=False)
-
-            requested_resolved.relative_to(allowed_root)
-            return True
-        except (OSError, RuntimeError, ValueError):
-            return False
-    
-    def _restrict_to_workspace(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Restreint les paramètres aux chemins autorisés."""
-        # Pour les paramètres de fichier, vérifier les permissions
-        file_params = ["path", "file_path", "directory", "source", "destination"]
-        for param in file_params:
-            if param in params:
-                path = params[param]
-                if not self._is_path_allowed(path):
-                    raise PermissionError(
-                        f"Accès refusé: chemin '{path}' hors de la racine autorisée '{ALLOWED_ROOT}'"
-                    )
-        
-        return params
-
-    def _restrict_paths_list(self, paths: List[Any]) -> None:
-        for p in paths:
-            if not isinstance(p, str) or not self._is_path_allowed(p):
-                raise PermissionError(
-                    f"Accès refusé: chemin '{p}' hors de la racine autorisée '{ALLOWED_ROOT}'"
-                )
-    
-    def do_OPTIONS(self):
-        """Gère les requêtes CORS preflight"""
-        self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.end_headers()
-    
-    def do_GET(self):
-        """Gère les requêtes GET (health check)"""
-        if self.path == "/health":
-            self._send_json_response({
-                "status": "healthy",
-                "server": "fast-filesystem-mcp",
-                "version": "1.0.0",
-                "capabilities": ["file_operations", "directory_management", "search"],
-                "tools_count": 25
-            })
-        else:
-            self._send_json_response({"error": "Not found"}, 404)
-    
-    def do_POST(self):
-        """Gère les requêtes POST (JSON-RPC)"""
-        if self.path != "/rpc":
-            self._send_json_response({"error": "Not found"}, 404)
-            return
-        
-        try:
-            content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length).decode('utf-8')
-            request = json.loads(body)
-            
-            method = request.get("method")
-            params = request.get("params", {})
-            req_id = request.get("id")
-
-            # MCP handshake + tools
-            if method == "initialize":
-                protocol_version = DEFAULT_MCP_PROTOCOL_VERSION
-                if isinstance(params, dict) and isinstance(params.get("protocolVersion"), str):
-                    protocol_version = str(params.get("protocolVersion"))
-                self._send_json_response(
-                    {
-                        "jsonrpc": "2.0",
-                        "result": {
-                            "protocolVersion": protocol_version,
-                            "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
-                            "serverInfo": {"name": "fast-filesystem-mcp", "version": "1.0.0"},
-                        },
-                        "id": req_id,
-                    }
-                )
-                return
-
-            if method == "notifications/initialized":
-                self._send_json_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req_id})
-                return
-
-            if method == "tools/list":
-                self._send_json_response(
-                    {
-                        "jsonrpc": "2.0",
-                        "result": {
-                            "tools": [
-                                {
-                                    "name": "fast_list_directory",
-                                    "description": "Lister un répertoire (workspace-only)",
-                                    "inputSchema": {
-                                        "type": "object",
-                                        "properties": {"path": {"type": "string"}},
-                                        "required": ["path"],
-                                    },
-                                },
-                                {
-                                    "name": "fast_read_file",
-                                    "description": "Lire un fichier texte (workspace-only)",
-                                    "inputSchema": {
-                                        "type": "object",
-                                        "properties": {"path": {"type": "string"}},
-                                        "required": ["path"],
-                                    },
-                                },
-                                {
-                                    "name": "fast_write_file",
-                                    "description": "Écrire un fichier texte (workspace-only)",
-                                    "inputSchema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "path": {"type": "string"},
-                                            "content": {"type": "string"},
-                                        },
-                                        "required": ["path", "content"],
-                                    },
-                                },
-                                {
-                                    "name": "fast_search_files",
-                                    "description": "Recherche simple de fichiers (substring match)",
-                                    "inputSchema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "directory": {"type": "string"},
-                                            "pattern": {"type": "string"},
-                                        },
-                                        "required": ["directory", "pattern"],
-                                    },
-                                },
-                                {
-                                    "name": "fast_read_multiple_files",
-                                    "description": "Lire plusieurs fichiers texte (workspace-only)",
-                                    "inputSchema": {
-                                        "type": "object",
-                                        "properties": {"paths": {"type": "array", "items": {"type": "string"}}},
-                                        "required": ["paths"],
-                                    },
-                                },
-                                {
-                                    "name": "fast_get_directory_tree",
-                                    "description": "Tree simple (max_depth) (workspace-only)",
-                                    "inputSchema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "path": {"type": "string"},
-                                            "max_depth": {"type": "integer"},
-                                            "include_files": {"type": "boolean"},
-                                        },
-                                        "required": ["path"],
-                                    },
-                                },
-                            ]
-                        },
-                        "id": req_id,
-                    }
-                )
-                return
-
-            if method == "tools/call":
-                tool_name = None
-                tool_args: Dict[str, Any] = {}
-                if isinstance(params, dict):
-                    tool_name = params.get("name")
-                    if isinstance(params.get("arguments"), dict):
-                        tool_args = params.get("arguments")
-
-                try:
-                    if tool_name == "fast_list_directory":
-                        tool_args = self._restrict_to_workspace(tool_args)
-                        tool_result = self._handle_list_directory(tool_args)
-                    elif tool_name == "fast_read_file":
-                        tool_args = self._restrict_to_workspace(tool_args)
-                        tool_result = self._handle_read_file(tool_args)
-                    elif tool_name == "fast_write_file":
-                        tool_args = self._restrict_to_workspace(tool_args)
-                        tool_result = self._handle_write_file(tool_args)
-                    elif tool_name == "fast_search_files":
-                        tool_args = self._restrict_to_workspace(tool_args)
-                        tool_result = self._handle_search_files(tool_args)
-                    elif tool_name == "fast_read_multiple_files":
-                        paths = tool_args.get("paths", []) if isinstance(tool_args, dict) else []
-                        if not isinstance(paths, list):
-                            raise ValueError("Paramètre 'paths' invalide")
-                        self._restrict_paths_list(paths)
-                        tool_result = self._handle_read_multiple_files(paths)
-                    elif tool_name == "fast_get_directory_tree":
-                        tool_args = self._restrict_to_workspace(tool_args)
-                        tool_result = self._handle_get_directory_tree(tool_args)
-                    else:
-                        self._send_json_response(
-                            {
-                                "jsonrpc": "2.0",
-                                "error": {"code": -32602, "message": f"Outil inconnu: {tool_name}"},
-                                "id": req_id,
-                            }
-                        )
-                        return
-                except PermissionError as e:
-                    self._send_json_response(
-                        {"jsonrpc": "2.0", "error": {"code": -32000, "message": str(e)}, "id": req_id},
-                        403,
-                    )
-                    return
-                except Exception as e:
-                    self._send_json_response(
-                        {"jsonrpc": "2.0", "error": {"code": -32602, "message": str(e)}, "id": req_id},
-                        200,
-                    )
-                    return
-
-                if isinstance(tool_result, dict) and "content" in tool_result:
-                    text_content = str(tool_result["content"])
-                elif isinstance(tool_result, str):
-                    text_content = tool_result
-                else:
-                    text_content = json.dumps(tool_result, ensure_ascii=False, indent=2)
-
-                self._send_json_response(
-                    {
-                        "jsonrpc": "2.0",
-                        "result": {"content": [{"type": "text", "text": text_content}]},
-                        "id": req_id,
-                    }
-                )
-                return
-
-            # -----------------------------------------------------------------
-            # MCP optional discovery APIs (Continue.dev compatibility)
-            # -----------------------------------------------------------------
-            if method == "resources/list":
-                self._send_json_response(
-                    {"jsonrpc": "2.0", "result": {"resources": []}, "id": req_id}
-                )
-                return
-
-            if method == "resources/templates/list":
-                self._send_json_response(
-                    {"jsonrpc": "2.0", "result": {"resourceTemplates": []}, "id": req_id}
-                )
-                return
-
-            if method == "prompts/list":
-                self._send_json_response(
-                    {"jsonrpc": "2.0", "result": {"prompts": []}, "id": req_id}
-                )
-                return
-
-            # Legacy routes (compat)
-            # Vérifier les permissions pour toutes les méthodes filesystem legacy
-            params = self._restrict_to_workspace(params if isinstance(params, dict) else {})
-
-            if method == "health":
-                result = self._handle_health()
-                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
-                return
-            if method == "list_directory":
-                result = self._handle_list_directory(params)
-                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
-                return
-            if method == "read_file":
-                result = self._handle_read_file(params)
-                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
-                return
-            if method == "write_file":
-                result = self._handle_write_file(params)
-                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
-                return
-            if method == "search_files":
-                result = self._handle_search_files(params)
-                self._send_json_response({"jsonrpc": "2.0", "result": result, "id": req_id})
-                return
-
-            self._send_json_response(
-                {
-                    "jsonrpc": "2.0",
-                    "error": {"code": -32601, "message": f"Method not found: {method}"},
-                    "id": req_id,
-                }
-            )
-            return
-            
-        except PermissionError as e:
-            self._send_json_response({
-                "jsonrpc": "2.0",
-                "error": {"code": -32000, "message": str(e)},
-                "id": None
-            }, 403)
-        except Exception as e:
-            self._send_json_response({
-                "jsonrpc": "2.0",
-                "error": {"code": -32603, "message": str(e)},
-                "id": None
-            }, 500)
-    
-    def _handle_health(self) -> Dict[str, Any]:
-        return {
-            "status": "healthy",
-            "capabilities": ["file_operations", "search"],
-            "tools": ["list_directory", "read_file", "write_file", "search_files"],
-            "timestamp": datetime.now().isoformat()
-        }
-    
-    def _handle_list_directory(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        path = params.get("path", ".")
-        try:
-            items = []
-            for item in os.listdir(path):
-                item_path = os.path.join(path, item)
-                items.append({
-                    "name": item,
-                    "type": "directory" if os.path.isdir(item_path) else "file",
-                    "size": os.path.getsize(item_path) if os.path.isfile(item_path) else 0
-                })
-            return {"items": items, "count": len(items)}
-        except Exception as e:
-            return {"error": str(e)}
-    
-    def _handle_read_file(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        path = params.get("path", "")
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return {"content": content, "size": len(content)}
-        except Exception as e:
-            return {"error": str(e)}
-    
-    def _handle_write_file(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        path = params.get("path", "")
-        content = params.get("content", "")
-        try:
-            with open(path, 'w', encoding='utf-8') as f:
-                f.write(content)
-            return {"success": True, "bytes_written": len(content)}
-        except Exception as e:
-            return {"error": str(e)}
-    
-    def _handle_search_files(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        directory = params.get("directory", ".")
-        pattern = params.get("pattern", "*")
-        try:
-            matches = []
-            for root, dirs, files in os.walk(directory):
-                for file in files:
-                    if pattern in file:
-                        matches.append(os.path.join(root, file))
-            return {"matches": matches, "count": len(matches)}
-        except Exception as e:
-            return {"error": str(e)}
-
-    def _handle_read_multiple_files(self, paths: List[str]) -> Dict[str, Any]:
-        results = []
-        for p in paths:
-            try:
-                with open(p, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                results.append({"path": p, "content": content, "size": len(content)})
-            except Exception as e:
-                results.append({"path": p, "error": str(e)})
-        return {"files": results, "count": len(results)}
-
-    def _handle_get_directory_tree(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        path = params.get("path", ".")
-        max_depth = params.get("max_depth", 3)
-        include_files = params.get("include_files", True)
-
-        if not isinstance(max_depth, int) or max_depth < 0:
-            max_depth = 3
-
-        def _build_tree(current_path: str, depth: int) -> Dict[str, Any]:
-            node: Dict[str, Any] = {
-                "name": os.path.basename(current_path) or current_path,
-                "path": current_path,
-                "type": "directory" if os.path.isdir(current_path) else "file",
-            }
-
-            if not os.path.isdir(current_path) or depth >= max_depth:
-                if os.path.isfile(current_path):
-                    try:
-                        node["size"] = os.path.getsize(current_path)
-                    except Exception:
-                        node["size"] = 0
-                return node
-
-            children = []
-            try:
-                for entry in os.scandir(current_path):
-                    if entry.is_dir(follow_symlinks=False):
-                        children.append(_build_tree(entry.path, depth + 1))
-                    elif include_files:
-                        try:
-                            size = entry.stat(follow_symlinks=False).st_size
-                        except Exception:
-                            size = 0
-                        children.append({"name": entry.name, "path": entry.path, "type": "file", "size": size})
-            except Exception as e:
-                node["error"] = str(e)
-                return node
-
-            node["children"] = children
-            return node
-
-        return {"tree": _build_tree(path, 0)}
-
-def run_server():
-    """Démarre le serveur HTTP"""
-    server = HTTPServer((HOST, PORT), FastFilesystemHandler)
-    print(f"🚀 Serveur MCP Fast Filesystem démarré sur http://{HOST}:{PORT}")
-    server.serve_forever()
-
-if __name__ == "__main__":
-    run_server()
-EOF
-    chmod +x /tmp/mcp_fast_filesystem_server.py
-}
-
-# =============================================================================
 # Création du serveur de json query MCP (HTTP)
 # =============================================================================
 
@@ -1430,7 +954,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
 # Configuration
-HOST = "0.0.0.0"
+HOST = os.getenv("MCP_HOST", "127.0.0.1")
 PORT = 8005
 
 # MCP minimal handshake support
@@ -1452,7 +976,6 @@ class JsonQueryHandler(BaseHTTPRequestHandler):
         """Envoie une réponse JSON"""
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
     
@@ -1495,7 +1018,6 @@ class JsonQueryHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         """Gère les requêtes CORS preflight"""
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
@@ -1827,6 +1349,8 @@ stop_servers() {
         fi
         rm -f /tmp/mcp_fast_filesystem.pid
     fi
+    # Nettoyer l'ancien artefact généré dans /tmp (le serveur vit désormais dans scripts/mcp_servers/).
+    rm -f /tmp/mcp_fast_filesystem_server.py
     
     # Arrêter le serveur de json query
     if [[ -f /tmp/mcp_json_query.pid ]]; then

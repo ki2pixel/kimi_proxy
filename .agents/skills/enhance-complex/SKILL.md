@@ -26,7 +26,7 @@ G --> H([END])
 
 ## Steps
 1. **Initialisation** : 
-   - Utiliser `fast_read_file` pour lire `memory-bank/activeContext.md` et comprendre le contexte global du dépôt.
+   - Utiliser `fast_read_file` pour lire `/home/kidpixel/<projet>/memory-bank/activeContext.md` (chemin absolu obligatoire) et comprendre le contexte global du dépôt.
 
 2. **Analyse** :
    - Identifier si la tâche requiert une planification Shrimp Task Manager et une réflexion séquentielle.
@@ -60,7 +60,7 @@ G --> H([END])
 # PROTOCOLE D'EXÉCUTION OBLIGATOIRE
 
 ## Phase 1 : Compréhension du contexte
-1. **Lire le contexte actif** : Utiliser `fast_read_file` sur `memory-bank/activeContext.md`
+1. **Lire le contexte actif** : Utiliser `fast_read_file` sur `/home/kidpixel/<projet>/memory-bank/activeContext.md` (absolu obligatoire)
 2. **Analyser l'état actuel** : Vérifier les tâches existantes avec outil `list_tasks`
 
 ## Phase 2 : Planification avec Shrimp Task Manager

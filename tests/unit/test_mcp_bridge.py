@@ -1106,3 +1106,130 @@ async def test_pipe_reader_to_writer_lines_with_monitor_does_not_strip_roots_for
     assert "roots" in parsed_req["params"]["capabilities"]
 
 
+async def _run_gateway_http_capture(mcp_bridge, monkeypatch, server_name: str, request_obj: dict):
+    """Exécute _run_gateway_http avec un client httpx factice et capture le JSON envoyé."""
+
+    class _FakeReader:
+        def __init__(self, lines: list[bytes]) -> None:
+            self._lines = lines
+
+        async def readline(self) -> bytes:
+            return self._lines.pop(0) if self._lines else b""
+
+    async def _fake_connect_stdin_reader():
+        return _FakeReader([json.dumps(request_obj).encode("utf-8") + b"\n", b""])
+
+    monkeypatch.setattr(mcp_bridge, "_connect_stdin_reader", _fake_connect_stdin_reader)
+
+    captured: dict[str, object] = {}
+    response_obj = {
+        "jsonrpc": "2.0",
+        "id": request_obj.get("id"),
+        "result": {"content": [{"type": "text", "text": "OK"}]},
+    }
+
+    class _DummyResponse:
+        def json(self) -> object:
+            return response_obj
+
+    class _DummyClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url: str, json: object):
+            captured["url"] = url
+            captured["json"] = json
+            return _DummyResponse()
+
+    monkeypatch.setattr(mcp_bridge.httpx, "AsyncClient", lambda *a, **kw: _DummyClient())
+    out = io.StringIO()
+    monkeypatch.setattr(mcp_bridge.sys, "stdout", out)
+    monkeypatch.setenv("MCP_GATEWAY_BASE_URL", "http://localhost:8000")
+
+    await mcp_bridge._run_gateway_http(server_name)
+    return captured, out.getvalue()
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_run_gateway_http_injects_workspace_meta_for_fast_filesystem(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+    monkeypatch.delenv("MCP_BRIDGE_WORKSPACE_ROOT", raising=False)
+
+    request_obj = {
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "tools/call",
+        "params": {
+            "name": "fast_read_file",
+            "arguments": {"path": "."},
+            "_meta": {"ai.opencode/sessionID": "ses_test"},
+        },
+    }
+
+    captured, _out = await _run_gateway_http_capture(
+        mcp_bridge, monkeypatch, "fast-filesystem", request_obj
+    )
+    sent = captured["json"]
+    meta = sent["params"]["_meta"]
+    assert meta["ai.opencode/sessionID"] == "ses_test"
+    assert meta[mcp_bridge.WORKSPACE_META_KEY] == str(Path.cwd().resolve())
+    # L'objet d'origine n'est pas muté.
+    assert mcp_bridge.WORKSPACE_META_KEY not in request_obj["params"]["_meta"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_run_gateway_http_workspace_meta_env_override(monkeypatch, tmp_path):
+    mcp_bridge = _import_mcp_bridge()
+    monkeypatch.setenv("MCP_BRIDGE_WORKSPACE_ROOT", str(tmp_path))
+
+    request_obj = {
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "tools/call",
+        "params": {"name": "fast_list_directory", "arguments": {"path": "."}},
+    }
+
+    captured, _out = await _run_gateway_http_capture(
+        mcp_bridge, monkeypatch, "fast-filesystem", request_obj
+    )
+    assert captured["json"]["params"]["_meta"][mcp_bridge.WORKSPACE_META_KEY] == str(
+        tmp_path.resolve()
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_run_gateway_http_does_not_inject_workspace_meta_for_json_query(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+
+    request_obj = {
+        "jsonrpc": "2.0",
+        "id": 12,
+        "method": "tools/call",
+        "params": {"name": "json_query_query_json", "arguments": {"query": "$"}},
+    }
+
+    captured, _out = await _run_gateway_http_capture(
+        mcp_bridge, monkeypatch, "json-query", request_obj
+    )
+    assert "_meta" not in captured["json"]["params"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_run_gateway_http_does_not_inject_workspace_meta_on_tools_list(monkeypatch):
+    mcp_bridge = _import_mcp_bridge()
+
+    request_obj = {"jsonrpc": "2.0", "id": 13, "method": "tools/list", "params": {}}
+
+    captured, _out = await _run_gateway_http_capture(
+        mcp_bridge, monkeypatch, "fast-filesystem", request_obj
+    )
+    assert "_meta" not in captured["json"]["params"]
+
+

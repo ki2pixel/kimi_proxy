@@ -1,243 +1,128 @@
 ---
 name: fast-filesystem-ops
-description: Expert en édition chirurgicale. Obligation d'utiliser edit_file pour préserver les tokens. Recherche globale via fast_search_files.
+description: Lecture, recherche et arborescence via fast-filesystem avec chemins absolus obligatoires. Édition ciblée via filesystem-agent.edit_file. Ne jamais utiliser de chemin relatif, "." ou "..".
 ---
 
 # Fast Filesystem Operations
 
-> **Expertise** : Édition chirurgicale de fichiers, optimisation token, recherche efficace, manipulation précise de codebase.
+> **TL;DR** : `fast-filesystem` sert à lire, rechercher, lister et écrire des fichiers entiers. `filesystem-agent` sert à l'édition ciblée (`edit_file`). **Tous les chemins passés à `fast_*` doivent être absolus et commencer par `/home/kidpixel/`.** Les chemins relatifs, `.` et `..` sont refusés avec l'erreur JSON-RPC `-32602`.
 
-## Quick Start
+## Règles de chemins (non négociables)
 
-### Mental Model
+Le serveur `fast-filesystem` est un daemon HTTP partagé entre tous les projets. Il ne connaît pas votre workspace courant. Un chemin relatif serait résolu contre le répertoire de lancement du daemon (souvent `kimi-proxy`), pas contre votre projet.
 
-Fast Filesystem Ops optimise chaque opération fichier pour minimiser l'usage de tokens :
-- Édition ciblée avec `edit_file`
-- Recherche intelligente avec `fast_search_files`
-- Lecture multiple avec `fast_read_multiple_files`
-- Évitement des chargements inutiles
-
-### Workflow obligatoire
-
-1. **Localisation** : `fast_search_files` pour trouver les cibles
-2. **Lecture minimale** : `fast_read_multiple_files` uniquement des sections nécessaires
-3. **Édition chirurgicale** : `edit_file` pour modifications précises
-4. **Validation** : Vérification minimale des changements
-
-### Patterns d'utilisation
-
-#### Pour modification de fonction spécifique
-
-```bash
-# 1. Localiser la fonction
-fast_search_files "function calculateTotal" --language python
-
-# 2. Lire uniquement le fichier contenant la fonction
-fast_read_multiple_files src/calculations.py --lines 45-67
-
-# 3. Éditer chirurgicalement
-edit_file src/calculations.py --start 45 --end 67 --replacement "new_function_code"
-```
-
-#### Pour refactoring multi-fichiers
-
-```bash
-# 1. Rechercher toutes les occurrences
-fast_search_files "deprecated_function" --language javascript
-
-# 2. Lire les sections pertinentes de chaque fichier
-fast_read_multiple_files file1.js file2.js file3.js --context 3
-
-# 3. Éditer chaque occurrence chirurgicalement
-edit_file file1.js --line 123 --replacement "new_function_call"
-edit_file file2.js --line 45 --replacement "new_function_call"
-```
-
-## Production-safe patterns
-
-### Recherche optimisée
-
-```bash
-# Recherche ciblée avec filtres
-fast_search_files "class UserController" --language python --exclude test/
-
-# Recherche par pattern avec contexte limité
-fast_search_files "TODO.*performance" --context 2
-
-# Recherche multi-langages
-fast_search_files "import.*React" --language javascript,typescript
-```
-
-### Lecture chirurgicale
-
-```bash
-# Lire uniquement les lignes nécessaires
-fast_read_multiple_files large_file.py --lines 1000-1050
-
-# Lire avec contexte minimal
-fast_read_multiple_files config.json --context 1
-
-# Lecture multi-fichiers optimisée
-fast_read_multiple_files src/*.js --pattern "export.*function"
-```
-
-### Édition précise
-
-```bash
-# Édition par ligne unique
-edit_file src/app.js --line 234 --replacement "newCode"
-
-# Édition par bloc
-edit_file src/app.js --start 200 --end 250 --replacement "newBlock"
-
-# Édition avec recherche automatique
-edit_file src/app.js --search "oldPattern" --replacement "newPattern"
-```
-
-## Token optimization strategies
-
-### Éviter les chargements massifs
-
-❌ **Incorrect** :
-```bash
-read_file large_project/src/entier_fichier.py  # 5000+ lignes
+❌ **Interdit** :
+```text
+fast_read_file({ path: "memory-bank/activeContext.md" })
+fast_get_directory_tree({ path: "." })
+fast_search_files({ directory: "./docs", pattern: "TODO" })
+fast_read_file({ path: "../autre-projet/README.md" })
 ```
 
 ✅ **Correct** :
-```bash
-fast_search_files "function targetFunction" --language python
-fast_read_multiple_files target_file.py --lines 100-150
-edit_file target_file.py --line 125 --replacement "optimized code"
+```text
+fast_read_file({ path: "/home/kidpixel/photomaton_simple_new/memory-bank/activeContext.md" })
+fast_get_directory_tree({ path: "/home/kidpixel/photomaton_simple_new", max_depth: 2 })
+fast_search_files({ directory: "/home/kidpixel/photomaton_simple_new/docs", pattern: "TODO" })
 ```
 
-### Recherche avant lecture
+- Un chemin **absolu** est autorisé sous `/home/kidpixel` (accès inter-projets explicite).
+- Un chemin **relatif** n'est accepté que via le pont local OpenCode, qui injecte le workspace courant. Il doit rester **dans** ce workspace ; toute évasion `..` est refusée.
+- Si un résultat semble provenir d'un autre dépôt, arrêtez-vous : vérifiez le champ `path` de la réponse et réessayez avec un chemin absolu.
 
-Toujours rechercher avant de lire :
-```bash
-# 1. Localiser
-fast_search_files "targetPattern" --language typescript
+## Séparation des deux serveurs
 
-# 2. Lire uniquement les résultats
-fast_read_multiple_files results... --context 2
+| Besoin | Serveur | Outil |
+|---|---|---|
+| Lire un fichier | `fast-filesystem` | `fast_read_file({ path })` |
+| Lister un répertoire | `fast-filesystem` | `fast_list_directory({ path })` |
+| Arborescence | `fast-filesystem` | `fast_get_directory_tree({ path, max_depth, include_files })` |
+| Rechercher par sous-chaîne | `fast-filesystem` | `fast_search_files({ directory, pattern })` |
+| Lire plusieurs fichiers | `fast-filesystem` | `fast_read_multiple_files({ paths: [...] })` |
+| Écrire un fichier entier | `fast-filesystem` | `fast_write_file({ path, content })` |
+| Édition ciblée / patch | `filesystem-agent` | `edit_file(...)` |
+| Recherche regex avancée | `ripgrep-agent` | `search`, `advanced-search` |
 
-# 3. Éditer
-edit_file target_file.ts --line X --replacement "new code"
+`fast-filesystem` **n'expose pas** `edit_file`, `--lines`, `--language`, `--context` ni `--pattern`. Ces options n'existent pas dans son schéma MCP.
+
+## Workflow recommandé
+
+1. **Localiser** avec `fast_search_files` sur un répertoire absolu.
+2. **Lire** uniquement les fichiers nécessaires avec `fast_read_multiple_files` (chemins absolus).
+3. **Comprendre la structure** avec `fast_get_directory_tree` (`max_depth` limité).
+4. **Éditer** avec `filesystem-agent.edit_file` pour un patch ciblé, ou `fast_write_file` pour un remplacement complet.
+5. **Vérifier** le résultat et le champ `path` retourné.
+
+### Exemple — audit d'un projet
+
+```text
+fast_get_directory_tree({
+  path: "/home/kidpixel/photomaton_simple_new",
+  max_depth: 2,
+  include_files: true
+})
+
+fast_search_files({
+  directory: "/home/kidpixel/photomaton_simple_new",
+  pattern: "activeContext"
+})
+
+fast_read_multiple_files({
+  paths: [
+    "/home/kidpixel/photomaton_simple_new/memory-bank/activeContext.md",
+    "/home/kidpixel/photomaton_simple_new/AGENTS.md"
+  ]
+})
 ```
 
-### Lecture multiple optimisée
+### Exemple — édition ciblée
 
-```bash
-# Lire plusieurs fichiers en une seule passe
-fast_read_multiple_files file1.js file2.js file3.js --pattern "export.*"
-
-# Plutôt que
-read_file file1.js
-read_file file2.js  
-read_file file3.js
+```text
+filesystem-agent.edit_file({
+  path: "/home/kidpixel/kimi-proxy/scripts/example.py",
+  edits: [{ oldText: "old", newText: "new" }]
+})
 ```
 
-## Common gotchas
+## Optimisation token
 
-### Fichiers volumineux (>1000 lignes)
+- Ne jamais charger un fichier de plus de 1000 lignes en entier : rechercher d'abord, puis lire une zone précise avec un outil adapté (shell, `sed`, `rg`) ou `fast_read_multiple_files` sur des fichiers ciblés.
+- Utiliser `max_depth` petit pour `fast_get_directory_tree`.
+- Utiliser `fast_search_files` (substring) pour trouver un nom de fichier, puis `ripgrep-agent` pour le contenu.
+- Pour un gros JSON, ne pas prétendre que `json_query_query_json` lit un fichier : il attend `json_data`. Lire le JSON par un moyen adapté, puis passer son contenu à `json_query_query_json({ json_data, query })`.
 
-```bash
-# ❌ Ne jamais charger entièrement
-read_file massive_config.json  # 5000+ lignes
+## Sécurité et permissions
 
-# ✅ Utiliser JSON Query pour les gros JSON
-json_query_query_json massive_config.json "$.database.connection"
-
-# ✅ Pour code, recherche ciblée
-fast_search_files "database.*connection" --language python
-fast_read_multiple_files config.py --lines 50-60
-```
-
-### Éditions en cascade
-
-```bash
-# Pour modifications multi-fichiers, utiliser la lecture multiple
-fast_read_multiple_files file1.js file2.js file3.js --pattern "oldFunction"
-
-# Puis éditer séquentiellement
-edit_file file1.js --search "oldFunction" --replacement "newFunction"
-edit_file file2.js --search "oldFunction" --replacement "newFunction"
-```
-
-### Contexte insuffisant
-
-```bash
-# Toujours inclure un peu de contexte pour éviter les erreurs
-fast_read_multiple_files target.py --lines 100-120 --context 3
-
-# Plutôt que
-fast_read_multiple_files target.py --lines 100-120  # Risque d'erreur
-```
-
-## Sécurité et Permissions (Filesystem Agent)
-
-### Contournement de la Capability "Roots"
-
-Dans l'architecture Kimi Proxy, le serveur MCP `filesystem-agent` est soumis à une politique stricte pour éviter l'écrasement de la configuration CLI par les "workspace roots" de l'IDE.
-- **Interception** : Le script `scripts/mcp_bridge.py` intercepte la requête `initialize`.
-- **Action** : Il supprime dynamiquement la capability `roots`.
-- **Objectif** : Cela empêche `filesystem-agent` d'écrire par erreur ou de refuser des écritures en se basant sur les dossiers racines du workspace (ex: refus d'écriture dans `/home/kidpixel/.windsurf/plans/`).
-- **Règle d'usage** : Vous devez toujours fournir des chemins absolus (ex. `/home/kidpixel/kimi-proxy/...`) et vous n'avez pas besoin de configurer de roots additionnels.
-
-## API Reference
-
-### Commandes principales
-
-- `fast_search_files "<pattern>"` : Recherche intelligente avec options
-- `fast_read_multiple_files <files>` : Lecture optimisée multi-fichiers  
-- `edit_file <file>` : Édition chirurgicale précise
-
-### Options de recherche
-
-- `--language <lang>` : Filtrer par langage (python, javascript, typescript, etc.)
-- `--exclude <pattern>` : Exclure fichiers/dossiers
-- `--context <n>` : Nombre de lignes de contexte
-- `--max-results <n>` : Limiter nombre de résultats
-
-### Options de lecture
-
-- `--lines <start-end>` : Lignes spécifiques
-- `--context <n>` : Lignes de contexte supplémentaires
-- `--pattern <regex>` : Filtrer lignes par pattern
-
-### Options d'édition
-
-- `--line <n>` : Ligne spécifique à remplacer
-- `--start <n> --end <n>` : Bloc de lignes
-- `--search <pattern>` : Rechercher et remplacer
-- `--replacement <code>` : Code de remplacement
+- **Racine autorisée** : `MCP_ALLOWED_ROOT=/home/kidpixel`. La racine `/` est refusée au démarrage.
+- **Anti-traversal** : `Path.resolve(strict=False)` + `relative_to` ; les symlinks sortants sont refusés.
+- **Daemon partagé** : ne jamais compter sur le `cwd` du serveur. Le pont local OpenCode injecte `params._meta["ai.kimi-proxy/workspaceRoot"]`, mais ce n'est qu'une base de résolution, pas une autorisation.
+- **`filesystem-agent`** : le bridge supprime la capability `roots` pour éviter que les roots de l'IDE écrasent la politique CLI. Continuez à fournir des chemins absolus.
+- **Erreurs** :
+  - `-32602 RELATIVE_PATH_UNSUPPORTED` : chemin relatif sans contexte workspace.
+  - `-32602 RELATIVE_PATH_ESCAPES_WORKSPACE` : `..` sort du workspace.
+  - `-32602 PATH_REQUIRED` : paramètre de chemin manquant.
+  - `-32000 PATH_OUTSIDE_ALLOWED_ROOT` : chemin absolu hors de `/home/kidpixel`.
 
 ## Debugging checklist
 
-- Confirmer que la recherche retourne les bons fichiers avant lecture
-- Vérifier que les lignes spécifiées existent dans les fichiers
-- Tester les patterns de recherche sur petits échantillons
-- Valider que les éditions ne cassent pas la syntaxe
-- Contrôler l'usage token après chaque opération
+- [ ] Le chemin commence-t-il par `/home/kidpixel/` ?
+- [ ] Le champ `path` de la réponse correspond-il au projet attendu ?
+- [ ] Le fichier existe-t-il réellement ?
+- [ ] Un symlink sortant est-il impliqué ?
+- [ ] L'erreur est-elle `RELATIVE_PATH_UNSUPPORTED` (utiliser l'absolu) ou `PATH_OUTSIDE_ALLOWED_ROOT` (hors racine) ?
+- [ ] Pour une édition, utiliser `filesystem-agent.edit_file`, pas `fast-filesystem`.
 
 ## When to use this skill
 
-- **Fichiers volumineux** : Quand les fichiers dépassent 1000 lignes
-- **Modifications ciblées** : Pour changer des fonctions spécifiques
-- **Refactoring** : Quand plusieurs fichiers nécessitent des changements
-- **Recherche globale** : Pour trouver des patterns dans tout le codebase
-- **Optimisation token** : Quand l'usage de tokens est critique
-- **Édition chirurgicale** : Pour modifications précises sans effets de bord
+- Lecture ou recherche de fichiers dans un projet sous `/home/kidpixel`.
+- Audit de structure avec `fast_get_directory_tree`.
+- Lecture multi-fichiers ciblée.
+- Écriture complète d'un fichier.
+- Diagnostic d'un résultat inattendu (mauvais dépôt, chemin refusé).
 
 ## Integration patterns
 
-### Avec Sequential Thinking
-
-Utilise `sequentialthinking_tools` pour valider la logique des modifications avant édition.
-
-### Avec Shrimp Task Manager
-
-Utilise pour implémenter les tâches générées par Shrimp Task Manager de manière optimisée.
-
-### Avec JSON Query
-
-Utilise `json_query_query_json` pour les fichiers JSON volumineux avant édition.
+- **Avec `filesystem-agent`** : `fast_*` pour lire/chercher, `edit_file` pour patcher.
+- **Avec `ripgrep-agent`** : `fast_search_files` pour les noms, `ripgrep` pour le contenu regex.
+- **Avec JSON Query** : passer le contenu JSON dans `json_data`, pas un chemin de fichier.
+- **Avec la Memory Bank** : toujours un chemin absolu, par exemple `/home/kidpixel/kimi-proxy/memory-bank/activeContext.md` ou `/home/kidpixel/photomaton_simple_new/memory-bank/activeContext.md`.

@@ -2,6 +2,14 @@
 Aucune tâche active.
 
 ## Dernière Session Terminée
+- [2026-11-15 12:00:00] **fast-filesystem — isolation workspace et durcissement P0/P1 — TERMINÉ** :
+  1. Cause racine : daemon HTTP partagé résolvant les chemins relatifs contre son `cwd` (`/home/kidpixel/kimi-proxy`) + `MCP_ALLOWED_ROOT=/`.
+  2. P0 : racine ramenée à `/home/kidpixel` (rejet de `/` au démarrage), rejet `-32602` des relatifs pour les clients HTTP directs, normalisation des chemins avant handlers, loopback `127.0.0.1` et suppression du CORS `*` pour les serveurs MCP 8001/8003/8004/8005.
+  3. P1 : serveur extrait dans `scripts/mcp_servers/fast_filesystem_server.py` + `path_policy.py` ; `mcp_bridge.py` injecte `_meta["ai.kimi-proxy/workspaceRoot"]` pour `fast-filesystem` ; OpenCode bascule `fast-filesystem` en local stdio via le bridge.
+  4. Politique A+ : relatif confiné au workspace, absolu explicite autorisé sous `/home/kidpixel`.
+  5. Validation : **198 tests passés** ; live : `.` → kimi-proxy, `../photomaton...` refusé, absolu photomaton OK, `/etc/hostname` refusé.
+  6. Docs/skills : `fast-filesystem-ops`, `memorybankprotocol`, `kimi-proxy-mcp-integration`, `docs-updater`, `enhance-complex`, `docs/features/mcp.md`, runbook bridge.
+  7. Risques résiduels P2 : isolation stricte par workspace, `json-query`, symlinks/TOCTOU, cache gateway (`id` dans la clé), auth upstream si exposition réseau.
 - [2026-11-07 11:05:00] **Rétablissement du démarrage automatique systemd — TERMINÉ** :
   1. Cause racine : `kimi-proxy.service` était activé mais son `ExecStart` pointait vers `scripts/start-systemd.sh`, supprimé. Le service bouclait en `status=127` et aucun serveur MCP HTTP ne démarrait au boot.
   2. Recréation de `scripts/start-systemd.sh` : chargement robuste de `.env`, activation du venv, démarrage idempotent des serveurs MCP, puis `exec python -m kimi_proxy` au premier plan.

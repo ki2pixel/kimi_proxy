@@ -170,6 +170,26 @@ Notes:
 
 - `MCP_SHRIMP_TASK_MANAGER_COMMAND` (défaut: `/home/kidpixel/.local/bin/shrimp-task-manager` si présent, sinon `shrimp-task-manager`)
 
+## Runbook: `fast-filesystem` retourne le contenu d'un autre dépôt
+
+**Symptôme** : dans `/home/kidpixel/photomaton_simple_new`, `fast_get_directory_tree({ path: "." })` ou `fast_read_file({ path: "memory-bank/activeContext.md" })` retourne les fichiers de `kimi-proxy`.
+
+**Cause** : le daemon `fast-filesystem` est partagé et résout les chemins relatifs contre son propre `cwd` (`/home/kidpixel/kimi-proxy`), pas contre le workspace de l'appelant.
+
+**Correctif** :
+1. Utiliser un chemin absolu : `/home/kidpixel/photomaton_simple_new/...`.
+2. Pour OpenCode, déclarer `fast-filesystem` en local via `scripts/mcp_bridge.py fast-filesystem` ; le bridge injecte `params._meta["ai.kimi-proxy/workspaceRoot"]`.
+3. Un relatif via le bridge doit rester dans le workspace ; `../autre-projet` retourne `-32602 RELATIVE_PATH_ESCAPES_WORKSPACE`.
+4. Un client HTTP direct qui envoie un relatif reçoit `-32602 RELATIVE_PATH_UNSUPPORTED`. C'est volontaire : mieux vaut une erreur qu'une lecture silencieuse du mauvais dépôt.
+
+**Vérification** :
+```bash
+curl -s -X POST http://localhost:8000/api/mcp-gateway/fast-filesystem/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fast_get_directory_tree","arguments":{"path":".","max_depth":0}}}'
+# attendu : -32602 RELATIVE_PATH_UNSUPPORTED
+```
+
 ## Golden Rule
 
 Le bridge ne doit jamais écrire de logs sur stdout. Tout ce qui n’est pas JSON-RPC doit aller sur stderr.

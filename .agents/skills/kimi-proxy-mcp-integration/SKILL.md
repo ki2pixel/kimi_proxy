@@ -37,6 +37,8 @@ Serveurs mappés :
 | `json-query` | `http://127.0.0.1:8005` |
 | `pruner` | `http://127.0.0.1:8006` |
 
+> **`fast-filesystem` est workspace-sensitive.** Le daemon est partagé et sa racine autorisée est `MCP_ALLOWED_ROOT` (`/home/kidpixel`). Les chemins relatifs sont refusés (`-32602`) pour les clients HTTP directs. OpenCode passe par `scripts/mcp_bridge.py fast-filesystem`, qui injecte `params._meta["ai.kimi-proxy/workspaceRoot"]` ; un relatif doit alors rester dans ce workspace. Toujours privilégier un chemin absolu.
+
 La gateway :
 
 - forwarde le JSON-RPC brut ;

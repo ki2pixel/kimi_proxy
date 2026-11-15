@@ -23,7 +23,7 @@ D4 --> E([END])
 
 ## Critical Protocols
 1. **Outils autorisés** : MCP fast-filesystem (`fast_read_file`, `fast_list_directory`, `fast_search_files`), MCP filesystem-agent (`edit_file`), MCP ripgrep (`search`, `advanced-search`, `count-matches`), et `Shell` pour les audits (`tree`, `cloc`, `radon`, `ls`).
-2. **Contexte** : Initialiser le contexte en appelant l'outil `fast_read_file` pour lire UNIQUEMENT `activeContext.md`. Ne lire les autres fichiers de la Memory Bank que si une divergence majeure est détectée lors du diagnostic.
+2. **Contexte** : Initialiser le contexte en appelant l'outil `fast_read_file` pour lire UNIQUEMENT `/home/kidpixel/<projet>/memory-bank/activeContext.md` (chemin absolu obligatoire ; jamais de relatif). Ne lire les autres fichiers de la Memory Bank que si une divergence majeure est détectée lors du diagnostic.
 3. **Source de Vérité** : Le Code (analysé par outils) > La Documentation existante > La Mémoire.
 4. **Sécurité Memory Bank** : Utilisez les outils fast-filesystem (fast_*) pour accéder aux fichiers memory-bank avec des chemins absolus dans `/home/kidpixel/kimi-proxy/memory-bank/`.
 

@@ -15,18 +15,19 @@ This protocol defines the mandatory cycle of life for project context. It uses t
 ### Trigger: `first_interaction` | Priority: `immediate` | Required: `true`
 
 **Actions Required:**
-1. **Start with MCP Pull:** Call `fast_read_file(path="/home/kidpixel/kimi-proxy/memory-bank/activeContext.md")`.
+1. **Start with MCP Pull:** Call `fast_read_file(path="/home/kidpixel/kimi-proxy/memory-bank/activeContext.md")` when working in this repository. In another project, use that project's absolute memory-bank path.
 2. **Internalize Status:** Verify blockers, current focus, and next steps.
 3. **Strict Constraint:** Do NOT load `productContext.md` or `systemPatterns.md` unless the task specifically requires architectural or strategic depth.
 4. **Prefix Requirement:** Begin the response with `[MEMORY BANK: ACTIVE (MCP-PULL)]`.
 5. **Fault Tolerance (Fallback):** If `fast_read_file` fails ("server not found"), state that the fast-filesystem MCP is unavailable and proceed without context.
 6. **Prohibition:** Never load more than one file at a time.
-7. **Locking Instruction:** ALWAYS use absolute paths for memory-bank files in `/home/kidpixel/kimi-proxy/memory-bank/`. Use EXCLUSIVELY the fast-filesystem and filesystem-agent MCP tools. Do NOT attempt to read memory-bank files via regular filesystem tools (read_file).
+7. **Locking Instruction:** ALWAYS use absolute paths for ALL fast-filesystem calls, not only memory-bank files. The path must start with the active workspace root (e.g. `/home/kidpixel/kimi-proxy/...` in this repo, `/home/kidpixel/<autre-projet>/...` elsewhere). NEVER use `"."`, `"./..."` or a bare relative path: the fast-filesystem daemon is shared across projects and would resolve them against its own launch directory, not your workspace. Use EXCLUSIVELY the fast-filesystem and filesystem-agent MCP tools. Do NOT attempt to read memory-bank files via regular filesystem tools (read_file).
+8. **Workspace Sanity Check:** If a fast-filesystem result contains another project's name or content, STOP. Do not use it. Retry with an absolute path and report the mismatch.
 
 ---
 
 ## 2. File Structure & Responsibilities
-Access these via `fast_read_file`, `edit_file`, or `fast_list_directory` using absolute paths in `/home/kidpixel/kimi-proxy/memory-bank/`.
+Access these via `fast_read_file`, `edit_file`, or `fast_list_directory` using absolute paths in the active workspace's `memory-bank/` directory (e.g. `/home/kidpixel/kimi-proxy/memory-bank/` in this repo).
 
 -   **`productContext.md`**: Project scope, goals, and standards.
 -   **`activeContext.md`**: Current session state, active decisions, and blockers.

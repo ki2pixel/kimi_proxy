@@ -2,6 +2,22 @@
 
 ## Décisions Techniques Récentes
 
+### [2026-11-15 12:00:00] - fast-filesystem : architecture H+S et politique de chemins A+
+**Problème** : le daemon `fast-filesystem` partagé résolvait les chemins relatifs contre son `cwd` (`/home/kidpixel/kimi-proxy`) et acceptait `MCP_ALLOWED_ROOT=/`. Un agent dans un autre projet lisait silencieusement le mauvais dépôt ; `/etc` était accessible.
+**Décision** :
+- Garder un daemon HTTP unique (features gateway : cache, pruning, circuit breaker) et utiliser `scripts/mcp_bridge.py` comme transport workspace-aware.
+- `MCP_ALLOWED_ROOT=/home/kidpixel` ; toute autre racine explicite est configurable, `/` est refusé au démarrage.
+- Clients HTTP directs : chemins absolus uniquement (`-32602 RELATIVE_PATH_UNSUPPORTED`).
+- OpenCode : `fast-filesystem` en local stdio via le bridge, qui injecte `params._meta["ai.kimi-proxy/workspaceRoot"]`.
+- Politique A+ : un relatif doit rester dans le workspace ; un absolu explicite reste autorisé sous `/home/kidpixel`.
+**Alternatives considérées** :
+- Vrai serveur stdio par workspace (rejeté : duplication du serveur, perte du cache/pruning gateway).
+- Isolation stricte B (rejeté pour l'instant : casse les lectures inter-projets explicites ; à reconsidérer si des agents non fiables sont dans le modèle de menace).
+- Paramètre d'outil `workspace_root` (rejeté : schéma pollué, contrôlé par le modèle, redondant avec l'absolu).
+**Implémentation** : `scripts/mcp_servers/fast_filesystem_server.py`, `scripts/mcp_servers/path_policy.py`, `scripts/mcp_bridge.py`, `scripts/start-mcp-servers.sh`, `.env` (local), `~/.config/opencode/opencode.json`, skills/règles/docs.
+**Résultat** : **198 tests passés** ; validation live OK (relatif correct, évasion refusée, absolu inter-projet OK, `/etc` refusé, loopback, CORS retiré).
+**Leçons apprises** : un serveur MCP partagé ne doit jamais utiliser son `cwd` comme base de résolution ; les descriptions d'outils et les skills doivent refléter le schéma réel et imposer l'absolu. Le fail-closed est préférable à un succès silencieux sur le mauvais workspace.
+
 ### [2026-05-28 12:10:00] - Workflow Docs-Updater et Architecture Pure Middleware
 **Problème** : Les métriques de la documentation étaient obsolètes (12049 LOC vs 22532 LOC réels) et l'architecture "Pure Middleware" impliquait de clarifier le statut des docs frontend.
 **Décision** : Mettre à jour les compteurs de ligne/fichiers dans les READMEs, et maintenir le statut "ARCHIVE" des anciennes documentations frontend (ex: `docs/features/ui.md`) sans les supprimer.

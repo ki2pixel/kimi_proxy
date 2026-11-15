@@ -71,6 +71,11 @@ GATEWAY_HTTP_SERVERS: frozenset[str] = frozenset(
     }
 )
 
+# Serveurs dont les outils manipulent des chemins relatifs au workspace.
+# Le bridge injecte le cwd (ou MCP_BRIDGE_WORKSPACE_ROOT) dans params._meta.
+WORKSPACE_META_KEY = "ai.kimi-proxy/workspaceRoot"
+WORKSPACE_SENSITIVE_GATEWAY_SERVERS: frozenset[str] = frozenset({"fast-filesystem"})
+
 STDIO_RELAY_SERVERS: frozenset[str] = frozenset(
     {
         "filesystem-agent",
@@ -1246,6 +1251,42 @@ def _write_stdout_json(payload: object) -> None:
         sys.stdout.flush()
 
 
+def _workspace_root_for_request() -> str:
+    """Retourne la racine workspace à injecter dans les requêtes sensibles."""
+
+    override = os.getenv("MCP_BRIDGE_WORKSPACE_ROOT")
+    root = Path(override).expanduser() if override else Path.cwd()
+    return str(root.resolve())
+
+
+def _inject_workspace_meta(request_obj: object, server_name: str) -> object:
+    """Injecte params._meta[workspaceRoot] pour les serveurs sensibles.
+
+    - Ne modifie jamais l'objet d'origine (copie superficielle).
+    - Préserve les autres clés `_meta` (ex: ai.opencode/sessionID).
+    - Ne s'applique qu'aux `tools/call` (pas initialize/tools/list/notifications).
+    """
+
+    if server_name not in WORKSPACE_SENSITIVE_GATEWAY_SERVERS:
+        return request_obj
+    if not isinstance(request_obj, dict) or request_obj.get("method") != "tools/call":
+        return request_obj
+
+    params = request_obj.get("params")
+    if not isinstance(params, dict):
+        return request_obj
+
+    existing_meta = params.get("_meta")
+    meta = dict(existing_meta) if isinstance(existing_meta, dict) else {}
+    meta[WORKSPACE_META_KEY] = _workspace_root_for_request()
+
+    new_params = dict(params)
+    new_params["_meta"] = meta
+    new_request = dict(request_obj)
+    new_request["params"] = new_params
+    return new_request
+
+
 async def _run_gateway_http(server_name: str) -> int:
     gateway_url = _get_gateway_url(server_name)
     stdin_reader = await _connect_stdin_reader()
@@ -1269,6 +1310,7 @@ async def _run_gateway_http(server_name: str) -> int:
 
             is_notification = isinstance(request_obj, dict) and "id" not in request_obj
             req_id = _extract_jsonrpc_id(request_obj)
+            request_obj = _inject_workspace_meta(request_obj, server_name)
 
             try:
                 response = await client.post(gateway_url, json=request_obj)

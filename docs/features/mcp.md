@@ -31,6 +31,15 @@ La gateway peut néanmoins router cinq serveurs nommés, dont trois ne sont pas 
 
 Un corps JSON invalide retourne une erreur JSON-RPC `-32700` avec le statut HTTP 400. Un serveur inconnu retourne `-32001` avec le statut 404.
 
+### Résolution des chemins `fast-filesystem`
+Le serveur `fast-filesystem` est un daemon HTTP partagé, écoute sur `127.0.0.1:8004` et utilise `MCP_ALLOWED_ROOT=/home/kidpixel` (la racine `/` est refusée au démarrage).
+
+- **Client HTTP direct** (Cline, Windsurf, Continue) : chemins absolus obligatoires. Un chemin relatif retourne `-32602 RELATIVE_PATH_UNSUPPORTED`.
+- **OpenCode** : `fast-filesystem` passe par `scripts/mcp_bridge.py fast-filesystem`, qui injecte `params._meta["ai.kimi-proxy/workspaceRoot"]` (cwd du workspace). Un chemin relatif est alors résolu sous ce workspace et ne peut pas en sortir (`RELATIVE_PATH_ESCAPES_WORKSPACE`).
+- Un chemin absolu explicite reste possible sous `/home/kidpixel` (`OPTION A+`) pour les accès inter-projets intentionnels.
+- `_meta` est une base de résolution, **pas** une autorisation : la frontière reste `MCP_ALLOWED_ROOT`.
+- Les refus de sécurité upstream (HTTP 403, `-32000 PATH_OUTSIDE_ALLOWED_ROOT`) sont forwardés par la gateway sous forme de réponse JSON-RPC ; la gateway elle-même répond HTTP 200 avec la charge d'erreur.
+
 ### Mémoire
 La mémoire SQLite est réduite aux tables `mcp_memory_entries` et `masked_content`. Les accès SQLite de `MemoryManager` sont exécutés hors de la boucle asyncio via `run_db_in_thread`.
 
