@@ -2,6 +2,13 @@
 Aucune tâche active.
 
 ## Dernière Session Terminée
+- [2026-11-16 22:05:00] **Optimisation des Règles Antigravity et Indexation Projet — TERMINÉ** :
+  1. Cause racine : Seuil IDE Antigravity dépassé (~1 000 tokens / 5,5 Ko) sur `codingstandards.md` (11,6 Ko), `v5.md` (11,1 Ko) et `prompt-injection-guard.md` (9,6 Ko), générant l'erreur « You have exceeded the maximum token limit for this file ». Surcharge de ~38 Ko inlinée par tour. Absence de `.antigravityignore` indexant 700+ Mo de caches.
+  2. Création de `.antigravityignore` à la racine : exclusion de `.git/`, `venv/`, `mcp/`, `research/`, `shrimp_data/`, `debug/`, `*.db`, caches de tests/compilateurs.
+  3. Densification normative intégrale de `.agents/rules/` : 100 % des règles ramenées sous 3,5 Ko (< 450 mots). Empreinte des 4 règles `always_on` divisée par 3,2 (-69,2 %, 11,6 Ko vs 37,9 Ko, ~4 800 tokens libérés par tour).
+  4. Migration de `commit-message-format.md` vers `trigger: model_decision`.
+  5. Nettoyage des références résiduelles `.windsurf` dans `.agents/skills/end/SKILL.md` et `commit-push/SKILL.md`.
+  6. Validation : **198/198 tests passés**, `git diff --check` propre, zéro alerte de dépassement de tokens.
 - [2026-11-15 12:00:00] **fast-filesystem — isolation workspace et durcissement P0/P1 — TERMINÉ** :
   1. Cause racine : daemon HTTP partagé résolvant les chemins relatifs contre son `cwd` (`/home/kidpixel/kimi-proxy`) + `MCP_ALLOWED_ROOT=/`.
   2. P0 : racine ramenée à `/home/kidpixel` (rejet de `/` au démarrage), rejet `-32602` des relatifs pour les clients HTTP directs, normalisation des chemins avant handlers, loopback `127.0.0.1` et suppression du CORS `*` pour les serveurs MCP 8001/8003/8004/8005.

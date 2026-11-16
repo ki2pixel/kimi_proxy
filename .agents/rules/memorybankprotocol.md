@@ -4,85 +4,38 @@ description: Memory Bank Protocol (Version Filesystem-Agent MCP-Optimized)
 globs: 
 ---
 
-# Memory Bank Protocol (Version Filesystem-Agent MCP-Optimized)
+# Protocole Memory Bank (Optimisé MCP)
 
-## Overview
-This protocol defines the mandatory cycle of life for project context. It uses the `fast-filesystem` and `filesystem-agent` MCP servers to minimize token noise while maintaining surgical precision in documentation.
+## 1. Initialisation Sélective (Obligatoire au Premier Tour)
+- **Déclenchement** : `first_interaction` | **Priorité** : Immédiate.
+- **Action Requise** :
+  1. Appeler systématiquement `fast_read_file(path="/home/kidpixel/kimi-proxy/memory-bank/activeContext.md")` (utiliser le chemin absolu du projet actif).
+  2. Vérifier les bloqueurs, le focus courant et les prochaines étapes.
+  3. **Préfixe Obligatoire** : Débuter impérativement la réponse par `[MEMORY BANK: ACTIVE (MCP-PULL)]`.
+- **Règles Strictes de Chargement** :
+  - Ne **JAMAIS** charger `productContext.md` ou `systemPatterns.md` sans besoin architectural explicite.
+  - Ne charger qu'**un seul fichier à la fois**.
+  - **Chemins absolus stricts** : Tout appel `fast_*` doit utiliser un chemin absolu sous `/home/kidpixel/...`. L'usage de `"."`, `"./..."` ou de chemins relatifs est strictement interdit (serveur partagé multi-projets).
+  - En cas d'inaccessibilité du MCP `fast-filesystem`, le signaler et poursuivre sans contexte.
+  - Si un résultat contient le contenu d'un autre projet, s'arrêter immédiatement et le signaler.
 
-**Windsurf is now in 'Token-Saver' mode. Minimize context usage by using tools instead of pre-loading.**
+## 2. Structure des 5 Fichiers de Base
+- `activeContext.md` : État courant, décisions actives et bloqueurs.
+- `progress.md` : Suivi d'avancement des tâches (terminées, en cours, à venir).
+- `decisionLog.md` : Décisions d'architecture durables et arbitrages techniques.
+- `systemPatterns.md` : Patrons de conception, architecture et patterns de test.
+- `productContext.md` : Périmètre global et objectifs du projet.
 
-## 1. Selective Initialization Protocol
-### Trigger: `first_interaction` | Priority: `immediate` | Required: `true`
+## 3. Protocole de Mise à Jour & Archivage
+- **Format d'horodatage** : `[YYYY-MM-DD HH:MM:SS] - [Résumé]` obligatoire pour chaque entrée.
+- **Mise à jour chirurgicale** : Effectuée via `edit_file` en fin de session ou sur commande.
+- **Archivage** : Conserver 90 jours de détail dans `decisionLog.md` et `progress.md`. Déplacer les entrées antérieures vers `memory-bank/archives/*.md` via `fast_write_file`.
+- **Restriction** : `fast_write_file` est réservé à l'archivage ou à l'initialisation des 5 fichiers de base. Interdiction de créer d'autres fichiers à la racine de `memory-bank/`.
 
-**Actions Required:**
-1. **Start with MCP Pull:** Call `fast_read_file(path="/home/kidpixel/kimi-proxy/memory-bank/activeContext.md")` when working in this repository. In another project, use that project's absolute memory-bank path.
-2. **Internalize Status:** Verify blockers, current focus, and next steps.
-3. **Strict Constraint:** Do NOT load `productContext.md` or `systemPatterns.md` unless the task specifically requires architectural or strategic depth.
-4. **Prefix Requirement:** Begin the response with `[MEMORY BANK: ACTIVE (MCP-PULL)]`.
-5. **Fault Tolerance (Fallback):** If `fast_read_file` fails ("server not found"), state that the fast-filesystem MCP is unavailable and proceed without context.
-6. **Prohibition:** Never load more than one file at a time.
-7. **Locking Instruction:** ALWAYS use absolute paths for ALL fast-filesystem calls, not only memory-bank files. The path must start with the active workspace root (e.g. `/home/kidpixel/kimi-proxy/...` in this repo, `/home/kidpixel/<autre-projet>/...` elsewhere). NEVER use `"."`, `"./..."` or a bare relative path: the fast-filesystem daemon is shared across projects and would resolve them against its own launch directory, not your workspace. Use EXCLUSIVELY the fast-filesystem and filesystem-agent MCP tools. Do NOT attempt to read memory-bank files via regular filesystem tools (read_file).
-8. **Workspace Sanity Check:** If a fast-filesystem result contains another project's name or content, STOP. Do not use it. Retry with an absolute path and report the mismatch.
-
----
-
-## 2. File Structure & Responsibilities
-Access these via `fast_read_file`, `edit_file`, or `fast_list_directory` using absolute paths in the active workspace's `memory-bank/` directory (e.g. `/home/kidpixel/kimi-proxy/memory-bank/` in this repo).
-
--   **`productContext.md`**: Project scope, goals, and standards.
--   **`activeContext.md`**: Current session state, active decisions, and blockers.
--   **`systemPatterns.md`**: Recurring patterns (coding, architecture, testing).
--   **`decisionLog.md`**: Technical decisions, implementations, and alternatives.
--   **`progress.md`**: Work status tracking (completed, current, next, issues).
-
----
-
-## 3. Update & Quality Standards (Mandatory)
-
-### Update Protocol
--   **Frequency:** Update at the end of a task or via the `UMB` command.
--   **Timestamp Format:** `[YYYY-MM-DD HH:MM:SS] - [Summary]` (Required for every log entry).
--   **Conciseness:** Keep entries focused and actionable.
--   **Cross-References:** Link related entries across files to maintain a logical web.
-
-### Retention Policy
--   **90-day Detail:** Keep full details for the last 90 days in `decisionLog.md` and `progress.md`.
--   **Archiving:** Summarize older entries and move them to `memory-bank/archives/*.md`.
--   **Archiving Tool:** Use `fast_write_file(path="/home/kidpixel/kimi-proxy/memory-bank/archives/...")` to archive old entries. Never delete data without archiving via this tool first.
--   **Creation Restriction:** `fast_write_file` is only for initialization (creation of the 5 base files) or archiving. Interdiction de créer de nouveaux types de fichiers à la racine de `memory-bank/` sans autorisation.
--   **Traceability:** Ensure the archive path is mentioned in the active file.
-
----
-
-## 4. Context-Specific Rules
-
-### A. Documentation Context
--   **Trigger:** Questions about 'docs', 'guides', 'guidelines', or 'API reference'.
--   **Instruction:** Before answering, state: *"I will consult the project's internal documentation."*
--   **Priority Pull:** Read `docs/` and root markdown files (e.g., `README.md`).
--   **Conflict Resolution:** If code and docs conflict, cite both and ask for clarification.
-
-### B. Coding & Architecture Context
--   **Trigger:** Requests to generate, modify, refactor code, or architectural questions.
--   **Instruction:** State: *"I will adhere to the project's mandatory architectural and coding standards."*
--   **Selective Pull:** Immediately call `read_file` for `.agents/rules/codingstandards.md`.
--   **Constraint:** Formulate the plan based **strictly** on the principles found in the standards.
-
----
-
-## 5. Special Command: Update Memory Bank (UMB)
--   **Trigger:** User inputs `^(Update Memory Bank|UMB)$`.
--   **Process:**
-    1.  **Halt:** Stop current activity.
-    2.  **Acknowledge:** Respond with `[MEMORY BANK: UPDATING]`.
-    3.  **Audit:** Review current chat for decisions, changes, or clarifications.
-    4.  **Sync:** Call `edit_file` on relevant files (usually `progress.md` and `activeContext.md`).
-    5.  **Clean:** Do NOT summarize the entire project history, only the *current session's* deltas.
-
----
-
-## 6. Observability & Dashboard Triggers
-To assist the Kimi Proxy monitoring, explicitly state your intent during pulls:
--   *"Initiating Pre-Flight Validation (Pulling activeContext)..."*
--   *"Pulling architectural patterns for coding task..."*
--   *"Synchronizing memory bank (UMB mode)..."*
+## 4. Commande Spéciale : Update Memory Bank (UMB)
+- **Déclencheur** : `^(Update Memory Bank|UMB)$`.
+- **Procédure** :
+  1. Répondre par `[MEMORY BANK: UPDATING]`.
+  2. Auditer la session (décisions, changements, validations).
+  3. Mettre à jour `progress.md` et `activeContext.md` via `edit_file`.
+  4. Consigner uniquement les deltas de la session courante sans recopier l'historique global.

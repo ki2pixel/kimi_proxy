@@ -21,7 +21,7 @@ E --> F([END])
    - Use the `fast_read_file` tool with ABSOLUTE paths (e.g. `/home/kidpixel/<projet>/memory-bank/activeContext.md`) to read ONLY 'activeContext.md' and 'progress.md'. Never use relative paths or `.`.
    - Do NOT read productContext.md, systemPatterns.md or decisionLog.md unless a major architectural decision was made during the session.
    - If older decisions need to be reviewed, use targeted search instead of loading entire files.
-2. **Exécuter `.windsurf/rules/memorybankprotocol.md` conformément aux règles**  
+2. **Exécuter `.agents/rules/memorybankprotocol.md` conformément aux règles**
    - Suspendre la tâche en cours puis résumer la session.  
    - Utiliser `search` pour identifier les fichiers additionnels à consulter (ex. docs liés à la session).
 3. **Mettre à jour la Memory Bank**  

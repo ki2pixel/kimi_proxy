@@ -1,0 +1,38 @@
+# Git
+.git/
+
+# Python & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual Environments
+venv/
+.venv/
+ENV/
+env/
+
+# Heavy local MCP packages & repositories
+mcp/
+
+# Runtime data & Research
+research/
+shrimp_data/
+debug/
+backups/
+workspace/
+*.db
+*.sqlite
+*.sqlite3
+*.pid
+.server.port
+
+# Node & Build artifacts
+node_modules/
+build/
+dist/
+*.egg-info/

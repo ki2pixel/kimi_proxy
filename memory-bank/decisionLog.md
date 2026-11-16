@@ -2,6 +2,19 @@
 
 ## Décisions Techniques Récentes
 
+### [2026-11-16 22:05:00] - Optimisation des Règles Antigravity et Indexation Projet (.antigravityignore)
+**Problème** : L'IDE Antigravity applique un seuil strict d'alerte (~1 000 tokens / 700-750 mots / ~5,5 Ko) par fichier de règle. Trois règles (`codingstandards.md`, `v5.md`, `prompt-injection-guard.md`) dépassaient massivement ce seuil (9,6 à 11,6 Ko, > 1 300 à 1 500 mots), déclenchant l'alerte « You have exceeded the maximum token limit for this file ». De plus, l'absence de `.antigravityignore` forçait l'indexation de plus de 700 Mo de caches et dépôts locaux (`.mypy_cache`, `venv`, `mcp`, `research`).
+**Décision** :
+- Création de `.antigravityignore` à la racine pour exclure les caches (`.git/`, `venv/`, `mcp/`, `research/`, `shrimp_data/`, `debug/`, `*.db`, caches Python/pytest/mypy/ruff).
+- Densification normative intégrale des règles sans aucune perte d'exigence (5 couches, async/await, tiktoken, SonarCloud <= 15, SSE streaming, logs français, mémoire MCP, protocole prompt injection).
+- Réduction de 100 % des fichiers `.agents/rules/*.md` sous le seuil strict de 3,5 Ko (< 450 mots).
+- Migration du frontmatter de `commit-message-format.md` vers `trigger: model_decision`.
+- Correction des références résiduelles `.windsurf` dans `.agents/skills/`.
+**Résultat** :
+- Empreinte globale des règles inlinées (`always_on`) divisée par 3,2 (-69,2 %, 11,6 Ko vs 37,9 Ko), libérant ~4 800 tokens de contexte par tour.
+- Disparition complète de l'alerte de dépassement de limite de tokens dans Antigravity.
+- 198/198 tests unitaires et d'intégration validés sans régression.
+
 ### [2026-11-15 12:00:00] - fast-filesystem : architecture H+S et politique de chemins A+
 **Problème** : le daemon `fast-filesystem` partagé résolvait les chemins relatifs contre son `cwd` (`/home/kidpixel/kimi-proxy`) et acceptait `MCP_ALLOWED_ROOT=/`. Un agent dans un autre projet lisait silencieusement le mauvais dépôt ; `/etc` était accessible.
 **Décision** :

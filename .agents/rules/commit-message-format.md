@@ -1,103 +1,51 @@
 ---
-name: Git Commit Message Format
-description: Applied when creating Git commit messages. Format rules for Conventional Commits-based Prefix + English summary + bulleted body
-alwaysApply: false
+trigger: model_decision
+description: Format des messages de commit Git (Conventional Commits, anglais, body à puces).
 ---
 
-# Git Commit Message Format Rules
+# Règles de Format des Messages de Commit Git
 
-This rule is a guideline for commit messages that applies to all commits.
+## 1. Format Canonique (Conventional Commits)
+```text
+<Prefix>(<scope>): <Summary (impératif, court, sans point final)>
 
-## Position of This Rule
+- Changement 1 (puce descriptive)
+- Changement 2 (puce descriptive)
 
-- This rule is a commit message convention based on Conventional Commits.
-- While adhering to basic formats like `Prefix` and `BREAKING CHANGE` from Conventional Commits, it adds guidelines specific to this repository such as `language` specification and bulleted body.
-- When reusing in other projects, adjust `language` and list of Prefixes according to each project's policy.
-
-## Language Specification
-
-- In this rule file, `language` is used as a logical name representing language used in commit messages.
-- `language = "en"`
-- Summary and body should be written in language specified by `language` as a rule.
-
-## Basic Format (Required)
-
-```
-<Prefix>: <Summary (imperative/concise)>
-
-- Change 1 (bullet point)
-- Change 2 (bullet point)
-- ...
-
-Refs: #<Issue number> (optional)
-BREAKING CHANGE: <content> (optional)
+Refs: #<Numéro d'issue> (optionnel)
+BREAKING CHANGE: <détail rupture de compatibilité> (optionnel)
 ```
 
-## Prefix (Leading Prefix)
+## 2. Spécification de Langue & Préfixes
+- **Langue du message** : Anglais (`language = "en"`). Le résumé et le corps sont rédigés en anglais.
+- **Préfixes autorisés** :
+  - `feat`: Nouvelle fonctionnalité
+  - `fix`: Correction de bug
+  - `refactor`: Refactoring sans modification de comportement
+  - `perf`: Amélioration de performance
+  - `test`: Ajout ou ajustement de tests
+  - `docs`: Documentation
+  - `build`: Changements liés au build ou aux dépendances
+  - `ci`: Configuration d'intégration continue
+  - `chore`: Tâches diverses, maintenance, outillage
+  - `style`: Formatage, espaces, virgules (sans impact logique)
+  - `revert`: Annulation de commit
 
-Prefix corresponds to `type` in Conventional Commits and uses lowercase English words.
+## 3. Ligne de Résumé (Première Ligne)
+- Rédigée au présent de l'impératif, concise (< 50 caractères).
+- Pas de point final.
+- Doit résumer fidèlement le diff effectif (`git diff` / `git diff --cached`).
 
-- feat: Add new feature
-- fix: Bug fix
-- refactor: Refactoring (no behavior change)
-- perf: Performance improvement
-- test: Add/modify tests
-- docs: Documentation update
-- build: Build/dependency changes
-- ci: CI-related changes
-- chore: Miscellaneous tasks (tool settings/scripts, etc.)
-- style: Style-only changes (unrelated to code logic)
-- revert: Revert
+## 4. Corps du Message (Bullet Points)
+- Liste à puces démarrant par `- `.
+- Énumère les modifications réelles, le périmètre d'impact, les risques ou migrations éventuelles.
+- Les termes techniques restent en anglais.
 
-As with Conventional Commits, format `<Prefix>(scope):` is also allowed as needed (e.g., `fix(translation): ...`).
-- For detailed specifications, also refer to official [Conventional Commits](https://www.conventionalcommits.org/) documentation.
+## 5. Pied de Page (Footer)
+- Références : `Refs: #123` ou `Closes: #123`.
+- `BREAKING CHANGE:` explicite en cas d'incompatibilité descendante.
 
-## Summary (First Line)
-
-- Write concisely in language specified by `language`. No period at end.
-- Briefly express what and why (if necessary).
-- Aim for approximately 50 characters or less.
-
-## Principles for Message Generation
-
-- Commit messages must always be generated from uncommitted diffs (e.g., `git diff` / `git diff --cached`) after reviewing their content.
-- Do not guess from issue titles or branch names alone; summarize and enumerate actual changes contained in diff.
-- Even for automatic generation by AI or scripts, use uncommitted diffs as input.
-- When bots or automation tools commit, follow this rule and always generate messages based on diffs.
-
-## Body (Bullet Points)
-
-- List changes as bullet points starting with "- ".
-- Write in same language as summary (the `language` defined in this rule file) as a rule. Technical terms in English are acceptable as needed.
-- If possible, also add bullet points for "impact scope," "migration steps," "risks," "rollback method," etc.
-
-## Footer (Optional)
-
-- Refs/Closes: Specify related Issues or PRs with `Refs: #123` / `Closes: #123`.
-- BREAKING CHANGE: If there are backward-incompatible changes, clearly state content (or use `!` notation with Prefix like `fix!: ...`).
-
-## Examples
-
-```
-fix: Remove unnecessary debug log output
-
-- Remove verbose log lines from user info retrieval process
-- Reduce log volume while keeping necessary information
-
-Refs: #123
-```
-
-```
-refactor: Consolidate duplicate validation logic into common function
-
-- Extract duplicate form input check code to utility function
-- Remove duplicate logic from callers to improve readability
-- No behavior changes
-```
-
-## Prohibited
-
-- Writing summary only in a language different from that specified by `language`
-- Ambiguous summaries that don't convey meaning (e.g., abstract expressions like "update", "fix bug")
-- Body with only long text without bullet points that makes content hard to grasp
-- Commits that only disable or bypass static analysis or checks without substantial improvement (e.g., configuration changes that only relax check rules)
+## 6. Pratiques Proscrites
+- ❌ Résumés vagues ou vides de sens (`update`, `fix bug`, `changes`).
+- ❌ Corps sous forme de paragraphe indigeste sans listes à puces.
+- ❌ Commits désactivant silencieusement les linters ou tests sans résolution de fond.
